@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Semaphore spike: WebMCP behaviour report</title>
+    <style>
+      /* Palette borrowed from doc 06 so the spike looks like it belongs, but
+         nothing here is shipped art and none of it is load-bearing. */
+      :root {
+        --void: #0d0f14;
+        --hull: #1a1f2b;
+        --hull-light: #2e3646;
+        --amber: #f0a830;
+        --cyan: #3bc9db;
+        --bone: #f2efe6;
+        --bone-dim: #a8a296;
+        --alarm: #e5484d;
+        --brass: #c9a227;
+      }
+      body {
+        margin: 0;
+        padding: 2rem 1.5rem 4rem;
+        background: var(--void);
+        color: var(--bone);
+        font:
+          14px/1.55 ui-monospace,
+          "Departure Mono",
+          "SF Mono",
+          Menlo,
+          monospace;
+      }
+      main {
+        max-width: 78rem;
+        margin: 0 auto;
+      }
+      h1 {
+        margin: 0 0 0.25rem;
+        font-size: 1.35rem;
+        letter-spacing: 0.06em;
+        color: var(--amber);
+      }
+      .lede {
+        color: var(--bone-dim);
+        margin: 0 0 1.5rem;
+        max-width: 60rem;
+      }
+      section {
+        border: 1px solid var(--hull-light);
+        border-radius: 4px;
+        padding: 1rem 1.25rem;
+        margin-bottom: 1.25rem;
+        background: var(--hull);
+      }
+      h2 {
+        margin: 0 0 0.75rem;
+        font-size: 0.85rem;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--brass);
+      }
+      ol,
+      ul {
+        margin: 0.5rem 0 0;
+        padding-left: 1.25rem;
+      }
+      li {
+        margin-bottom: 0.35rem;
+      }
+      code,
+      kbd {
+        background: var(--hull-light);
+        padding: 0.1rem 0.35rem;
+        border-radius: 3px;
+        color: var(--cyan);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 0.5rem;
+      }
+      th {
+        text-align: left;
+        font-size: 0.72rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--bone-dim);
+        border-bottom: 1px solid var(--hull-light);
+        padding: 0.4rem 0.6rem;
+      }
+      td {
+        padding: 0.45rem 0.6rem;
+        border-bottom: 1px solid var(--hull-light);
+        vertical-align: top;
+      }
+      td:first-child {
+        white-space: nowrap;
+        font-weight: 700;
+      }
+      tr.pass td:first-child {
+        color: var(--cyan);
+      }
+      tr.fail td:first-child {
+        color: var(--alarm);
+      }
+      tr.waiting td:first-child {
+        color: var(--amber);
+      }
+      tr.info td:first-child {
+        color: var(--bone-dim);
+      }
+      button {
+        font: inherit;
+        background: var(--brass);
+        color: var(--void);
+        border: 0;
+        border-radius: 3px;
+        padding: 0.45rem 0.9rem;
+        cursor: pointer;
+      }
+      #summary {
+        color: var(--bone-dim);
+        margin-left: 0.9rem;
+      }
+      textarea {
+        width: 100%;
+        min-height: 3.5rem;
+        background: var(--void);
+        color: var(--bone);
+        border: 1px solid var(--hull-light);
+        border-radius: 3px;
+        padding: 0.5rem;
+        font: inherit;
+        box-sizing: border-box;
+      }
+      form :is(button, textarea) {
+        margin-top: 0.4rem;
+      }
+      /* Chrome applies these automatically while an agent drives the form. */
+      form:tool-form-active {
+        outline: 2px dashed var(--cyan);
+        outline-offset: 4px;
+      }
+      iframe {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>SEMAPHORE &middot; PHASE 0.3 SPIKE</h1>
+      <p class="lede">
+        Answers the questions in <code>docs/11-spec-notes.md</code> by exercising the live WebMCP
+        API rather than by reading the specification. Automatic checks run on load. Agent checks
+        stay marked <em>waiting</em> until a model actually calls something.
+      </p>
+
+      <section>
+        <h2>How to run this</h2>
+        <ol>
+          <li>
+            Serve this directory over <code>localhost</code> (a secure context is required):
+            <code>python3 -m http.server 8787 --directory apps/spike</code>
+          </li>
+          <li>
+            For the cross-origin check, serve a second copy on another port, which is a different
+            origin: <code>python3 -m http.server 8788 --directory apps/spike</code>, then open this
+            page as <code>http://localhost:8787/?archive=http://localhost:8788</code>
+          </li>
+          <li>
+            Open it in <strong>Chrome 149+</strong> with
+            <code>chrome://flags/#enable-webmcp-testing</code> enabled and relaunched, or in the
+            <strong>ChatGPT desktop app's in-app browser</strong> on GPT-5.6 Sol or Terra (Luna has
+            site tools disabled).
+          </li>
+          <li>
+            To fill the agent rows, paste this to your agent:
+            <em
+              >"Use the site tools on this page. Call spike_begin, then follow the instructions it
+              returns."</em
+            >
+          </li>
+          <li>Press <strong>Copy report</strong> and paste the result into doc 11.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>Shared notepad (declarative API)</h2>
+        <p class="lede" style="margin-bottom: 0">
+          A real form a human can submit and an agent can invoke, which is how the game's notepad
+          works. Submitting either way records whether
+          <code>SubmitEvent.agentInvoked</code> is observable.
+        </p>
+        <form
+          id="notepad"
+          toolname="spike_write_note"
+          tooldescription="Write a line to the shared notepad. Your human partner can read what you write here."
+          toolautosubmit
+        >
+          <textarea
+            name="text"
+            toolparamdescription="The line to write. One or two sentences."
+          ></textarea>
+          <button type="submit">Write note</button>
+        </form>
+      </section>
+
+      <section>
+        <h2>Report</h2>
+        <button id="copy" type="button">Copy report</button>
+        <span id="summary">Running automatic checks.</span>
+        <table>
+          <thead>
+            <tr>
+              <th>Verdict</th>
+              <th>Question</th>
+              <th>Expected</th>
+              <th>Observed</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </section>
+    </main>
+
+    <iframe id="archive-frame" allow="tools" title="Cross-origin tool provider"></iframe>
+    <script type="module" src="./spike.js"></script>
+  </body>
+</html>
