@@ -16,7 +16,7 @@ Having established that R2 needs a card, the first replacement we reached for wa
 
 | | DO SQLite | Workers KV | D1 |
 |---|---|---|---|
-| Stored data (free) | 5 GB | 1 GB | 500 MB |
+| Stored data (free) | 5 GB | 1 GB | 5 GB |
 | **Writes per day (free)** | 100k rows | **1,000 keys** | 100k rows |
 | Reads per day (free) | 5M rows | 100k keys | 5M rows |
 | Queryable across records | No | No | Yes, SQL |
@@ -27,7 +27,9 @@ The general lesson: **for anything write-heavy, the daily operation cap binds lo
 
 D1 also turned out to be a better fit than R2 had been, which is the part worth remembering. The benchmark wants questions like "every session on seed 7 across all backends", which against an object store is a list-and-fetch loop and against D1 is one query. We were going to end up building an index over R2 objects; D1 is that index with the data already inside it. **Losing the obvious choice forced a better design**, which happens more often than it feels like at the time.
 
-**Also: Cloudflare's own docs disagree with themselves here.** D1's pricing page lists 5 GB of stored data on the free plan; D1's limits page lists "10 GB (Workers Paid) / 500 MB (Free)". We sized against 500 MB. When two pages from the same vendor conflict, take the smaller number and note the conflict, because the smaller one is the one that will page you.
+**Also: Cloudflare's own docs disagree with themselves, and the docs lost.** D1's pricing page lists 5 GB of stored data on the free plan; D1's limits page lists "10 GB (Workers Paid) / 500 MB (Free)". We initially sized against the smaller number. Checking the actual Cloudflare account settled it at **5 GB**, so the limits page is the stale one.
+
+The generalisable bit is not "take the smaller number", which is what we did and it was wrong. It is: **when a vendor's own pages disagree, the account dashboard is the only authority.** Docs describe intent, dashboards describe entitlement. One look at the console beat two documentation pages and a careful reading.
 
 Full reasoning is D-008.
 
@@ -41,7 +43,7 @@ We assumed the whole Cloudflare stack was card-free. It is not, and the exceptio
 | Workers | 100,000 requests/day | No |
 | Durable Objects (SQLite backend) | 100k req/day, 13k GB-s/day, 5M rows read/day, 100k rows written/day, 5 GB stored | **No** |
 | Workers KV | 100k reads/day, 1k writes/day, 1 GB stored | No |
-| D1 | 5M rows read/day, 100k rows written/day, 500 MB stored | No |
+| D1 | 5M rows read/day, 100k rows written/day, 5 GB stored | No |
 | **R2** | 10 GB-month, 1M Class A, 10M Class B, free egress | **Yes: activation requires an R2 subscription and a linked payment method** |
 
 Two things worth remembering beyond this project:

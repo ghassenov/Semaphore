@@ -141,7 +141,7 @@ Correcting now rather than waiting costs nothing and prevents a wrong assumption
 | | DO SQLite | Workers KV | **D1** | R2 |
 |---|---|---|---|---|
 | Payment method required | No | No | **No** | **Yes** |
-| Stored data (free) | 5 GB | 1 GB | **500 MB** | 10 GB-month |
+| Stored data (free) | 5 GB | 1 GB | **5 GB** | 10 GB-month |
 | Writes per day (free) | 100k rows | **1,000 keys** | **100k rows** | 1M Class A |
 | Reads per day (free) | 5M rows | 100k keys | **5M rows** | 10M Class B |
 | Queryable across sessions | No, per-object only | No | **Yes, SQL** | No, list and get |
@@ -152,6 +152,6 @@ D1 also happens to be a better fit than R2 ever was. The benchmark wants to ask 
 
 Option 3 was rejected because a finished session should not need its Durable Object woken to be readable, and replay would then contend with live play. Option 4 was rejected because leaving the platform to recover an API shape we do not actually want is a poor trade, and it adds a second vendor, a second set of credentials and a second failure mode to the deploy story.
 
-**The one real constraint is 500 MB.** Note a documentation discrepancy: D1's pricing page lists 5 GB stored data while its limits page lists "10 GB (Workers Paid) / 500 MB (Free)". We size against the smaller number. At a few hundred KB per raw session that would be roughly 2,500 sessions, which is already enough, and **gzipping the JSONL before insert** takes it to roughly 25,000. `CompressionStream("gzip")` is available in Workers, JSONL compresses about tenfold, and a compressed session is far inside D1's 2 MB per-row cap. The benchmark harness writes to local disk rather than D1 anyway, because a headless run wants files it can grep.
+**Storage is 5 GB, verified in the account.** D1's pricing page says 5 GB and its limits page says 500 MB for free; the Cloudflare dashboard shows 5 GB, so the limits page is stale. At a few hundred KB per raw session that is roughly 25,000 sessions before compression, and **gzipping the JSONL before insert** takes it past 250,000. `CompressionStream("gzip")` is available in Workers, JSONL compresses about tenfold, and a compressed session is far inside D1's 2 MB per-row cap. The benchmark harness writes to local disk rather than D1 anyway, because a headless run wants files it can grep.
 
 **Result.** No payment method anywhere in the stack. `wrangler.toml` gains a D1 binding and no R2 bucket. The log schema is unchanged, so the property that matters, one artifact in one format serving replay, benchmark and ghosts, survives intact. D-006's reasoning about R2 stands; only its choice of replacement is superseded.
