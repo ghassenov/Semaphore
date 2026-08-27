@@ -14,12 +14,17 @@ class_name = "Session"
 tag = "v1"
 new_sqlite_classes = ["Session"]
 
-# Finished sessions land here as one row each, JSONL gzipped into a TEXT
-# column. Replaces the R2 bucket the design documents originally specified,
-# which is the one Cloudflare product whose free tier still demands a card
-# (D-008). D1 is also the better fit: the benchmark asks cross-session
-# questions that an object store would answer with a list-and-fetch loop.
+# Finished sessions land here as one row each, JSONL gzipped into a BLOB
+# column (see migrations/0001_sessions.sql). Replaces the R2 bucket the design
+# documents originally specified, which is the one Cloudflare product whose
+# free tier still demands a card (D-008). D1 is also the better fit: the
+# benchmark asks cross-session questions that an object store would answer
+# with a list-and-fetch loop.
+#
+# Schema applied with:
+#   npx wrangler d1 execute semaphore-sessions --file=migrations/0001_sessions.sql
+#   npx wrangler d1 execute semaphore-sessions --remote --file=migrations/0001_sessions.sql
 [[d1_databases]]
 binding = "SESSIONS_DB"
 database_name = "semaphore-sessions"
-database_id = "placeholder-set-by-wrangler-d1-create"
+database_id = "e8e649f2-b891-4f0f-9ff4-09419d8639e0"
