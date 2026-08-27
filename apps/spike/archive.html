@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Semaphore spike: cross-origin tool provider</title>
+  </head>
+  <body>
+    <p>
+      Cross-origin tool provider for the Phase 0.3 spike. Stands in for
+      <code>apps/archive</code>. Nothing to see here; the parent frame reads the report.
+    </p>
+
+    <script type="module">
+      /**
+       * Registers two tools and exposes them back to whichever origin embedded
+       * this page. Both gates the spec requires must be satisfied for the
+       * parent to see them: the embed carries `allow="tools"` (Permissions
+       * Policy delegation) and registration carries `exposedTo` (origin
+       * exposure). The parent then still has to ask via `getTools({ fromOrigins })`.
+       *
+       * The parent origin is read from `document.referrer` rather than
+       * hardcoded, because on localhost the second origin is a port and in
+       * production it is a domain, and a hostname in a source file is a bug.
+       */
+      const parentOrigin = document.referrer ? new URL(document.referrer).origin : null;
+
+      const tool = (name, description) => ({
+        name,
+        description,
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        // Honest annotations: this content is externally sourced and of
+        // uncertain provenance, which in the real game is a live attack vector.
+        annotations: { readOnlyHint: true, untrustedContentHint: true },
+        execute: async () => ({
+          content: [{ type: "text", text: `${name} responded from ${location.origin}` }],
+        }),
+      });
+
+      const mc = document.modelContext ?? navigator.modelContext;
+
+      if (mc && parentOrigin) {
+        const options = { signal: new AbortController().signal, exposedTo: [parentOrigin] };
+        await mc.registerTool(
+          tool("spike_archive_manual", "Read a section of the station maintenance manual."),
+          options,
+        );
+        await mc.registerTool(
+          tool(
+            "spike_archive_log",
+            "Read a previous session's event log from the station archive.",
+          ),
+          options,
+        );
+        document.body.append(`Registered, exposed to ${parentOrigin}.`);
+      } else {
+        document.body.append(
+          mc ? "No referrer, so no origin to expose to." : "WebMCP unavailable in this frame.",
+        );
+      }
+    </script>
+  </body>
+</html>
