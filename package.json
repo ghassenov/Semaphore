@@ -9,10 +9,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "pnpm --filter @semaphore/game dev",
-    "dev:worker": "pnpm --filter @semaphore/worker dev",
-    "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck",
+    "build": "pnpm -r --if-present build",
+    "typecheck": "pnpm -r --if-present typecheck",
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run"
