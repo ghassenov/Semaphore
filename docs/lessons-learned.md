@@ -140,3 +140,17 @@ Three things worth carrying forward:
 3. **Scoping a claim is only honest if the scoping is published.** The test now carries a block called "the limit of the claim, stated rather than hidden" that asserts the excluded region on purpose: that the deduction is possible, what it costs, and that clause (a) survives where clause (b) does not. Hiding the scope would make a true claim look stronger than it is, which is the same failure as making a false one.
 
 Full reasoning is D-009. The submission copy has to be corrected to match.
+
+---
+
+### 2026-08-28 - "Wrap the call and time it" is the wrong instinct for agent latency
+
+Building the Session Durable Object, the natural first move was to time a call by measuring around it: start a clock, run the handler, stop the clock. That is the textbook way to measure latency, and it was wrong here.
+
+The handler being timed was a pure, synchronous reducer call. Wrapping it in `Date.now()` measures server compute time, which is microseconds. Feeding microseconds into "6x the median, clamped to 12 to 35 seconds" means the clamp floor wins every time, for every model, forever. The adaptive window would not be adaptive. The bug would not throw, would not fail a test, and would look completely reasonable in code review, because "time the function call" is exactly what a reviewer expects to see.
+
+The actual quantity needed was not "how long did my own code take" but "how long until the next thing happens", which is a different measurement taken from a different vantage point: the gap between one response leaving and the next request arriving. The server cannot see the agent think or the network carry a packet, but it can see exactly that gap, and that gap **is** the sum of both, which is what a fiction about "the station learning your rhythm" actually means.
+
+The general lesson: **before timing a call, ask what you are actually trying to measure the rhythm of, not just wrap the nearest function.** A metric that always resolves to a constant, like every model getting the clamp floor, is a specific and checkable smell, and it would have been worth writing a test for even before implementing the fix, since "does the derived window ever vary across different latency samples" is exactly the property that failed silently here.
+
+Recorded fully as D-010.

@@ -178,3 +178,24 @@ Option 3 was rejected because it would ruin the one chamber whose job is to be e
 **Result.** `tests/possible-worlds.test.ts` scopes the assertion and carries a block named "the limit of the claim, stated rather than hidden" that tests the excluded region on purpose: that the deduction is possible, what it costs, and that clause (a) survives where clause (b) does not. That last one is worth keeping because it demonstrates which clause does the real work.
 
 Doc 03 section 6 and the submission copy must state the scoping. The sentence is: *for every state reachable without exhaustive elimination, the agent's view is consistent with several worlds that disagree about the correct action; where the search space is small enough to exhaust, enumeration is defeated by the timer rather than by the projection.* That is a weaker sentence than the one we had and it is the one we can defend, which in front of this panel is worth more.
+
+---
+
+## 2026-08-28 (continued)
+
+### D-010 Chamber III's latency measures the gap between calls, not a call's own duration
+
+**Decision.** `observedLatencyMs`, the sample Chamber III's adaptive stamina window is derived from, records the wall-clock gap between one mutating action's response and the next request arriving for the same session. It is computed inside the pure reducer from a `lastRespondedAtMs` field carried on `PersistedSession`, not measured by wrapping a call's own execution time.
+
+**Options considered.**
+1. Measure the duration of the server's own processing of each call, as sketched in doc 05 section 5 (`Date.now() - t0` around the semaphore's guarded function).
+2. Measure the gap between consecutive calls arriving at the Durable Object for one session.
+3. Have the client time its own round trip and report it back to the server.
+
+**Why.** Option 1 was half-built before this was caught. `ActionSemaphore.act()` wraps a synchronous reducer call, so the measured duration is server compute time only, on the order of microseconds. Feeding that into `staminaWindowMs` (`6 * median`, clamped to 12 to 35 seconds) means the window always lands on the 12-second floor regardless of which model is playing, which defeats the entire point of an *adaptive* window. The fiction, "the station learns your rhythm," would be a lie: it would learn nothing.
+
+The quantity doc 02 section 3.4 and doc 05 section 6 actually want is agent reasoning cadence: how long does this pair take, end to end, to produce its next action. The Durable Object cannot observe the agent's own reasoning time or network transit directly, since a WebMCP tool's `execute()` is a `fetch()` the client issues and the Worker only sees the request arrive and gets to respond. What the Worker *can* observe is option 2: the time between sending one response and receiving the next request for that session, which conflates reasoning time, client-side work and network transit into one number. That conflation is not a flaw here. It is exactly "how long until the next action lands," which is the number the stamina window needs to be sized against, and doc 05 section 1 already notes that this pair's rate-limiting step is human description time by two orders of magnitude, not server compute.
+
+Option 3 was rejected because it requires the client to be trusted for a value that gates game difficulty, and a tamper-proof server-authoritative measurement is one of the reasons Durable Objects were chosen in the first place (doc 05 section 1, point 2).
+
+**Result.** `PersistedSession.lastRespondedAtMs` is updated on every mutating action. `observedLatencyMs` is appended to only for chamber actions (`pull_lever` and its successors), not for the one-off `begin_shift` and `start` lifecycle calls, matching doc 05 section 6's "across Chambers 0-II" scope. `ActionSemaphore.latencies` still exists and still means something, server-side processing duration, useful for spotting a stuck or unusually slow mutation, but it is a distinct metric from `observedLatencyMs` and must never be substituted for it. The two are documented separately in `latency.ts` and `semaphore.ts` so a future reader cannot conflate them the way this pass almost did.
