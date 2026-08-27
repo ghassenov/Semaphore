@@ -155,3 +155,26 @@ Option 3 was rejected because a finished session should not need its Durable Obj
 **Storage is 5 GB, verified in the account.** D1's pricing page says 5 GB and its limits page says 500 MB for free; the Cloudflare dashboard shows 5 GB, so the limits page is stale. At a few hundred KB per raw session that is roughly 25,000 sessions before compression, and **gzipping the JSONL before insert** takes it past 250,000. `CompressionStream("gzip")` is available in Workers, JSONL compresses about tenfold, and a compressed session is far inside D1's 2 MB per-row cap. The benchmark harness writes to local disk rather than D1 anyway, because a headless run wants files it can grep.
 
 **Result.** No payment method anywhere in the stack. `wrangler.toml` gains a D1 binding and no R2 bucket. The log schema is unchanged, so the property that matters, one artifact in one format serving replay, benchmark and ghosts, survives intact. D-006's reasoning about R2 stands; only its choice of replacement is superseded.
+
+---
+
+### D-009 The possible-worlds proof is scoped to non-exhaustive play, and the scoping is published
+
+**Decision.** The proof asserts clauses (a) and (b) over states reachable **without the agent having exhaustively eliminated alternatives**. States where brute force has already reduced the candidate set to one are excluded from the claim, tested explicitly as a known limit, and named in the write-up.
+
+**Options considered.**
+1. Assert both clauses over every reachable unsolved state.
+2. Scope the claim to non-exhaustive play, and test the excluded region separately.
+3. Redesign Chamber 0 so its search space cannot be exhausted inside the timer.
+
+**Why.** Option 1 is what the test was written to do, and it failed on first run. The failure was correct. In Chamber 0 an agent that pulls two wrong levers has eliminated two of three candidates, and can then deduce the third with no help from PILOT. Clause (a) still holds, because it cannot tell which glyph sits on which remaining lever, but clause (b) fails, because the surviving worlds now agree about what to do.
+
+**Nothing leaked.** No channel carried the answer, and `projectForKeeper` is unchanged. The agent paid for that certainty in wasted calls and time penalties. What the failure exposed is that our headline claim was stated more broadly than it is true: underdetermination is a property of the projection, and exhaustive search defeats it in any chamber whose space is small enough to exhaust.
+
+That is exactly the division of labour doc 02 section 8 already describes. The projection guarantees the agent cannot *deduce* the answer; the search space and the timer are what stop it *enumerating* the answer. Chamber 0 has three candidates and is deliberately trivial and unfailable, because it is a ninety-second tutorial teaching the mechanic. Chambers I, II and III have 1,956, 384 and 26, and the timer makes enumeration hopeless there.
+
+Option 3 was rejected because it would ruin the one chamber whose job is to be easy. A tutorial that punishes experimentation teaches the wrong instinct on the first screen.
+
+**Result.** `tests/possible-worlds.test.ts` scopes the assertion and carries a block named "the limit of the claim, stated rather than hidden" that tests the excluded region on purpose: that the deduction is possible, what it costs, and that clause (a) survives where clause (b) does not. That last one is worth keeping because it demonstrates which clause does the real work.
+
+Doc 03 section 6 and the submission copy must state the scoping. The sentence is: *for every state reachable without exhaustive elimination, the agent's view is consistent with several worlds that disagree about the correct action; where the search space is small enough to exhaust, enumeration is defeated by the timer rather than by the projection.* That is a weaker sentence than the one we had and it is the one we can defend, which in front of this panel is worth more.

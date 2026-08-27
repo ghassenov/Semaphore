@@ -120,3 +120,23 @@ Corollary that saved us anyway: `packages/seed` survived untouched because it ha
 ## Per-model agent behaviour
 
 *(Nothing yet. Doc 04 section 7 holds the structured table. Record here the anecdotes and surprises that do not fit a table cell.)*
+
+---
+
+## Proofs and tests
+
+### 2026-08-28 - The proof failed on first run, and it was right
+
+`tests/possible-worlds.test.ts` was written to assert that for every reachable unsolved state, KEEPER's view is consistent with several worlds that disagree about the correct action. It failed immediately, on the state where an agent has pulled two of three wrong levers.
+
+The instinct in that moment is to widen the test until it passes. That instinct is exactly what `tests/CLAUDE.md` forbids, and following it here would have shipped a false claim into the README, the video and the Devpost text, where the first person to think for ten seconds about a three-lever puzzle would have found it.
+
+What the failure actually showed: **underdetermination is a property of the projection, and exhaustive search defeats it independently of the projection.** Our claim was stated more broadly than it was true. Nothing leaked, no channel carried the answer, and the agent paid for its certainty in wasted calls. The projection stops the agent *deducing*; only the search space and the timer stop it *enumerating*. Doc 02 section 8 already said that; we had just not noticed the proof was quietly claiming both jobs.
+
+Three things worth carrying forward:
+
+1. **Clause (b) is the one that does the work.** Clause (a) stayed true in the failing state: the agent still could not tell which glyph sat on which remaining lever. Only the "and those worlds disagree about the action" clause detected that the remaining ambiguity had stopped mattering. A version of this test with clause (a) alone would have passed and proven nothing.
+2. **A test that has never failed has not been shown to be load-bearing.** This one earned its place in CI by catching a real overclaim on its first execution, before any of it reached a judge.
+3. **Scoping a claim is only honest if the scoping is published.** The test now carries a block called "the limit of the claim, stated rather than hidden" that asserts the excluded region on purpose: that the deduction is possible, what it costs, and that clause (a) survives where clause (b) does not. Hiding the scope would make a true claim look stronger than it is, which is the same failure as making a false one.
+
+Full reasoning is D-009. The submission copy has to be corrected to match.
