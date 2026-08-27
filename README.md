@@ -26,7 +26,7 @@ The previous scaffold was written against document set v1 and was removed rather
 
 ## Reading order
 
-Start at [docs/00-README.md](docs/00-README.md), which indexes the set and states the six decisions that define the project. [CLAUDE.md](CLAUDE.md) holds the working rules for this repository.
+Start at [docs/design/00-README.md](docs/design/00-README.md), which indexes the set and states the six decisions that define the project. [CLAUDE.md](CLAUDE.md) holds the working rules for this repository.
 
 ---
 

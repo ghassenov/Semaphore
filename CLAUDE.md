@@ -23,7 +23,7 @@ The thesis every decision is checked against:
 
 Judging is four equally weighted criteria: **WebMCP Leverage**, **Execution**, **Potential Impact**, **Creativity and Ambition**. A change that moves none of them is not on the critical path.
 
-**Never cut, in any scope reduction:** the possible-worlds proof, the `toolchange` sequence including KEEPER's body, the ablation chart, the starter prompt card, ChatGPT in-app browser verification, the MIT license, the demo video. Cut order for everything else is in [docs/08-implementation-plan.md](docs/08-implementation-plan.md).
+**Never cut, in any scope reduction:** the possible-worlds proof, the `toolchange` sequence including KEEPER's body, the ablation chart, the starter prompt card, ChatGPT in-app browser verification, the MIT license, the demo video. Cut order for everything else is in [docs/design/08-implementation-plan.md](docs/design/08-implementation-plan.md).
 
 ---
 
@@ -32,7 +32,8 @@ Judging is four equally weighted criteria: **WebMCP Leverage**, **Execution**, *
 | Path | Holds | Status |
 |---|---|---|
 | [NEXT-STEPS.md](NEXT-STEPS.md) | The handoff. Read first, update last. | Live |
-| [docs/](docs/) | The design document set 00-12, the decision log, the spec notes. Source of truth for every design decision. | Complete |
+| [docs/design/](docs/design/) | The numbered document set 00-12. Source of truth for every design decision. | Complete |
+| [docs/](docs/) | The decision log and the lessons journal, beside the set rather than in it. | Live |
 | [docs/hackathonspecs/](docs/hackathonspecs/) | Captured hackathon rules and WebMCP reference. Read-only source material. | Complete |
 | [packages/](packages/) | Code shared by client, worker, archive and bench. Pure, no I/O. | `seed` only |
 | `packages/seed/` | Deterministic xorshift128+ PRNG. Same seed, same puzzle, always. | Built |
@@ -45,13 +46,13 @@ Judging is four equally weighted criteria: **WebMCP Leverage**, **Execution**, *
 
 Root tooling: pnpm workspaces, strict TypeScript, ESLint, Prettier, Vitest, GitHub Actions.
 
-Target structure in full: [docs/05-technical-architecture.md](docs/05-technical-architecture.md) section 8.
+Target structure in full: [docs/design/05-technical-architecture.md](docs/design/05-technical-architecture.md) section 8.
 
 ---
 
 ## 3. Deployment
 
-**Cloudflare across the whole stack.** Reasoning in [docs/decision-log.md](docs/decision-log.md) D-005; the backend justification is [docs/05-technical-architecture.md](docs/05-technical-architecture.md) sections 1 and 11.
+**Cloudflare across the whole stack.** Reasoning in [docs/decision-log.md](docs/decision-log.md) D-005; the backend justification is [docs/design/05-technical-architecture.md](docs/design/05-technical-architecture.md) sections 1 and 11.
 
 | Piece | Target | Notes |
 |---|---|---|
@@ -139,3 +140,4 @@ Rules that follow from this:
 | 2026-08-27 | Ahmed Saad | Created. Repository map, Cloudflare deployment target, workflow, code, formatting and git rules established for the v2 document set. |
 | 2026-08-28 | Ahmed Saad | Deployment: R2 replaced by D1 plus Durable Object SQLite. Added the rule that no product requiring a payment method is adopted. |
 | 2026-08-28 | Ahmed Saad | Added NEXT-STEPS.md as the handoff file, and the rule that it is updated at the end of every session. |
+| 2026-08-28 | Ahmed Saad | Repository map updated for the docs/design/ move. |

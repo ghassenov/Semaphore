@@ -2,7 +2,7 @@
  * Phase 0.3 WebMCP integration spike.
  *
  * A diagnostic instrument, not game code. It answers the questions in
- * docs/11-spec-notes.md by exercising the live API rather than by reading the
+ * docs/design/11-spec-notes.md by exercising the live API rather than by reading the
  * specification, because the draft has moved four times in six months and the
  * whole architecture rests on three of its behaviours.
  *
@@ -626,7 +626,7 @@ function render() {
     `${results.length} checks, ${fails} failing, ${waiting} awaiting an agent.`;
 }
 
-/** Markdown, so the result pastes straight into docs/11-spec-notes.md. */
+/** Markdown, so the result pastes straight into docs/design/11-spec-notes.md. */
 function reportAsMarkdown() {
   const lines = [
     `# Spike report`,

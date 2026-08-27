@@ -2,7 +2,7 @@
 
 A running journal. Append as we go: what we found out, what it cost us, what we would tell someone starting this project tomorrow.
 
-This is deliberately separate from the other documents. [decision-log.md](decision-log.md) records **decisions and their reasoning**. [11-spec-notes.md](11-spec-notes.md) records **empirically observed browser behaviour**. This file records **everything else we learned the hard way**, including things that turned out to be wrong, dead ends worth remembering, and feedback on our own process.
+This is deliberately separate from the other documents. [decision-log.md](decision-log.md) records **decisions and their reasoning**. [11-spec-notes.md](design/11-spec-notes.md) records **empirically observed browser behaviour**. This file records **everything else we learned the hard way**, including things that turned out to be wrong, dead ends worth remembering, and feedback on our own process.
 
 Newest entries at the top of each section. Every entry is dated.
 
@@ -71,7 +71,7 @@ The consolation prize is real, though: **that `AbortSignal` is a genuine capabil
 
 **One discrepancy to verify in a browser:** the captured hackathon reference says `executeTool` takes input as a JSON string; the spec IDL says `optional object inputObject = {}`. Only matters if we ever drive tools ourselves, which today only the spike does.
 
-**Process lesson.** Doc 03 marked exactly one row DISPUTED and got the disputed row right (it genuinely was unsettled) while getting a row marked **High confidence** wrong. Confidence labels applied from memory are not evidence. The fix is not to relabel: it is that nothing enters an architecture document without a link to spec text or an observed result. That is what [11-spec-notes.md](11-spec-notes.md) is for, and why its rule is that unverified rows stay blank.
+**Process lesson.** Doc 03 marked exactly one row DISPUTED and got the disputed row right (it genuinely was unsettled) while getting a row marked **High confidence** wrong. Confidence labels applied from memory are not evidence. The fix is not to relabel: it is that nothing enters an architecture document without a link to spec text or an observed result. That is what [11-spec-notes.md](design/11-spec-notes.md) is for, and why its rule is that unverified rows stay blank.
 
 ### 2026-08-27 - There is an open spec issue about the exact thing our game is made of
 

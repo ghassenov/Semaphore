@@ -8,7 +8,7 @@ A minimal page on a **second origin** that registers the station's document tool
 - **`exposedTo` is pinned to the game origin, one entry.** Never a wildcard, never a convenience list. The parent embeds this page with `<iframe src="..." allow="tools" hidden>`; both gates must be satisfied, and the consumer still asks for it via `fromOrigins`.
 - **Both tools carry `untrustedContentHint: true` and `readOnlyHint: true`,** and both are honest annotations rather than hygiene. The manual is annotated by a keeper who went mad and the logs were written by a pair who failed. In Chamber I this content actively attacks the agent.
 - **Returned content is never interpolated into a tool name, title, or description.** It is returned as clearly delimited content and only as content. This is the tool-poisoning vector the spec names first.
-- **The single-origin fallback must ship green.** Build flag `ARCHIVE_ORIGIN=same|cross`. Cross-origin is the default only once it is verified in both ChatGPT's in-app browser and Chrome, and that verification is recorded in `docs/11-spec-notes.md` with a date. If it is unverified, the flag is `same`.
+- **The single-origin fallback must ship green.** Build flag `ARCHIVE_ORIGIN=same|cross`. Cross-origin is the default only once it is verified in both ChatGPT's in-app browser and Chrome, and that verification is recorded in `docs/design/11-spec-notes.md` with a date. If it is unverified, the flag is `same`.
 - This origin holds no state of its own. Manual sections are static content shipped with the page; ghost logs are read through the worker, which owns the D1 binding. The archive never gets a storage binding of its own.
 
 ## Change Log

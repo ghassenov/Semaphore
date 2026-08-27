@@ -2,7 +2,7 @@
 
 **The handoff file.** Whoever stops working updates this before they stop. Whoever starts working reads this first and nothing else.
 
-It answers three questions and only three: where the repo is right now, what to pick up next, and what will bite you if nobody warns you. It is not a changelog ([docs/decision-log.md](docs/decision-log.md) is), not a journal ([docs/lessons-learned.md](docs/lessons-learned.md) is), and not a plan ([docs/08-implementation-plan.md](docs/08-implementation-plan.md) is).
+It answers three questions and only three: where the repo is right now, what to pick up next, and what will bite you if nobody warns you. It is not a changelog ([docs/decision-log.md](docs/decision-log.md) is), not a journal ([docs/lessons-learned.md](docs/lessons-learned.md) is), and not a plan ([docs/design/08-implementation-plan.md](docs/design/08-implementation-plan.md) is).
 
 ---
 
@@ -19,7 +19,8 @@ It answers three questions and only three: where the repo is right now, what to 
 
 | Path | State |
 |---|---|
-| `docs/` | Design set 00-12 complete. Decision log at D-009. Lessons journal live. |
+| `docs/design/` | Numbered set 00-12, complete. |
+| `docs/` | Decision log at D-009, lessons journal live, both beside the set. |
 | `packages/seed` | Done. xorshift128+, unbiased `int()`, Fisher-Yates `shuffle()`. |
 | `packages/protocol` | Done. Five-channel model, `projectFacts`, error taxonomy, session vocabulary, JSONL log schema. |
 | `apps/worker/src/chambers/glyphs.ts` | Done. Twelve glyphs, stroke counts, plain-name corpus, designed confusables. |
@@ -46,7 +47,7 @@ python3 -m http.server 8787 --directory apps/spike   # game origin
 python3 -m http.server 8788 --directory apps/spike   # archive origin
 ```
 
-Open `http://localhost:8787/?archive=http://localhost:8788` in Chrome 149+ with `chrome://flags/#enable-webmcp-testing`, or the ChatGPT desktop in-app browser on GPT-5.6 Sol or Terra (Luna has site tools disabled). Press **Copy report**, paste into [docs/11-spec-notes.md](docs/11-spec-notes.md) under section 2 onward, and fill section 1 with the date and browser version.
+Open `http://localhost:8787/?archive=http://localhost:8788` in Chrome 149+ with `chrome://flags/#enable-webmcp-testing`, or the ChatGPT desktop in-app browser on GPT-5.6 Sol or Terra (Luna has site tools disabled). Press **Copy report**, paste into [docs/design/11-spec-notes.md](docs/design/11-spec-notes.md) under section 2 onward, and fill section 1 with the date and browser version.
 
 **The row that matters is `toolchange.empty`.** If `toolchange` does not fire when the registry drains to zero, the game's ending does not exist and Chamber III's finale needs redesigning. Check that one first.
 
@@ -81,6 +82,7 @@ The vandalism flag is seeded so the benchmark can measure both conditions on mat
 - **`PERCEIVED_BY` must never be forked.** One definition, three consumers: the projections, the proof, the smoke test. Forking it lets the proof pass while the game leaks.
 - **The proof is scoped, deliberately** (D-009). It asserts over states reachable *without* exhaustive elimination, because an agent that brute-forces every alternative can deduce the answer legitimately. Do not widen the scope to make a new chamber pass. If a chamber fails the proof, the chamber is wrong.
 - **Never weaken an asymmetry check to go green.** It is the one class of change that is never accepted.
+- **The numbered docs live in `docs/design/` now**, not `docs/`. Working documents (decision log, journal) stay beside it. Links were retargeted and validated; if you add one, check it resolves.
 - **`tests/` is a workspace package** (`@semaphore/tests`), and `apps/worker` exports `./*` from source, so import `@semaphore/worker/chambers/airlock`, not a relative path.
 - **`pnpm-workspace.yaml` needs `allowBuilds`** for `esbuild` and `workerd`, or wrangler's install fails non-interactively. Do not strip it again.
 - `wrangler.toml` has a placeholder `database_id`. Run `npx wrangler d1 create semaphore-sessions` and paste the real one before any deploy. Login is `npx wrangler login`.

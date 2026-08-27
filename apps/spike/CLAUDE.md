@@ -2,7 +2,7 @@
 
 The Phase 0.3 integration spike. A **diagnostic instrument, not game code**, and the only place in the repo allowed to look like one.
 
-Its job is to answer the questions in [../../docs/11-spec-notes.md](../../docs/11-spec-notes.md) by exercising the live API, because the draft has moved four times in six months and three of its behaviours carry the whole architecture: that `AbortSignal` teardown really removes a tool, that `toolchange` really fires when the registry drains to empty, and that cross-origin delegation really works in the browsers judges will use.
+Its job is to answer the questions in [../../docs/design/11-spec-notes.md](../../docs/design/11-spec-notes.md) by exercising the live API, because the draft has moved four times in six months and three of its behaviours carry the whole architecture: that `AbortSignal` teardown really removes a tool, that `toolchange` really fires when the registry drains to empty, and that cross-origin delegation really works in the browsers judges will use.
 
 ## Local rules
 

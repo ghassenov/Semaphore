@@ -1,13 +1,22 @@
 # docs/
 
+```
+docs/
+├── design/           the numbered set 00-12, the source of truth for why
+├── hackathonspecs/   captured Devpost and WebMCP reference, read-only
+├── decision-log.md   append-only: date, decision, options, why, result
+└── lessons-learned.md  the running journal
+```
+
 The design set is the source of truth for **why**. The code is the source of truth for **what runs**. When they disagree, one of them is a bug: decide which, fix it, and log the decision.
 
 ## Local rules
 
+- **`design/` holds the numbered set and nothing else.** Working documents that change as we build (the decision log, the journal) sit beside it rather than inside it, because they are not part of the set and do not take numbers.
 - **Document numbers are stable.** `00` through `12` are permanent addresses. Cross-references are made by number and section (`doc 03 section 6`), so renumbering breaks the whole set. A new document takes the next free number.
 - **Do not rewrite the v2 set to satisfy a formatting rule.** These files predate the rules and are quoted in the submission copy. Repo formatting rules apply to new prose written here, not to a retroactive sweep.
-- [11-spec-notes.md](11-spec-notes.md) is **empirical only**. Every row carries an observed value, a date and a browser version. Never fill it from memory or from the spec text. An unverified row stays blank.
-- [12-critique-log.md](12-critique-log.md) is history. It records what changed from v1 and why. Do not edit it to match the current design.
+- [11-spec-notes.md](design/11-spec-notes.md) is **empirical only**. Every row carries an observed value, a date and a browser version. Never fill it from memory or from the spec text. An unverified row stays blank.
+- [12-critique-log.md](design/12-critique-log.md) is history. It records what changed from v1 and why. Do not edit it to match the current design.
 - [hackathonspecs/](hackathonspecs/) is **read-only captured source material**. Never edit it. If a fact there turns out to be stale, verify against the live Devpost pages and note the correction in the decision log.
 - [decision-log.md](decision-log.md) is append-only. One row per decision: date, decision, options considered, why, result. Never rewrite a past row; add a new one that supersedes it.
 
@@ -31,3 +40,4 @@ The design set is the source of truth for **why**. The code is the source of tru
 | Date | Author | What changed |
 |---|---|---|
 | 2026-08-27 | Ahmed Saad | Created. |
+| 2026-08-28 | Ahmed Saad | Numbered set 00-12 moved into design/; layout recorded. |

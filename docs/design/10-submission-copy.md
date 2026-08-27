@@ -100,7 +100,7 @@ TypeScript · Phaser 4.2 · Vite · WebMCP (`document.modelContext`, imperative 
 - **The benchmark is a proposal, not an established instrument.** One game, a few hundred sessions. We think it measures something no existing benchmark measures, we have published our first evidence and all raw logs, and we would like to be told if we are wrong.
 - **The scripted benchmark partners are not humans.** They hold the human's information content fixed so we can vary its quality. What we report is partner-sensitivity — the degradation curve — not a claim that a script can replace a person.
 - **The ghost sessions shipped in the Archive are authored**, recorded during our own playtesting. Drawing them from real player sessions is post-submission work, made safe by the fact that the game collects no personal data at all.
-- **We built against a moving draft.** `docs/11-spec-notes.md` records exactly what we verified, in which browser, on which date, and which spec questions we found genuinely unsettled.
+- **We built against a moving draft.** `docs/design/11-spec-notes.md` records exactly what we verified, in which browser, on which date, and which spec questions we found genuinely unsettled.
 
 ---
 

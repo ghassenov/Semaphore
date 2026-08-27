@@ -50,7 +50,7 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 - [ ] Measure agent round-trip latency across ≥3 backends → **feeds the Chamber III adaptive window**
 - [ ] Confirm observable behaviour of `readOnlyHint` and `untrustedContentHint`
 - [ ] Record exact Chrome version and date
-- [ ] **Write `docs/11-spec-notes.md` with everything learned** ★
+- [ ] **Write `docs/design/11-spec-notes.md` with everything learned** ★
 
 ### 0.4 Repository and tooling
 
