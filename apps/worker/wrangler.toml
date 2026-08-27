@@ -1,0 +1,25 @@
+name = "semaphore"
+main = "src/index.ts"
+compatibility_date = "2026-08-27"
+
+# One Durable Object per session holds that session's authoritative truth.
+# SQLite backend specifically: it is the only DO storage class on the Workers
+# Free plan, and it is what lets the whole stack run without a payment method
+# (decision log D-006).
+[[durable_objects.bindings]]
+name = "SESSIONS"
+class_name = "Session"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Session"]
+
+# Finished sessions land here as one row each, JSONL gzipped into a TEXT
+# column. Replaces the R2 bucket the design documents originally specified,
+# which is the one Cloudflare product whose free tier still demands a card
+# (D-008). D1 is also the better fit: the benchmark asks cross-session
+# questions that an object store would answer with a list-and-fetch loop.
+[[d1_databases]]
+binding = "SESSIONS_DB"
+database_name = "semaphore-sessions"
+database_id = "placeholder-set-by-wrangler-d1-create"
