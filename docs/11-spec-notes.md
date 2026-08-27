@@ -8,6 +8,31 @@ This document is also a small public artifact in its own right: dated empirical 
 
 ---
 
+## 0. Documentary baseline (read from the spec, NOT observed in a browser)
+
+**This section is the exception that proves the rule.** Everything below section 1 is empirical and stays blank until a browser produces it. This section is what the normative text says, recorded separately so the two are never confused. A row here is a **prediction the spike is trying to falsify**, not a finding.
+
+Source: the W3C Web Machine Learning Community Group draft at <https://webmachinelearning.github.io/webmcp/>, read 2026-08-27.
+
+| Claim | Spec text | Consequence for us |
+|---|---|---|
+| `modelContext` lives on `Document` | `partial interface Document { readonly attribute ModelContext modelContext; }` | `document` first. Chrome 150 deprecates the `navigator` alias, so keep the fallback, do not lead with it. |
+| `registerTool(tool, options)` | `Promise<undefined> registerTool(ModelContextTool tool, optional ModelContextRegisterToolOptions options = {})` | Returns `undefined`, not the registered tool. See spec issue 234, which proposes changing this. |
+| Registration options | `signal` (AbortSignal), `exposedTo` (sequence of USVString origins) | Both load-bearing: `signal` is the whole lifecycle, `exposedTo` is the archive origin. |
+| No `unregisterTool` | Absent. Removal is "add the following abort steps to signal: unregister a tool" | Confirmed. `AbortSignal` teardown is the only path, which is the mechanism the game is built on. |
+| **`execute` takes TWO arguments** | `(object inputObject, ToolExecuteCallbackOptions options)`, where options carries `required AbortSignal signal` | **Corrects doc 03 section 1.** See decision log D-007. |
+| **`requestUserInteraction` does not exist** | Absent from the specification entirely | **Corrects doc 03 section 1.** Doc 02 section 3.4's contingency is dead; the caution design is unchanged. |
+| The execute `AbortSignal` is a real capability | Passed to every execution | Unplanned gain. Wire it into the action semaphore as a cancellation path. |
+| Return value is serialised | `Promise<any>`, put through "serialize a JavaScript value to a JSON string" | Confirms `{ content: [...] }` is a passed-through convention, not an enforced schema. Text and JSON only. |
+| `toolchange` | `ModelContext` has `ontoolchange`; fires on register and unregister | The empty-registry ending depends on the unregister case. Still needs observing. |
+| Annotations | `ToolAnnotations` with `boolean readOnlyHint = false` and `boolean untrustedContentHint = false` | Exactly the two we use. No destructive or idempotency hint exists. |
+| `getTools(options)` | `Promise<sequence<RegisteredTool>> getTools(optional ModelContextGetToolOptions options = {})`, options carries `fromOrigins` | Cross-origin consumption needs `fromOrigins` **and** the owner's `exposedTo`. Both sides must agree. |
+| `executeTool` input type | IDL says `optional object inputObject = {}` | **Discrepancy.** Our captured hackathon reference says a JSON string. Only affects code that drives tools directly, which today is the spike alone. Flagged for section 2. |
+
+Everything in this table still gets verified. A specification is a claim about what browsers should do, and this one has moved four times in six months.
+
+---
+
 ## 1. Test environment
 
 | Field | Value |

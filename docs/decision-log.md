@@ -80,3 +80,44 @@ Format: date, decision, options considered, why, result.
 **Why.** Doc 05 section 1 already selects Workers and Durable Objects for the backend on five independent grounds, and four of them are properties no other option gives cheaply: one single-threaded Durable Object per session is exactly the serialisation point the action semaphore needs, the solution never leaves that boundary, the timer is tamper-proof server time, and the event log falls out for free. Once the backend is committed there, splitting the frontend across a second provider buys nothing and costs a cross-origin hop, a second deploy pipeline, and a second preview-URL story for playtesters. The archive origin in particular is a second Pages project on the same account, which keeps `exposedTo` and the `tools` Permissions Policy delegation testable in one place. Cloudflare is also a challenge sponsor offering credits, which is minor but not nothing.
 
 **Result.** Cloudflare across the board. Recorded in the root `CLAUDE.md` deployment section so it is visible without opening doc 05. Preview deploys on every pull request, including the archive origin, because playtesters need a URL rather than a checkout.
+
+---
+
+### D-006 Drop R2; session logs live in Durable Object SQLite and flush to Workers KV
+
+**Decision.** Remove R2 from the architecture. The event log is written to the `Session` Durable Object's SQLite storage while a session runs, and flushed as one JSONL value to Workers KV when the session ends. Ghost fixtures for the Archive ship as static assets in the Pages bundle.
+
+**Options considered.**
+1. R2 as specified in doc 05, and accept linking a payment method.
+2. Durable Object SQLite for live logs, Workers KV for finished sessions.
+3. Durable Object SQLite only, with replay reading back through the Worker.
+
+**Why.** The user's constraint is that hosting must not require a credit card. Every other Cloudflare product we need clears that bar: Pages, Workers, and Durable Objects on the SQLite backend are all on the free plan with no payment method. R2 does not: activation runs a subscription checkout that requires a linked card even though free-tier usage is not billed. It is the single exception in the stack.
+
+Option 3 was rejected because a finished session should not keep a Durable Object alive to be readable, and replay would then contend with live sessions for the same DO. Option 2 separates the two cleanly: the DO owns a session while it is being played, KV owns it forever after, and `/replay/:id` reads KV without touching a DO at all.
+
+The free-tier headroom is sufficient by a wide margin. DO SQLite gives 5 GB stored and 100k row writes per day; KV gives 1 GB, 1,000 writes and 100,000 reads per day, and a 25 MB ceiling per value against session logs of a few hundred KB. One KV write per completed session means the write limit is a thousand sessions a day. Benchmark runs are the one thing that could exceed it, so the harness writes to local disk rather than KV, which is what a headless run wants anyway.
+
+Nothing architectural is lost. The property doc 05 section 7 actually cares about is that **one artifact in one format** serves as replay source, benchmark corpus and the Archive's ghosts. That is a property of the log schema, not of the storage product behind it.
+
+**Result.** No payment method needed anywhere in the stack. `wrangler.toml` gains a KV namespace binding and drops the R2 bucket binding when the worker is rewritten. Doc 05 sections 2, 7 and 11 mention R2 and are superseded by this entry.
+
+---
+
+### D-007 Correct the spec baseline: `execute` takes two arguments and there is no `requestUserInteraction`
+
+**Decision.** Treat the `execute` callback as `(inputObject, { signal })`. Abandon the contingency plan that depended on `requestUserInteraction`. Wire the provided `AbortSignal` into the action semaphore as a real cancellation path.
+
+**Options considered.**
+1. Keep doc 03's single-argument assumption until the browser spike contradicts it.
+2. Correct the baseline from the W3C draft IDL now, and let the spike confirm rather than discover.
+
+**Why.** Doc 03 section 1 records "execute receives a single argument; `requestUserInteraction` was removed" as a **DISPUTED** row, and separately treats the single-argument shape as settled. The draft IDL is unambiguous: the callback is `(object inputObject, ToolExecuteCallbackOptions options)` and `options` carries `required AbortSignal signal`. There is no agent handle and no `requestUserInteraction` anywhere in the specification.
+
+Both halves therefore resolve, and in opposite directions from what doc 03 assumed. Doc 02 section 3.4's contingency ("if it exists it goes on `speak_passphrase` and becomes a Leverage exhibit") is dead, and the caution design around the one irreversible action is unchanged: state the consequence in the description, ship `get_lock_state` so a careful agent can verify, enforce no ordering in code, and let the benchmark report which models check first.
+
+The `AbortSignal` is a gain we had not planned for. A tool execution can be cancelled mid-flight by the agent or the user, which is a real lifecycle event our action semaphore should honour rather than ignore, and observing cancellations is one more honest thing to report.
+
+Correcting now rather than waiting costs nothing and prevents a wrong assumption propagating into tool signatures written before the spike runs. The spike still runs, and its job is to confirm the browser agrees with the text.
+
+**Result.** Doc 03 section 1's table is superseded on those two rows. Recorded in [lessons-learned.md](lessons-learned.md) with the process lesson: a confidence label applied from memory is not evidence, and nothing enters an architecture document without a link to spec text or an observed result.
