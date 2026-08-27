@@ -31,6 +31,7 @@ Judging is four equally weighted criteria: **WebMCP Leverage**, **Execution**, *
 
 | Path | Holds | Status |
 |---|---|---|
+| [NEXT-STEPS.md](NEXT-STEPS.md) | The handoff. Read first, update last. | Live |
 | [docs/](docs/) | The design document set 00-12, the decision log, the spec notes. Source of truth for every design decision. | Complete |
 | [docs/hackathonspecs/](docs/hackathonspecs/) | Captured hackathon rules and WebMCP reference. Read-only source material. | Complete |
 | [packages/](packages/) | Code shared by client, worker, archive and bench. Pure, no I/O. | `seed` only |
@@ -77,6 +78,7 @@ Rules that follow from this:
 - **Be concise.** Optimise token and context usage: read only the files the task needs, do not restate what the user already knows, keep docs short.
 - Before using any CLI tool, **verify it is installed** (`command -v <tool>`). This is a Linux machine. If a tool is missing, say so and propose the install command. Do not assume and do not auto-install.
 - Record every significant decision in [docs/decision-log.md](docs/decision-log.md): date, decision, options considered, why, result. If in doubt whether it is significant, log it.
+- **Update [NEXT-STEPS.md](NEXT-STEPS.md) at the end of every work session, and after any step that changes what a teammate should pick up.** It is the handoff: where the repo is, what to do next, what will bite you. Whoever starts work reads it first. A stale handoff is worse than none, because it is trusted.
 - Several people work on this repo. **Never put personal or machine-specific values** (absolute paths, tokens, usernames, editor config) in tracked files. Personal settings belong in `.env` and `.claude/settings.local.json`, both git-ignored.
 
 ---
@@ -136,3 +138,4 @@ Rules that follow from this:
 |---|---|---|
 | 2026-08-27 | Ahmed Saad | Created. Repository map, Cloudflare deployment target, workflow, code, formatting and git rules established for the v2 document set. |
 | 2026-08-28 | Ahmed Saad | Deployment: R2 replaced by D1 plus Durable Object SQLite. Added the rule that no product requiring a payment method is adopted. |
+| 2026-08-28 | Ahmed Saad | Added NEXT-STEPS.md as the handoff file, and the rule that it is updated at the end of every session. |
