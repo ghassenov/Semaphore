@@ -9,10 +9,11 @@ A minimal page on a **second origin** that registers the station's document tool
 - **Both tools carry `untrustedContentHint: true` and `readOnlyHint: true`,** and both are honest annotations rather than hygiene. The manual is annotated by a keeper who went mad and the logs were written by a pair who failed. In Chamber I this content actively attacks the agent.
 - **Returned content is never interpolated into a tool name, title, or description.** It is returned as clearly delimited content and only as content. This is the tool-poisoning vector the spec names first.
 - **The single-origin fallback must ship green.** Build flag `ARCHIVE_ORIGIN=same|cross`. Cross-origin is the default only once it is verified in both ChatGPT's in-app browser and Chrome, and that verification is recorded in `docs/11-spec-notes.md` with a date. If it is unverified, the flag is `same`.
-- This origin reads the same R2 bucket as the worker. It holds no state of its own.
+- This origin holds no state of its own. Manual sections are static content shipped with the page; ghost logs are read through the worker, which owns the D1 binding. The archive never gets a storage binding of its own.
 
 ## Change Log
 
 | Date | Author | What changed |
 |---|---|---|
 | 2026-08-27 | Ahmed Saad | Created. Cross-origin delegation rules recorded ahead of the build. |
+| 2026-08-28 | Ahmed Saad | Archive holds no storage binding; ghost logs are read through the worker, which owns D1. |

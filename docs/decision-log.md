@@ -121,3 +121,37 @@ The `AbortSignal` is a gain we had not planned for. A tool execution can be canc
 Correcting now rather than waiting costs nothing and prevents a wrong assumption propagating into tool signatures written before the spike runs. The spike still runs, and its job is to confirm the browser agrees with the text.
 
 **Result.** Doc 03 section 1's table is superseded on those two rows. Recorded in [lessons-learned.md](lessons-learned.md) with the process lesson: a confidence label applied from memory is not evidence, and nothing enters an architecture document without a link to spec text or an observed result.
+
+---
+
+## 2026-08-28
+
+### D-008 D1 replaces R2 as the session store, superseding the KV half of D-006
+
+**Decision.** Finished sessions are written to **Cloudflare D1**, one row per session, with the JSONL event log gzipped into a TEXT column. The `Session` Durable Object's SQLite storage still holds a session while it is being played. Workers KV is dropped from the design. Ghost fixtures ship as static assets in the Pages bundle.
+
+**Options considered.**
+1. Workers KV, as chosen in D-006.
+2. Cloudflare D1.
+3. Durable Object SQLite only, with replay reading back through a Worker that wakes the session's DO.
+4. Object storage off Cloudflare (Supabase Storage, Backblaze B2) to keep an R2-shaped API.
+
+**Why.** D-006 reached for KV because it was the first card-free store that fit. Checking the numbers properly, it was the wrong one:
+
+| | DO SQLite | Workers KV | **D1** | R2 |
+|---|---|---|---|---|
+| Payment method required | No | No | **No** | **Yes** |
+| Stored data (free) | 5 GB | 1 GB | **500 MB** | 10 GB-month |
+| Writes per day (free) | 100k rows | **1,000 keys** | **100k rows** | 1M Class A |
+| Reads per day (free) | 5M rows | 100k keys | **5M rows** | 10M Class B |
+| Queryable across sessions | No, per-object only | No | **Yes, SQL** | No, list and get |
+
+KV's **1,000 writes per day** is the disqualifier. That is a thousand sessions before the store starts refusing writes, and a benchmark sweep across three backends and twenty seeds is a few hundred sessions in an afternoon. D1 gives 100k row writes per day for the same zero cost.
+
+D1 also happens to be a better fit than R2 ever was. The benchmark wants to ask questions like "every session on seed 7 across all backends" or "completion rate by model on vandalised seeds". Against an object store that is a list-and-fetch loop; against D1 it is one query. We were going to build an index over R2 objects eventually, and D1 is that index with the data already in it.
+
+Option 3 was rejected because a finished session should not need its Durable Object woken to be readable, and replay would then contend with live play. Option 4 was rejected because leaving the platform to recover an API shape we do not actually want is a poor trade, and it adds a second vendor, a second set of credentials and a second failure mode to the deploy story.
+
+**The one real constraint is 500 MB.** Note a documentation discrepancy: D1's pricing page lists 5 GB stored data while its limits page lists "10 GB (Workers Paid) / 500 MB (Free)". We size against the smaller number. At a few hundred KB per raw session that would be roughly 2,500 sessions, which is already enough, and **gzipping the JSONL before insert** takes it to roughly 25,000. `CompressionStream("gzip")` is available in Workers, JSONL compresses about tenfold, and a compressed session is far inside D1's 2 MB per-row cap. The benchmark harness writes to local disk rather than D1 anyway, because a headless run wants files it can grep.
+
+**Result.** No payment method anywhere in the stack. `wrangler.toml` gains a D1 binding and no R2 bucket. The log schema is unchanged, so the property that matters, one artifact in one format serving replay, benchmark and ghosts, survives intact. D-006's reasoning about R2 stands; only its choice of replacement is superseded.
