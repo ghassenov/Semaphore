@@ -57,13 +57,16 @@ Target structure in full: [docs/05-technical-architecture.md](docs/05-technical-
 | Game client and replay viewer | Cloudflare Pages | One project. Replay served under `/replay`. |
 | Archive origin | Cloudflare Pages, second project | Separate origin is the point. Needed for `allow="tools"` and `exposedTo`. |
 | Worker and `Session` Durable Object | Cloudflare Workers, `wrangler deploy` | One DO per session. The only place authoritative state lives. |
-| Session logs | R2, one JSONL object per session | Replay source, benchmark corpus, and the Archive's ghosts are the same file. |
+| Live session state and log | Durable Object SQLite storage | Held only while a session is being played. |
+| Finished session logs | D1, one row per session, JSONL gzipped into a TEXT column | Replay source and benchmark corpus. Queryable, which listing objects was not. |
+| Ghost fixtures | Static assets in the Pages bundle | The Archive must not depend on a storage binding. |
 
 Rules that follow from this:
 
 - **Preview deploys on every pull request, including the archive origin.** Playtesters need a URL, not a checkout, and the cross-origin delegation path cannot be tested on one origin.
 - **Nothing environment-specific is hardcoded.** Origins, bucket names and the `ARCHIVE_ORIGIN=same|cross` flag come from configuration. A domain name in a source file is a bug.
 - **Secrets live in Wrangler secrets and `.dev.vars`, never in tracked files.** `.dev.vars` and `.env` are git-ignored.
+- **No product that requires a payment method.** R2 is excluded for this reason alone (D-006, D-008). Before adopting any new Cloudflare product, check its activation path, not its pricing page, and check the daily operation caps before the storage cap.
 - The production URL must stay live and testable through **2026-09-21**, the end of the judging period, on a stable custom domain.
 
 ---
@@ -132,3 +135,4 @@ Rules that follow from this:
 | Date | Author | What changed |
 |---|---|---|
 | 2026-08-27 | Ahmed Saad | Created. Repository map, Cloudflare deployment target, workflow, code, formatting and git rules established for the v2 document set. |
+| 2026-08-28 | Ahmed Saad | Deployment: R2 replaced by D1 plus Durable Object SQLite. Added the rule that no product requiring a payment method is adopted. |

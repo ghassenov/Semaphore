@@ -10,6 +10,27 @@ Newest entries at the top of each section. Every entry is dated.
 
 ## Platform and hosting
 
+### 2026-08-28 - Pick a free tier on its rate limits, not its storage headline
+
+Having established that R2 needs a card, the first replacement we reached for was Workers KV, because 1 GB of storage looked like plenty. That was reading the wrong number off the table.
+
+| | DO SQLite | Workers KV | D1 |
+|---|---|---|---|
+| Stored data (free) | 5 GB | 1 GB | 500 MB |
+| **Writes per day (free)** | 100k rows | **1,000 keys** | 100k rows |
+| Reads per day (free) | 5M rows | 100k keys | 5M rows |
+| Queryable across records | No | No | Yes, SQL |
+
+KV has the second-largest store and by far the smallest write allowance: **1,000 writes per day**. One write per finished session sounds fine until you remember a benchmark sweep is three backends times twenty seeds times retries, which is a few hundred sessions in an afternoon, and the ablation adds more. We would have hit the wall during the one activity the whole Impact argument depends on, and the failure mode is silent data loss at 00:00 UTC boundaries.
+
+The general lesson: **for anything write-heavy, the daily operation cap binds long before the storage cap does.** Storage is the number vendors advertise because it is the flattering one. Work out your write rate first and read the table from that column.
+
+D1 also turned out to be a better fit than R2 had been, which is the part worth remembering. The benchmark wants questions like "every session on seed 7 across all backends", which against an object store is a list-and-fetch loop and against D1 is one query. We were going to end up building an index over R2 objects; D1 is that index with the data already inside it. **Losing the obvious choice forced a better design**, which happens more often than it feels like at the time.
+
+**Also: Cloudflare's own docs disagree with themselves here.** D1's pricing page lists 5 GB of stored data on the free plan; D1's limits page lists "10 GB (Workers Paid) / 500 MB (Free)". We sized against 500 MB. When two pages from the same vendor conflict, take the smaller number and note the conflict, because the smaller one is the one that will page you.
+
+Full reasoning is D-008.
+
 ### 2026-08-27 - R2 is the one Cloudflare product that demands a card
 
 We assumed the whole Cloudflare stack was card-free. It is not, and the exception is exactly the piece doc 05 leaned on for session logs.
@@ -20,6 +41,7 @@ We assumed the whole Cloudflare stack was card-free. It is not, and the exceptio
 | Workers | 100,000 requests/day | No |
 | Durable Objects (SQLite backend) | 100k req/day, 13k GB-s/day, 5M rows read/day, 100k rows written/day, 5 GB stored | **No** |
 | Workers KV | 100k reads/day, 1k writes/day, 1 GB stored | No |
+| D1 | 5M rows read/day, 100k rows written/day, 500 MB stored | No |
 | **R2** | 10 GB-month, 1M Class A, 10M Class B, free egress | **Yes: activation requires an R2 subscription and a linked payment method** |
 
 Two things worth remembering beyond this project:
@@ -27,7 +49,7 @@ Two things worth remembering beyond this project:
 1. **"Free tier" and "no signup friction" are different claims.** Cloudflare's marketing line ("no credit card required") is true of the developer platform generally and false of R2 specifically, because R2 activation runs a checkout flow even at zero cost. Check the activation path, not the pricing table.
 2. **Durable Objects being free at all is recent and conditional.** They are on the Workers Free plan only with the **SQLite storage backend**. The older KV-backed DO class still requires Workers Paid. Our `wrangler.toml` already used `new_sqlite_classes`, so we were accidentally on the right side of this. Anyone copying an older DO tutorial would not be.
 
-Resolution is D-006 in the decision log: session logs live in DO SQLite while a session runs and are flushed to Workers KV when it ends. R2 stays out of the build. The property doc 05 actually cared about, that one artifact is simultaneously the replay source, the benchmark corpus and the Archive's ghosts, is a property of the **log format**, not of the storage product. That was worth noticing before writing an R2 binding.
+Resolution is D-006, amended by D-008: session logs live in DO SQLite while a session runs and are written to D1 when it ends. R2 stays out of the build. The property doc 05 actually cared about, that one artifact is simultaneously the replay source, the benchmark corpus and the Archive's ghosts, is a property of the **log format**, not of the storage product. That was worth noticing before writing an R2 binding.
 
 ---
 
