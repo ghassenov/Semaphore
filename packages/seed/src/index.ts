@@ -1,5 +1,5 @@
 /**
- * Deterministic PRNG — xorshift128+ (doc 04 §7).
+ * Deterministic PRNG: xorshift128+ (doc 05 section 9).
  *
  * Same seed string always produces the same sequence, which is what makes
  * `?seed=` replays, fair model-vs-model benchmark comparison, and reproducing a
