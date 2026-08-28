@@ -45,5 +45,15 @@ export default tseslint.config(
       globals: browserGlobals,
     },
   },
+  {
+    // Build-time scripts run in Node rather than a browser, so they get the
+    // two globals a script needs to report a budget failure and fail a build.
+    files: ["**/scripts/*.mjs"],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: "module",
+      globals: { console: "readonly", process: "readonly" },
+    },
+  },
   prettier,
 );
