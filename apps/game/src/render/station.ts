@@ -72,6 +72,17 @@ export interface StationHandle {
   note(line: string): void;
   callStarted(tool: string): void;
   recordCall(call: CallRecord): void;
+  /**
+   * Re-read the registry into the manifest plate.
+   *
+   * Needed because one source of registry change happens on another origin:
+   * the archive frame registers `read_manual` and `read_station_log`, and
+   * whether that fires `toolchange` here is unverified (doc 11 section 4). The
+   * frame reports what it holds, and `main.ts` calls this. It reads
+   * `getTools()` like every other refresh, so the plate still shows the
+   * registry rather than what anybody intended.
+   */
+  refreshTools(): void;
   dispose(): void;
 }
 
@@ -85,6 +96,11 @@ export interface StationHandle {
 export async function startStation(
   parent: HTMLElement,
   client: SessionClient,
+  /**
+   * Origins whose delegated tools also belong on the manifest. Empty in the
+   * single-origin fallback, one entry when the archive origin is embedded.
+   */
+  toolOrigins: readonly string[] = [],
 ): Promise<StationHandle> {
   const model: StationModel = {
     view: null,
@@ -132,14 +148,13 @@ export async function startStation(
    * that failed to register, which is exactly the bug the plate exists to
    * expose.
    */
-  const stopWatchingTools = onToolChange(() => {
-    void listToolNames().then((names) => {
+  const refreshTools = (): void => {
+    void listToolNames(toolOrigins).then((names) => {
       model.tools = names;
     });
-  });
-  void listToolNames().then((names) => {
-    model.tools = names;
-  });
+  };
+  const stopWatchingTools = onToolChange(refreshTools);
+  refreshTools();
 
   // The meter's own clock, independent of both the socket and the tool calls,
   // because ambiguity changes when the world does and the world can change
@@ -188,6 +203,7 @@ export async function startStation(
       model.busyUntilMs = performance.now() + VISOR_HOLD_MS;
       model.log = pushLine(model.log, formatCall(call.tool, call.outcome, call.durationMs));
     },
+    refreshTools,
     dispose() {
       clearInterval(concordTimer);
       stopWatchingTools();

@@ -83,7 +83,9 @@ export interface RegisteredTool {
 /** The slice of the registry this app uses. Deliberately not the whole surface. */
 interface ModelContext extends EventTarget {
   registerTool(tool: RegisteredTool, options?: { signal?: AbortSignal }): Promise<unknown>;
-  getTools(): Promise<readonly { readonly name: string }[]>;
+  getTools(options?: {
+    fromOrigins?: readonly string[];
+  }): Promise<readonly { readonly name: string }[]>;
 }
 
 /** Hosts that expose the registry in either of the two documented places. */
@@ -141,11 +143,31 @@ export async function registerTool(tool: RegisteredTool, signal: AbortSignal): P
  * That is the whole point of the panel: if a registration silently fails, the
  * panel shows the truth and we find the bug, instead of the panel confidently
  * showing what we intended.
+ *
+ * `fromOrigins` is what makes that still true once the archive origin is
+ * embedded. The spike found that a default `getTools()` does **not** include a
+ * cross-origin frame's tools even when both `allow="tools"` and `exposedTo`
+ * are satisfied: the consumer has to ask (doc 11 section 4, Chrome 151). A
+ * panel that did not ask would quietly under-report KEEPER's own faculties,
+ * which is the one failure this panel exists to make impossible.
+ *
+ * Passed only when there is an origin to ask about, because a `getTools`
+ * implementation that does not know the option should be handed nothing
+ * rather than an empty array to interpret.
  */
-export async function listToolNames(): Promise<readonly string[]> {
+export async function listToolNames(
+  fromOrigins: readonly string[] = [],
+): Promise<readonly string[]> {
   const mc = getModelContext();
   if (!mc) return [];
-  return (await mc.getTools()).map((tool) => tool.name);
+  try {
+    const tools = await (fromOrigins.length > 0 ? mc.getTools({ fromOrigins }) : mc.getTools());
+    return tools.map((tool) => tool.name);
+  } catch {
+    // A host that rejects the option is a host with no cross-origin tools to
+    // report, and the panel should still show this page's own.
+    return (await mc.getTools()).map((tool) => tool.name);
+  }
 }
 
 /**

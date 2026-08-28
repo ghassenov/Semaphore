@@ -24,7 +24,7 @@
  * measures (doc 02 section 3.4).
  */
 
-import type { ChamberId } from "@semaphore/protocol";
+import { READ_STATION_LOG, type ChamberId } from "@semaphore/protocol";
 import type { SessionClient } from "../net/sessionClient.js";
 import { NO_INPUT, type GameTool } from "./tool.js";
 
@@ -140,26 +140,18 @@ function blindPanelTools(client: SessionClient): readonly GameTool[] {
   ];
 }
 
-/** The Archive beat. Not a chamber: one read, and PILOT decides when to leave. */
+/**
+ * The Archive beat. Not a chamber: one read, and PILOT decides when to leave.
+ *
+ * `read_station_log`'s copy and schema come from `@semaphore/protocol`, shared
+ * with `apps/archive`, which registers the same tool on its own origin
+ * whenever cross-origin delegation is switched on. Only the fulfilment
+ * differs, and only in which side of the boundary the fetch is made from.
+ */
 function archiveTools(client: SessionClient): readonly GameTool[] {
   return [
     {
-      name: "read_station_log",
-      title: "Read a previous shift's log",
-      description:
-        "Read one entry from a previous pair's session log: what the KEEPER before you " +
-        "called, and whether it landed. PILOT is watching the same shift play back on the " +
-        "monitor and can see where that PILOT walked, which you cannot. Neither half of the " +
-        "record makes sense alone. These logs were written by a pair who did not get out.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          entry: { type: "number", description: "Which entry to read, starting at 1." },
-        },
-        required: ["entry"],
-        additionalProperties: false,
-      },
-      annotations: { readOnlyHint: true, untrustedContentHint: true },
+      ...READ_STATION_LOG,
       run: action(client, "read_station_log", (input) => ({ entry: Number(input.entry ?? 0) })),
     },
   ];
