@@ -29,6 +29,8 @@ import {
   type PersistedSession,
 } from "./reducer.js";
 import { ActionSemaphore } from "./semaphore.js";
+import { describeChamber, inspectObject, lockState, readCiphertext } from "./views.js";
+import { MANUAL_SECTIONS, isManualSection, manualSection } from "./manual.js";
 import { percentile, staminaWindowMs } from "./latency.js";
 import type { LeverId } from "./chambers/airlock.js";
 import type { KeyId } from "./chambers/signal_room.js";
@@ -67,6 +69,8 @@ function labelFor(action: Action): string {
       return "reading the station log";
     case "leave_archive":
       return "leaving the archive";
+    case "open_the_door":
+      return "opening the outer door";
     case "retry_chamber":
       return "resetting the chamber";
   }
@@ -95,9 +99,36 @@ export class Session {
   }
 
   async fetch(request: Request): Promise<Response> {
-    const { pathname } = new URL(request.url);
+    const url = new URL(request.url);
+    const { pathname } = url;
 
-    if (request.method === "GET" && pathname.endsWith("/status")) return this.#status();
+    if (request.method === "GET") {
+      if (pathname.endsWith("/status")) return this.#status();
+      // Every other GET is a read-only tool. They share one handler because
+      // they share the property that makes them safe: `views.ts` and
+      // `manual.ts` are pure, so none of them can be made to mutate by a
+      // routing mistake here.
+      if (pathname.endsWith("/describe")) return this.#read((s) => describeChamber(s));
+      if (pathname.endsWith("/ciphertext")) return this.#read((s) => readCiphertext(s));
+      if (pathname.endsWith("/lock_state")) return this.#read((s) => lockState(s, Date.now()));
+      if (pathname.endsWith("/inspect")) {
+        const objectId = url.searchParams.get("object_id") ?? "";
+        return this.#read((s) => inspectObject(s, objectId));
+      }
+      if (pathname.endsWith("/manual")) {
+        const section = url.searchParams.get("section") ?? "index";
+        if (!isManualSection(section)) {
+          return Response.json(
+            errors
+              .invalidInput("section", `one of ${MANUAL_SECTIONS.join(", ")}`, section)
+              .toToolResult(),
+            { status: 409 },
+          );
+        }
+        return this.#read((s) => manualSection(s, section));
+      }
+      return new Response("Not found", { status: 404 });
+    }
     if (request.method !== "POST") return new Response("Not found", { status: 404 });
 
     if (pathname.endsWith("/begin_shift")) {
@@ -154,6 +185,9 @@ export class Session {
     if (pathname.endsWith("/leave_archive")) {
       return this.#act({ type: "leave_archive" });
     }
+    if (pathname.endsWith("/open_the_door")) {
+      return this.#act({ type: "open_the_door" });
+    }
     if (pathname.endsWith("/retry_chamber")) {
       return this.#act({ type: "retry_chamber" });
     }
@@ -178,6 +212,62 @@ export class Session {
   }
 
   /**
+   * Run one read-only tool: project, and respond.
+   *
+   * Deliberately not routed through the action semaphore. The semaphore
+   * exists to serialise *mutation* (doc 05 section 5), and making a look
+   * block behind a turning dial would produce an `E_BUSY` for a call that
+   * cannot conflict with anything - which would teach an agent to stop
+   * calling `get_status` under pressure, exactly when it needs it most.
+   *
+   * Nothing here persists, so a read is also the one call that cannot settle
+   * an expired chamber deadline. That is what the alarm is for (D-018).
+   */
+  async #read(project: (session: PersistedSession) => string): Promise<Response> {
+    const session = this.#session;
+    if (!session) return Response.json(errors.noSession().toToolResult(), { status: 409 });
+    try {
+      return Response.json({
+        content: [{ type: "text", text: project(session) }],
+        state: this.#stateSummary(session),
+      });
+    } catch (err) {
+      if (GameError.is(err)) return Response.json(err.toToolResult(), { status: 409 });
+      throw err;
+    }
+  }
+
+  /**
+   * What the page needs to drive the tool registry, and nothing more.
+   *
+   * The client's `ToolDirector` has to know which chamber it is in to know
+   * which controller to tear down, so every response carries this. It is
+   * machine state, not world state: phase and chamber are `SHARED` by
+   * construction (both parties always know which room they are in), and no
+   * chamber fact reaches it. Rendering still derives from `projectForPilot`
+   * over the socket; this is the registry's cue, not a view.
+   *
+   * `remainingMs` rather than the deadline itself, so a client with a skewed
+   * clock cannot turn its own skew into the game's problem.
+   */
+  #stateSummary(session: PersistedSession): {
+    phase: string;
+    chamber: ChamberId | null;
+    designation: string | null;
+    remainingMs: number | null;
+  } {
+    return {
+      phase: session.machine.phase,
+      chamber: session.machine.chamber,
+      designation: session.designation,
+      remainingMs:
+        session.chamberDeadlineMs === null
+          ? null
+          : Math.max(0, session.chamberDeadlineMs - Date.now()),
+    };
+  }
+
+  /**
    * Run one mutating action end to end: load, reduce under the semaphore,
    * persist, log, and respond. Every branch that can fail as part of the
    * game itself (a `GameError`) maps to a `409` with text the agent can act
@@ -197,7 +287,10 @@ export class Session {
 
       if (result.session.machine.phase === "ESCAPED") await this.#flushToD1(result.session);
 
-      return Response.json({ content: [{ type: "text", text: result.toolText }] });
+      return Response.json({
+        content: [{ type: "text", text: result.toolText }],
+        state: this.#stateSummary(result.session),
+      });
     } catch (err) {
       if (GameError.is(err)) return Response.json(err.toToolResult(), { status: 409 });
       throw err;
@@ -248,19 +341,11 @@ export class Session {
   async #status(): Promise<Response> {
     const session = this.#session;
     if (!session) return Response.json(errors.noSession().toToolResult(), { status: 409 });
-    const chamber: ChamberId | null = session.machine.chamber;
     return Response.json({
-      phase: session.machine.phase,
-      chamber,
-      designation: session.designation,
+      ...this.#stateSummary(session),
       staminaWindowMs: staminaWindowMs(session.observedLatencyMs),
-      // Remaining time rather than the deadline itself: a client that knows
-      // the absolute deadline is a client whose own clock skew becomes the
-      // game's problem. `null` means this chamber is untimed.
-      remainingMs:
-        session.chamberDeadlineMs === null
-          ? null
-          : Math.max(0, session.chamberDeadlineMs - Date.now()),
+      retries: session.machine.retries,
+      archiveEntriesRead: session.archiveEntriesRead.length,
     });
   }
 
