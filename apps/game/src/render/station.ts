@@ -25,7 +25,7 @@ import type { PilotView } from "@semaphore/protocol";
 import type { ConcordReport, SessionClient, StateSummary } from "../net/sessionClient.js";
 import type { CallRecord } from "../webmcp/director.js";
 import { listToolNames, onToolChange } from "../webmcp/adapter.js";
-import { CANVAS } from "./cutaway.js";
+import { CANVAS } from "./room.js";
 import { formatCall, pushLine } from "./hud.js";
 
 /** How long KEEPER's visor stays lit after a call returns, in milliseconds. */

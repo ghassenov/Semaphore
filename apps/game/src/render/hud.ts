@@ -1,119 +1,47 @@
 /**
- * The HUD's arithmetic, with no canvas in it.
+ * The console's arithmetic, with no surface in it.
  *
  * Everything the heads-up display has to *decide* lives here: how a timer
- * reads at four seconds left, how many pixels of the CONCORD meter are lit,
- * what the channel legend says. `ChamberScene` paints the answers.
+ * reads at four seconds left, how full the CONCORD meter is, what the channel
+ * legend says. Whoever is drawing paints the answers.
  *
- * The split is the same one `rooms.ts` makes and for the same reason: this is
- * the part that can be wrong in a way nobody notices by looking, so it is the
- * part that gets unit tests.
+ * The display itself moved off the canvas in D-036. It used to be six panels
+ * crammed into the seventy pixels above and below the section, at an estimated
+ * 4.8 pixels per character; it is DOM now, beside the canvas, where a browser
+ * measures its own text and a screen reader can read it. So this file lost its
+ * band coordinates and its character-width estimate, and kept every function
+ * that can be wrong in a way nobody notices by looking.
+ *
+ * What is *not* here, and may not come back, is anything that decides a puzzle
+ * fact. The console shows the room's name, the clock, the registry, the log and
+ * the pad. Every one of those is a thing KEEPER can already obtain for itself
+ * or a thing both parties perceive, which is why they are allowed to be text
+ * nodes at all (see this app's CLAUDE.md). The glyphs, the needle values and
+ * the cipher offset stay on the canvas.
  */
 
 import type { RenderChannel } from "./palette.js";
-import { CANVAS, FRAME, SECTION_BOTTOM } from "./cutaway.js";
 import { CHANNEL_MARKER } from "./palette.js";
 
 /**
- * Where the HUD's bands sit on the 320x180 canvas.
+ * How many rows the console keeps of each running list.
  *
- * The vertical budget is tight and every band is measured against the 8px
- * line height, because at this resolution two bands a few pixels apart do not
- * look cramped, they look like one illegible band. `hud.test.ts` asserts they
- * do not overlap, which is the only way to notice before a screenshot.
+ * A cap rather than a scrollbar: these are three panels somebody glances at
+ * mid-sentence, and the useful contents of all three is what just happened.
  */
-export const METER_Y = FRAME + 10;
-export const METER_HEIGHT = 5;
-/** The audible fact's strip, drawn between the section and the panels. */
-export const AUDIBLE_Y = SECTION_BOTTOM + 4;
-export const AUDIBLE_HEIGHT = 10;
-export const PANEL_Y = SECTION_BOTTOM + 20;
-export const LEGEND_Y = CANVAS - FRAME - 12;
-
-/** One line of 8px text, which is what every band below is measured in. */
-export const LINE_HEIGHT = 8;
+export const LOG_LINES = 6;
+export const PAD_LINES = 6;
+export const MANIFEST_LINES = 12;
 
 /**
- * The panel row, in three columns: what KEEPER did, what the pair wrote down,
- * and what KEEPER can currently do.
+ * A note as the pad shows it: the writer's initial, then their words.
  *
- * The middle column is the widest because it holds sentences two people wrote
- * for each other, and the other two hold identifiers. Three columns rather
- * than two because the notepad is the exhibit, not an extra: it is the only
- * surface both parties write to, and a pad the player cannot see is a pad
- * they will not use.
- */
-export const LOG_X = FRAME + 4;
-export const LOG_WIDTH = 88;
-/** How many lines fit before the oldest is dropped. */
-export const LOG_LINES = 3;
-
-export const PAD_X = 102;
-export const PAD_WIDTH = 128;
-export const PAD_LINES = 3;
-
-/**
- * The pad's in-world marker: a paper pad on the wall of the floor the pair is
- * standing in, in its left margin, clear of every chamber's furniture.
- *
- * Narrow, because the readable copy is in the panel below and the point of
- * this one is that the pad is a physical thing in the station rather than an
- * interface element. `rooms.test.ts` holds every chamber's pieces clear of it.
- */
-export const WALL_PAD_X = 2;
-export const WALL_PAD_WIDTH = 12;
-
-/** The manifest plate: KEEPER's registry, as the page actually reports it. */
-export const MANIFEST_X = 236;
-export const MANIFEST_WIDTH = CANVAS - FRAME - MANIFEST_X;
-export const MANIFEST_LINES = 3;
-
-/**
- * Characters that fit in a box, at the greybox font's width.
- *
- * Monospace 8px measures very close to 4.8px per character in every browser
- * that runs this. It is an estimate rather than a measurement because the
- * alternative is a canvas metrics call per line per frame, and the cost of
- * being one character out is one character of ellipsis.
- */
-const CHAR_WIDTH = 4.8;
-
-export function charsThatFit(widthPx: number): number {
-  return Math.max(1, Math.floor(widthPx / CHAR_WIDTH));
-}
-
-/** How wide a string draws, at the same estimate. */
-export function textWidth(text: string): number {
-  return Math.ceil(text.length * CHAR_WIDTH);
-}
-
-/**
- * Cut a line to what its box can hold.
- *
- * Every string that reaches the HUD comes from the server, and the server
- * writes for an agent: `start full` answers with a paragraph of briefing. Left
- * whole, that paragraph runs straight through the panel beside it and makes
- * both unreadable. Truncating is not cosmetic here, it is the difference
- * between two panels and one smear.
- */
-export function truncate(line: string, widthPx: number): string {
-  const limit = charsThatFit(widthPx);
-  if (line.length <= limit) return line;
-  // The ellipsis is itself a character, so a box with room for one gets the
-  // ellipsis alone. Anything else returns a string longer than the box it was
-  // measured against, which defeats the point of measuring.
-  return limit <= 1 ? "\u2026" : `${line.slice(0, limit - 1)}\u2026`;
-}
-
-/**
- * A note as the pad draws it: the writer's initial, then their words.
- *
- * Each line is drawn in its writer's channel colour, which is the whole reason
+ * Each line is coloured by its writer's channel, which is the whole reason
  * authorship is tracked at all. Amber is PILOT's, cyan is KEEPER's, and the
  * pad is the one surface in the game where the two appear together.
  */
-export function formatNote(author: string, text: string, widthPx: number): string {
-  return truncate(`${author === "KEEPER" ? "K" : "P"} ${text}`, widthPx);
+export function formatNote(author: string, text: string): string {
+  return `${author === "KEEPER" ? "K" : "P"} ${text}`;
 }
 
 /**
@@ -187,8 +115,8 @@ export function formatCall(tool: string, outcome: string, durationMs: number): s
 /**
  * Trim the log to what fits, newest first.
  *
- * A pure function rather than an array mutation on the scene, so the "newest
- * first, oldest dropped" rule is checkable without constructing a scene.
+ * A pure function rather than an array mutation on the model, so the "newest
+ * first, oldest dropped" rule is checkable without constructing a renderer.
  */
 export function pushLine(lines: readonly string[], line: string): readonly string[] {
   return [line, ...lines].slice(0, LOG_LINES);

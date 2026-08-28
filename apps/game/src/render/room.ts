@@ -28,7 +28,7 @@
 import type { PilotView } from "@semaphore/protocol";
 import type { ChannelSheet } from "./atlas.js";
 import type { RenderChannel } from "./palette.js";
-import { FRAMES, PLATE } from "./atlas.js";
+import { FRAMES, PLATE, TILE } from "./atlas.js";
 
 /**
  * The canvas, in tiles.
@@ -38,6 +38,16 @@ import { FRAMES, PLATE } from "./atlas.js";
  * for the DOM console (D-036), not because the canvas did.
  */
 export const CANVAS_TILES = 20;
+
+/**
+ * The canvas, in pixels.
+ *
+ * Here rather than in `scenes.ts` because `station.ts` configures the scale
+ * manager with it and may not import `scenes.ts`: that module imports Phaser
+ * statically, and the whole point of D-026 is that the engine is fetched only
+ * when a session actually begins.
+ */
+export const CANVAS = CANVAS_TILES * TILE;
 
 /** The wall is one tile thick, so this is the largest interior that fits. */
 export const MAX_INTERIOR = CANVAS_TILES - 2;
