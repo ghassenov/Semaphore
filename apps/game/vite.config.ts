@@ -12,10 +12,33 @@ import { defineConfig } from "vite";
  * is forwarded to a local `wrangler dev`. No origin is ever written into a
  * source file (see the repo CLAUDE.md, section 3).
  */
+/**
+ * Hostnames the dev server will answer to, beyond localhost.
+ *
+ * Vite rejects requests carrying an unrecognised `Host` header, which is the
+ * right default and exactly what a tunnel trips over: testing in ChatGPT's
+ * in-app browser means putting the dev server behind a public hostname, and
+ * that hostname is different every time the tunnel restarts.
+ *
+ * It comes from the environment rather than from this file because a domain
+ * name in a source file is a bug (repo CLAUDE.md section 3), and because the
+ * host is a property of whoever is tunnelling today, not of the project.
+ *
+ *   DEV_ALLOWED_HOSTS=".trycloudflare.com" pnpm dev
+ *
+ * A leading dot matches subdomains. Empty by default, so nothing is exposed
+ * to an unexpected host unless somebody asks for it.
+ */
+const allowedHosts = (process.env.DEV_ALLOWED_HOSTS ?? "")
+  .split(",")
+  .map((host) => host.trim())
+  .filter((host) => host.length > 0);
+
 export default defineConfig({
   base: "./",
   build: { target: "es2022" },
   server: {
+    ...(allowedHosts.length > 0 ? { allowedHosts } : {}),
     proxy: {
       "/session": {
         target: process.env.WORKER_DEV_ORIGIN ?? "http://127.0.0.1:8787",
@@ -25,5 +48,9 @@ export default defineConfig({
         ws: true,
       },
     },
+    // Over a tunnel the page is served on https:443 while Vite still listens
+    // on 5173, so the hot-reload socket has to be told where to call home or
+    // it retries against a port the tunnel does not expose.
+    ...(allowedHosts.length > 0 ? { hmr: { clientPort: 443, protocol: "wss" } } : {}),
   },
 });
