@@ -38,17 +38,17 @@ import { Rng } from "@semaphore/seed";
 import * as airlock from "./chambers/airlock.js";
 import * as signalRoom from "./chambers/signal_room.js";
 import * as blindPanel from "./chambers/blind_panel.js";
+import * as concordLock from "./chambers/concord_lock.js";
 import { projectForKeeper, projectedHash } from "./projection.js";
 import { concordBits } from "./worlds.js";
+import { staminaWindowMs } from "./latency.js";
 import { transition, type MachineState } from "./machine.js";
 
 /**
  * Everything the reducer needs to remember between calls.
  *
  * A strict subset of doc 05 section 3's `WorldState`, scoped to what is
- * actually implemented: Chambers 0, I and II. Extending this to Chamber III
- * means adding a `concordLock` field the same way `blindPanel` was, never
- * widening what an existing field means.
+ * actually implemented: all four chambers.
  */
 export interface PersistedSession {
   readonly sessionId: string;
@@ -59,6 +59,7 @@ export interface PersistedSession {
   readonly airlock: airlock.AirlockState | null;
   readonly signalRoom: signalRoom.SignalRoomState | null;
   readonly blindPanel: blindPanel.BlindPanelState | null;
+  readonly concordLock: concordLock.ConcordLockState | null;
   /**
    * Inter-call gaps observed for chamber actions, in call order. Feeds
    * `staminaWindowMs` (doc 05 section 6). See D-010 for why this is the gap
@@ -89,6 +90,7 @@ export function newSession(sessionId: string, seed: string, nowMs: number): Pers
     airlock: null,
     signalRoom: null,
     blindPanel: null,
+    concordLock: null,
     observedLatencyMs: [],
     seq: 0,
     startedAtMs: nowMs,
@@ -107,7 +109,13 @@ export type Action =
       readonly dialId: blindPanel.DialId;
       readonly direction: blindPanel.Direction;
       readonly clicks: number;
-    };
+    }
+  // The finale is the one chamber where PILOT acts too (doc 02 section 3.4):
+  // gripping the release bar is what arms the lock for KEEPER's bolts.
+  | { readonly type: "grip_bar" }
+  | { readonly type: "release_bar" }
+  | { readonly type: "align_bolt"; readonly boltId: concordLock.BoltId }
+  | { readonly type: "speak_passphrase"; readonly phrase: string };
 
 export interface ReduceResult {
   readonly session: PersistedSession;
@@ -133,6 +141,14 @@ export function reduce(session: PersistedSession, action: Action, nowMs: number)
       return rotateDial(session, action.dialId, action.direction, action.clicks, nowMs);
     case "reset_sequence":
       return resetSequence(session, nowMs);
+    case "grip_bar":
+      return gripBar(session, nowMs);
+    case "release_bar":
+      return releaseBar(session, nowMs);
+    case "align_bolt":
+      return alignBolt(session, action.boltId, nowMs);
+    case "speak_passphrase":
+      return speakPassphrase(session, action.phrase, nowMs);
   }
 }
 
@@ -225,6 +241,18 @@ const CHAMBER_ENTRY: Partial<
   blind_panel: (session) => ({
     blindPanel: blindPanel.initial(blindPanel.generate(new Rng(`${session.seed}:blind_panel`))),
   }),
+  concord_lock: (session) => {
+    const { params, cipherOffset } = concordLock.generate(new Rng(`${session.seed}:concord_lock`));
+    // The payoff of D-010: the finale's grip window is sized from the rhythm
+    // this pair actually showed across the earlier chambers, never hardcoded.
+    return {
+      concordLock: concordLock.initial(
+        params,
+        cipherOffset,
+        staminaWindowMs(session.observedLatencyMs),
+      ),
+    };
+  },
 };
 
 /**
@@ -329,6 +357,13 @@ function describeChamber(session: PersistedSession): string {
       "THE BLIND PANEL. Four dials, ids 1-4, behind a grate. You cannot see the gauges. " +
       `Rotations so far: ${view.rotationCount}. Last registered clicks: ${JSON.stringify(view.lastClicks)}. ` +
       "Ask PILOT what moved."
+    );
+  }
+  if (session.machine.chamber === "concord_lock" && session.concordLock) {
+    const view = projectForKeeper(concordLock.facts(session.concordLock, Date.now()));
+    return (
+      `THE CONCORD LOCK. Bolts aligned: ${view.boltsAligned} of ${concordLock.BOLT_COUNT}. ` +
+      `Armed: ${view.armed}. Ask PILOT to read the cipher wheel, then grip the release bar.`
     );
   }
   return "No chamber is active. Call begin_shift to begin your shift.";
@@ -662,3 +697,223 @@ function rotateDial(
 
   return { session: settled.session, events: [...events, ...settled.events], toolText };
 }
+
+const CONCORD_LOCK_CHAMBER = {
+  id: "concord_lock" as const,
+  // `facts` needs a clock, unlike the other chambers. Every time-dependent
+  // field it produces is SHARED, so it is identical across candidates and
+  // cannot distinguish between them; a fixed instant is therefore safe here
+  // and keeps the ChamberWorlds shape uniform across all four chambers.
+  facts: (state: concordLock.ConcordLockState) => concordLock.facts(state, 0),
+  candidates: concordLock.candidates,
+  correctAction: concordLock.correctAction,
+};
+
+/** Shared guard: the finale's chamber must be live before any of its actions run. */
+function requireConcordLock(session: PersistedSession): concordLock.ConcordLockState {
+  if (session.machine.phase === "ENTRY" || session.machine.phase === "LOBBY") {
+    throw errors.noSession();
+  }
+  if (session.machine.chamber !== "concord_lock" || !session.concordLock) {
+    throw errors.staleTool();
+  }
+  return session.concordLock;
+}
+
+/**
+ * PILOT grips the release bar.
+ *
+ * A PILOT action, so it is logged as `pilot_action` rather than `tool_call`
+ * and does not touch `observedLatencyMs`: that sample measures the agent's
+ * rhythm (D-010), and folding a human's reaction time into it would corrupt
+ * the very window this chamber derives from it.
+ */
+function gripBar(session: PersistedSession, nowMs: number): ReduceResult {
+  const before = requireConcordLock(session);
+  if (concordLock.isLockedOut(before, nowMs)) {
+    const remaining = Math.ceil(((before.lockedOutUntilMs ?? nowMs) - nowMs) / 1000);
+    throw errors.lockedOut(remaining);
+  }
+
+  const after = concordLock.grip(before, nowMs);
+  const event: SessionEvent = {
+    t: elapsed(session, nowMs),
+    seq: session.seq,
+    type: "pilot_action",
+    action: "grip",
+    target: "release_bar",
+  };
+  const next: PersistedSession = {
+    ...session,
+    concordLock: after,
+    seq: session.seq + 1,
+    lastRespondedAtMs: nowMs,
+  };
+  const window = Math.round(after.staminaWindowMs / 1000);
+  return {
+    session: next,
+    events: [event],
+    toolText: `The lock arms under tension. PILOT can hold roughly ${window} seconds.`,
+  };
+}
+
+/** PILOT lets go. The bolts fall back, exactly as running out of stamina does. */
+function releaseBar(session: PersistedSession, nowMs: number): ReduceResult {
+  const before = requireConcordLock(session);
+  const after = concordLock.release(before, nowMs);
+  const event: SessionEvent = {
+    t: elapsed(session, nowMs),
+    seq: session.seq,
+    type: "pilot_action",
+    action: "release",
+    target: "release_bar",
+  };
+  const next: PersistedSession = {
+    ...session,
+    concordLock: after,
+    seq: session.seq + 1,
+    lastRespondedAtMs: nowMs,
+  };
+  return { session: next, events: [event], toolText: "The bar swings back. The bolts fall out." };
+}
+
+function alignBolt(
+  session: PersistedSession,
+  boltId: concordLock.BoltId,
+  nowMs: number,
+): ReduceResult {
+  const latencyMs = nowMs - session.lastRespondedAtMs;
+  const before = requireConcordLock(session);
+
+  if (!concordLock.BOLTS.includes(boltId)) {
+    throw errors.invalidInput("bolt_id", "one of 1, 2, 3", boltId);
+  }
+  // A real state precondition with a recoverable message, not flow control by
+  // description (doc 03 section 3.5): the agent is told what is blocking it.
+  if (!concordLock.isArmed(before, nowMs)) throw errors.notArmed();
+
+  const expected = concordLock.nextBolt(before);
+  const after = concordLock.alignBolt(before, boltId, nowMs);
+  const advanced = after.boltsAligned > before.boltsAligned;
+
+  const events: SessionEvent[] = [
+    {
+      t: elapsed(session, nowMs),
+      seq: session.seq,
+      type: "tool_call",
+      tool: "align_bolt",
+      input: { bolt_id: boltId },
+      result: "ok",
+      latencyMs,
+      keeperViewHash: projectedHash(concordLock.facts(before, nowMs), "KEEPER"),
+      concordBits: concordBits(CONCORD_LOCK_CHAMBER, after),
+      // Bolts are SHARED: which one comes next is visible to KEEPER, so
+      // reaching for the wrong one could not have succeeded and it knew that.
+      wasted: !advanced,
+    },
+  ];
+
+  const next: PersistedSession = {
+    ...session,
+    concordLock: after,
+    observedLatencyMs: [...session.observedLatencyMs, latencyMs],
+    seq: session.seq + events.length,
+    lastRespondedAtMs: nowMs,
+  };
+
+  const remaining = concordLock.staminaRemainingMs(after, nowMs) ?? 0;
+  const toolText = advanced
+    ? `Bolt ${boltId} seats. ${after.boltsAligned} of ${concordLock.BOLT_COUNT} aligned, ` +
+      `roughly ${Math.round(remaining / 1000)} seconds of grip left.`
+    : `Bolt ${boltId} will not seat. Bolt ${expected} is the next in the array.`;
+
+  return { session: next, events, toolText };
+}
+
+/**
+ * The game's one irreversible action (doc 02 section 3.4).
+ *
+ * Deliberately not guarded by a "check get_lock_state first" precondition:
+ * doc 04 section 8 forbids enforcing call ordering in code. The consequence
+ * is stated in the tool description and the manual, `get_lock_state` exists
+ * for a careful agent to verify with, and which models check before firing
+ * is one of the more interesting things the benchmark measures.
+ */
+function speakPassphrase(session: PersistedSession, phrase: string, nowMs: number): ReduceResult {
+  const latencyMs = nowMs - session.lastRespondedAtMs;
+  const before = requireConcordLock(session);
+
+  if (concordLock.isLockedOut(before, nowMs)) {
+    const remaining = Math.ceil(((before.lockedOutUntilMs ?? nowMs) - nowMs) / 1000);
+    throw errors.lockedOut(remaining);
+  }
+  if (!concordLock.isArmed(before, nowMs)) throw errors.notArmed();
+
+  // Wasted exactly when the phrase is not among the worlds still consistent
+  // with the ciphertext KEEPER can read: such a phrase could not have been
+  // the passphrase, and KEEPER had everything needed to know that before
+  // calling. This is the sharpest wasted-call definition in the game.
+  const live = new Set(
+    concordLock.candidates(before).map((w) => concordLock.normalise(w.params.passphrase)),
+  );
+  const wasted = !live.has(concordLock.normalise(phrase));
+
+  const opened = concordLock.wouldOpen(before, phrase, nowMs);
+  const rng = new Rng(`${session.seed}:reencipher:${before.attemptedPhrases.length}`);
+  const after = concordLock.speakPassphrase(before, phrase, nowMs, rng);
+
+  let machine = session.machine;
+  if (after.solved) machine = transition(machine, { type: "CHAMBER_SOLVED" });
+
+  const events: SessionEvent[] = [
+    {
+      t: elapsed(session, nowMs),
+      seq: session.seq,
+      type: "tool_call",
+      tool: "speak_passphrase",
+      input: { phrase },
+      result: "ok",
+      latencyMs,
+      keeperViewHash: projectedHash(concordLock.facts(before, nowMs), "KEEPER"),
+      concordBits: concordBits(CONCORD_LOCK_CHAMBER, after),
+      wasted,
+    },
+  ];
+  if (!opened) {
+    events.push({
+      t: elapsed(session, nowMs),
+      seq: session.seq + events.length,
+      type: "failure",
+      failure: "LOCKOUT",
+      chamber: "concord_lock",
+      concordBits: concordBits(CONCORD_LOCK_CHAMBER, after),
+    });
+  }
+  if (after.solved) {
+    events.push({
+      t: elapsed(session, nowMs),
+      seq: session.seq + events.length,
+      type: "chamber_solved",
+      chamber: "concord_lock",
+    });
+  }
+
+  const withUpdate: PersistedSession = {
+    ...session,
+    concordLock: after,
+    machine,
+    observedLatencyMs: [...session.observedLatencyMs, latencyMs],
+    seq: session.seq + events.length,
+    lastRespondedAtMs: nowMs,
+  };
+
+  const settled = settleTransition(withUpdate, nowMs);
+  const toolText = opened
+    ? "The passphrase lands. Twelve bolts run back in sequence, and the great door begins to move."
+    : `Wrong. The door seals for ${LOCKOUT_SECONDS} seconds and the wheel spins to a new setting. ` +
+      "PILOT will have to read it again.";
+
+  return { session: settled.session, events: [...events, ...settled.events], toolText };
+}
+
+const LOCKOUT_SECONDS = concordLock.LOCKOUT_MS / 1000;
