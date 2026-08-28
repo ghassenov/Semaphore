@@ -21,7 +21,13 @@
 
 import { GameError, errors, type ChamberId } from "@semaphore/protocol";
 import { appendEvent, gzipJsonl, readAllEvents } from "./log.js";
-import { newSession, reduce, type Action, type PersistedSession } from "./reducer.js";
+import {
+  newSession,
+  reduce,
+  settleSession,
+  type Action,
+  type PersistedSession,
+} from "./reducer.js";
 import { ActionSemaphore } from "./semaphore.js";
 import { percentile, staminaWindowMs } from "./latency.js";
 import type { LeverId } from "./chambers/airlock.js";
@@ -61,6 +67,8 @@ function labelFor(action: Action): string {
       return "reading the station log";
     case "leave_archive":
       return "leaving the archive";
+    case "retry_chamber":
+      return "resetting the chamber";
   }
 }
 
@@ -146,6 +154,9 @@ export class Session {
     if (pathname.endsWith("/leave_archive")) {
       return this.#act({ type: "leave_archive" });
     }
+    if (pathname.endsWith("/retry_chamber")) {
+      return this.#act({ type: "retry_chamber" });
+    }
 
     return new Response("Not found", { status: 404 });
   }
@@ -182,6 +193,7 @@ export class Session {
       for (const event of result.events) await appendEvent(this.#storage, event);
       this.#session = result.session;
       await this.#storage.put("meta", result.session);
+      await this.#syncAlarm(result.session);
 
       if (result.session.machine.phase === "ESCAPED") await this.#flushToD1(result.session);
 
@@ -190,6 +202,47 @@ export class Session {
       if (GameError.is(err)) return Response.json(err.toToolResult(), { status: 409 });
       throw err;
     }
+  }
+
+  /**
+   * Keep the Durable Object alarm pinned to the live chamber deadline.
+   *
+   * Called after every action, because a deadline moves: entering a chamber
+   * sets one, a time penalty pulls it earlier, and solving a chamber or
+   * reaching the Archive clears it. Setting an alarm is idempotent, so this
+   * is a plain write rather than a read-compare-write.
+   */
+  async #syncAlarm(session: PersistedSession): Promise<void> {
+    if (session.chamberDeadlineMs === null) await this.#storage.deleteAlarm();
+    else await this.#storage.setAlarm(session.chamberDeadlineMs);
+  }
+
+  /**
+   * The chamber timer reaching zero with nobody watching.
+   *
+   * This is the only reason the alarm exists. `reduce` already settles the
+   * session against the clock on every call, so a pair that keeps playing
+   * would find the deadlock on their next action regardless; what they would
+   * *not* get is a `failure` event stamped at the moment time actually ran
+   * out. The replay timeline and the benchmark both read that timestamp, so
+   * it has to be true rather than merely eventual.
+   *
+   * Runs the same `settleSession` the request path runs, never a parallel
+   * copy of the rule. If the alarm fires early (a deadline moved later, which
+   * cannot currently happen, or a spurious wake-up) `settleSession` returns no
+   * events and this is a no-op.
+   */
+  async alarm(): Promise<void> {
+    const session = this.#session;
+    if (!session) return;
+
+    const settled = settleSession(session, Date.now());
+    if (settled.events.length === 0) return;
+
+    for (const event of settled.events) await appendEvent(this.#storage, event);
+    this.#session = settled.session;
+    await this.#storage.put("meta", settled.session);
+    await this.#syncAlarm(settled.session);
   }
 
   async #status(): Promise<Response> {
@@ -201,6 +254,13 @@ export class Session {
       chamber,
       designation: session.designation,
       staminaWindowMs: staminaWindowMs(session.observedLatencyMs),
+      // Remaining time rather than the deadline itself: a client that knows
+      // the absolute deadline is a client whose own clock skew becomes the
+      // game's problem. `null` means this chamber is untimed.
+      remainingMs:
+        session.chamberDeadlineMs === null
+          ? null
+          : Math.max(0, session.chamberDeadlineMs - Date.now()),
     });
   }
 

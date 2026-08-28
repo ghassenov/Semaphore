@@ -11,11 +11,19 @@
  * chamber that most convincingly proves the two participants need each
  * other.
  *
- * **Drift is not modelled here.** Doc 02's gauges drift toward zero at one
- * mark per twenty seconds, which needs a server-authoritative timer tick
- * (a Durable Object alarm) to mean anything. That lands with the timer work
- * tracked in NEXT-STEPS; the permutation-discovery mechanics below do not
- * depend on it and are complete without it.
+ * **Drift is derived, never ticked.** Doc 02's gauges fall back toward zero
+ * at one mark per twenty seconds. Nothing here runs on a timer to make that
+ * happen: every rotation records the instant it was commanded, the state
+ * records the instant it was last settled to, and `replay` interleaves the
+ * drift due between them. The consequence is that the whole chamber, drift
+ * included, stays a pure function of stored timestamps and is testable
+ * without a Durable Object, exactly as `concord_lock.ts` is (D-018).
+ *
+ * Drift is uniform across all four gauges and depends only on elapsed time,
+ * so it is identical under every candidate wiring and cannot narrow the
+ * world set by itself. It does change *when* a gauge sits against a bound,
+ * which is what `lastClicks` reports, so it is replayed inside `candidates()`
+ * rather than applied afterwards.
  *
  * ## How the world space narrows, and why history has to be replayed
  *
@@ -85,11 +93,13 @@ export interface BlindPanelParams {
   readonly targets: Readonly<Record<GaugeId, number>>;
 }
 
-/** One rotate_dial call, exactly as commanded. */
+/** One rotate_dial call, exactly as commanded, and when it was commanded. */
 export interface RotationEvent {
   readonly dialId: DialId;
   readonly direction: Direction;
   readonly clicks: number;
+  /** Server clock at the moment of the call. Drift before it is applied first. */
+  readonly atMs: number;
 }
 
 /** Everything about this chamber that can change during play. */
@@ -97,6 +107,25 @@ export interface BlindPanelState {
   readonly params: BlindPanelParams;
   /** Every rotation commanded so far, in order. The state IS this history; everything else is derived. */
   readonly history: readonly RotationEvent[];
+  /** Server clock when the chamber was entered. Every drift total is counted from here. */
+  readonly enteredAtMs: number;
+  /** Milliseconds per mark of drift toward zero, or `null` when drift is off (Practice). */
+  readonly driftIntervalMs: number | null;
+  /** Server clock this state has been settled to. Everything derived is as of this instant. */
+  readonly observedAtMs: number;
+}
+
+/** Doc 02 section 3.3: every gauge falls back toward zero at one mark per twenty seconds. */
+export const DRIFT_INTERVAL_MS = 20_000;
+
+/**
+ * Milliseconds per mark of drift under a difficulty's `driftScale`.
+ *
+ * `null` means no drift at all, which is what Practice's scale of zero asks
+ * for. A scale above one shortens the interval, so the gauges fall faster.
+ */
+export function driftIntervalFor(driftScale: number): number | null {
+  return driftScale > 0 ? Math.round(DRIFT_INTERVAL_MS / driftScale) : null;
 }
 
 function opposite(direction: Direction): Direction {
@@ -124,15 +153,42 @@ function zeroGauges(): Record<GaugeId, number> {
  * real play calls it with the session's true `params`; the proof calls it
  * once per candidate wiring to see whether that candidate could have
  * produced the same observed click counts.
+ *
+ * `params` is passed separately from `state` precisely so the proof can hold
+ * the history, the clock and the drift rate fixed while varying only the
+ * hypothesis about the wiring.
  */
 function replay(
   params: BlindPanelParams,
-  history: readonly RotationEvent[],
+  state: BlindPanelState,
 ): { gaugeValues: Record<GaugeId, number>; registeredPerEvent: readonly number[] } {
   const gaugeValues = zeroGauges();
   const registeredPerEvent: number[] = [];
+  let driftApplied = 0;
 
-  for (const event of history) {
+  /**
+   * Pull every gauge one mark closer to zero for each drift interval that has
+   * elapsed by `atMs` and has not been accounted for yet.
+   *
+   * The count is taken from `enteredAtMs` every time rather than from the
+   * previous event, because a per-gap `Math.floor` would throw away a
+   * remainder at every rotation and lose whole marks over a six-minute
+   * chamber. Counting the cumulative total and applying the difference is
+   * exact however the rotations happen to be spaced.
+   */
+  const driftTo = (atMs: number): void => {
+    if (state.driftIntervalMs === null) return;
+    const due = Math.floor((atMs - state.enteredAtMs) / state.driftIntervalMs);
+    for (let mark = driftApplied; mark < due; mark++) {
+      for (const gauge of GAUGES) {
+        if (gaugeValues[gauge] > GAUGE_MIN) gaugeValues[gauge] -= 1;
+      }
+    }
+    if (due > driftApplied) driftApplied = due;
+  };
+
+  for (const event of state.history) {
+    driftTo(event.atMs);
     const gauge = params.dialToGauge[event.dialId];
     const inverted = params.inversions[event.dialId];
     const effective = inverted ? opposite(event.direction) : event.direction;
@@ -154,6 +210,11 @@ function replay(
     }
     registeredPerEvent.push(registered);
   }
+
+  // Whatever has fallen since the last rotation. This affects the readings
+  // but never `registeredPerEvent`, which only records what actually
+  // happened at each call.
+  driftTo(state.observedAtMs);
 
   return { gaugeValues, registeredPerEvent };
 }
@@ -186,18 +247,34 @@ export function generate(rng: Rng): BlindPanelParams {
 }
 
 /** Fresh state for a generated configuration: no rotations yet, every gauge at rest. */
-export function initial(params: BlindPanelParams): BlindPanelState {
-  return { params, history: [] };
+export function initial(
+  params: BlindPanelParams,
+  enteredAtMs: number,
+  driftIntervalMs: number | null,
+): BlindPanelState {
+  return { params, history: [], enteredAtMs, driftIntervalMs, observedAtMs: enteredAtMs };
+}
+
+/**
+ * Advance the chamber's clock so everything derived from it is current.
+ *
+ * The same shape as `concord_lock.settle`, and for the same reason: time is
+ * applied where it is observed, so no background tick is needed for drift to
+ * be real. Every action calls this first, and so does the reducer before it
+ * reads any gauge.
+ */
+export function settle(state: BlindPanelState, nowMs: number): BlindPanelState {
+  return nowMs > state.observedAtMs ? { ...state, observedAtMs: nowMs } : state;
 }
 
 /** Current gauge readings, derived by replaying the whole history. */
 export function gaugeValues(state: BlindPanelState): Readonly<Record<GaugeId, number>> {
-  return replay(state.params, state.history).gaugeValues;
+  return replay(state.params, state).gaugeValues;
 }
 
 /** How many clicks registered on the most recent rotation, or null before any. */
 export function lastRegisteredClicks(state: BlindPanelState): number | null {
-  const { registeredPerEvent } = replay(state.params, state.history);
+  const { registeredPerEvent } = replay(state.params, state);
   return registeredPerEvent.at(-1) ?? null;
 }
 
@@ -213,9 +290,11 @@ export function rotate(
   dialId: DialId,
   direction: Direction,
   clicks: number,
+  nowMs: number,
 ): BlindPanelState {
-  if (isSolved(state)) return state;
-  return { ...state, history: [...state.history, { dialId, direction, clicks }] };
+  const settled = settle(state, nowMs);
+  if (isSolved(settled)) return settled;
+  return { ...settled, history: [...settled.history, { dialId, direction, clicks, atMs: nowMs }] };
 }
 
 /**
@@ -245,7 +324,7 @@ export function correctAction(state: BlindPanelState): string | null {
  * count through the dial itself, and both readings are the same number.
  */
 export function facts(state: BlindPanelState) {
-  const { gaugeValues: values, registeredPerEvent } = replay(state.params, state.history);
+  const { gaugeValues: values, registeredPerEvent } = replay(state.params, state);
   return {
     /** PILOT reads the needles. */
     gaugeValues: visual(values),
@@ -267,9 +346,9 @@ export function facts(state: BlindPanelState) {
 }
 
 /**
- * Every wiring this chamber could have, holding the cross-link, the targets
- * and the rotation history fixed, and **replaying that history under each
- * candidate wiring** to check it could have produced what has actually been
+ * Every wiring this chamber could have, holding the cross-link, the targets,
+ * the rotation history and the clock (so the same drift applies to all of
+ * them) fixed, and **replaying that history under each candidate wiring** to check it could have produced what has actually been
  * observed so far (see the module docstring; this is the fix D-012 records
  * for Chamber I, applied here from the start rather than discovered again).
  *
@@ -278,7 +357,7 @@ export function facts(state: BlindPanelState) {
  * cross-link is deliberately not part of what this enumerates.
  */
 export function candidates(state: BlindPanelState): BlindPanelState[] {
-  const truth = replay(state.params, state.history).registeredPerEvent;
+  const truth = replay(state.params, state).registeredPerEvent;
   const out: BlindPanelState[] = [];
 
   for (const permutation of everyPermutation(GAUGES)) {
@@ -299,10 +378,11 @@ export function candidates(state: BlindPanelState): BlindPanelState[] {
         crossLink: state.params.crossLink,
         targets: state.params.targets,
       };
-      const { registeredPerEvent } = replay(candidateParams, state.history);
+      const candidate: BlindPanelState = { ...state, params: candidateParams };
+      const { registeredPerEvent } = replay(candidateParams, candidate);
       if (!arraysEqual(registeredPerEvent, truth)) continue;
 
-      out.push({ params: candidateParams, history: state.history });
+      out.push(candidate);
     }
   }
 

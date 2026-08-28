@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GameError } from "@semaphore/protocol";
+import { DIFFICULTIES, GameError, timerFor, type Difficulty } from "@semaphore/protocol";
 import * as airlock from "./chambers/airlock.js";
 import * as signalRoom from "./chambers/signal_room.js";
 import * as blindPanel from "./chambers/blind_panel.js";
@@ -922,5 +922,328 @@ describe("the Archive beat", () => {
     // Every prior chamber action in this test used latency 0 (fixed NOW), so
     // the window lands on the clamp floor: 6 x 0, clamped up to 12000.
     expect(after.concordLock!.staminaWindowMs).toBe(12_000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE CHAMBER TIMER (D-018)
+// ---------------------------------------------------------------------------
+
+/** The chamber timer, resolved the way the reducer resolves it. */
+const timerMs = (chamber: Parameters<typeof timerFor>[0], difficulty: Difficulty) =>
+  timerFor(chamber, difficulty)!;
+
+describe("the chamber deadline", () => {
+  it("is set on entry from the chamber timer and the preset", () => {
+    const session = begunSession();
+    expect(session.chamberDeadlineMs).toBe(NOW + timerMs("airlock", "standard"));
+  });
+
+  it("scales with the preset", () => {
+    const relaxed = reduce(
+      reduce(fresh(), { type: "begin_shift", designation: "K" }, NOW).session,
+      { type: "start", difficulty: "relaxed", mode: "full" },
+      NOW,
+    ).session;
+    expect(relaxed.chamberDeadlineMs).toBe(NOW + timerMs("airlock", "relaxed"));
+    expect(timerMs("airlock", "relaxed")).toBeGreaterThan(timerMs("airlock", "standard"));
+  });
+
+  it("is absent entirely in Practice, which is untimed", () => {
+    const practice = reduce(
+      reduce(fresh(), { type: "begin_shift", designation: "K" }, NOW).session,
+      { type: "start", difficulty: "practice", mode: "full" },
+      NOW,
+    ).session;
+    expect(practice.chamberDeadlineMs).toBeNull();
+    expect(timerFor("airlock", "practice")).toBeNull();
+  });
+
+  it("is refreshed when the next chamber is entered", () => {
+    const session = begunSession();
+    const later = NOW + 30_000;
+    const next = reduce(
+      session,
+      { type: "pull_lever", leverId: airlock.correctLever(session.airlock!.params) },
+      later,
+    ).session;
+    expect(next.machine.chamber).toBe("signal_room");
+    expect(next.chamberDeadlineMs).toBe(later + timerMs("signal_room", "standard"));
+  });
+});
+
+describe("running out of time", () => {
+  /** The airlock, one millisecond past its deadline. */
+  const expired = () => {
+    const session = begunSession();
+    return { session, atMs: session.chamberDeadlineMs! + 1 };
+  };
+
+  it("does not fire while there is still time left", () => {
+    const session = begunSession();
+    const { session: after } = reduce(
+      session,
+      { type: "pull_lever", leverId: airlock.correctLever(session.airlock!.params) },
+      session.chamberDeadlineMs! - 1,
+    );
+    expect(after.machine.phase).not.toBe("DEADLOCK");
+  });
+
+  it("deadlocks the session and logs the failure with its remaining ambiguity", () => {
+    const { session, atMs } = expired();
+    const result = reduce(session, { type: "pull_lever", leverId: "lever_a" }, atMs);
+
+    expect(result.session.machine.phase).toBe("DEADLOCK");
+    expect(result.session.chamberDeadlineMs).toBeNull();
+    const failure = result.events.find((e) => e.type === "failure");
+    expect(failure).toMatchObject({ type: "failure", failure: "DEADLOCK", chamber: "airlock" });
+    // Chamber 0 has three levers and none has been pulled, so all 1.58 bits
+    // PILOT owed KEEPER are still outstanding when time runs out.
+    expect(failure).toMatchObject({ concordBits: Math.log2(3) });
+  });
+
+  it("reads the CONCORD meter back in the failure text", () => {
+    const { session, atMs } = expired();
+    const { toolText } = reduce(session, { type: "pull_lever", leverId: "lever_a" }, atMs);
+    expect(toolText).toContain("DEADLOCK");
+    // Six worlds, three courses of action, log2(3) bits. The card quotes the
+    // count the bits are computed from, so the two numbers agree.
+    expect(toolText).toContain("3 courses of action");
+    expect(toolText).toContain("1.58 bits");
+    expect(toolText).toContain("retry_chamber");
+  });
+
+  it("does not apply the expired action itself", () => {
+    const { session, atMs } = expired();
+    const correct = airlock.correctLever(session.airlock!.params);
+    const { session: after } = reduce(session, { type: "pull_lever", leverId: correct }, atMs);
+    // The lever that would have solved the chamber never lands: time was
+    // already up when the call arrived.
+    expect(after.airlock!.pulled).toEqual([]);
+    expect(after.machine.phase).toBe("DEADLOCK");
+  });
+
+  it("answers further actions with the same text, and logs the failure only once", () => {
+    const { session, atMs } = expired();
+    const deadlocked = reduce(session, { type: "pull_lever", leverId: "lever_a" }, atMs).session;
+    const again = reduce(deadlocked, { type: "pull_lever", leverId: "lever_b" }, atMs + 1000);
+    expect(again.toolText).toContain("DEADLOCK");
+    expect(again.events).toEqual([]);
+  });
+
+  it("leaves the Archive beat untimed, so reading the ghost log cannot expire", () => {
+    const session = archiveSession();
+    expect(session.machine.phase).toBe("ARCHIVE");
+    // The blind panel's deadline is long past by construction here.
+    const wayLater = session.chamberDeadlineMs! + 10 * 60_000;
+    const { session: after } = reduce(session, { type: "read_station_log", entry: 1 }, wayLater);
+    expect(after.machine.phase).toBe("ARCHIVE");
+  });
+});
+
+describe("retry_chamber", () => {
+  const deadlocked = () => {
+    const session = begunSession();
+    const atMs = session.chamberDeadlineMs! + 1;
+    return {
+      session: reduce(session, { type: "pull_lever", leverId: "lever_a" }, atMs).session,
+      atMs,
+    };
+  };
+
+  it("is refused while the chamber is still live", () => {
+    expect(() => reduce(begunSession(), { type: "retry_chamber" }, NOW)).toThrow(GameError);
+  });
+
+  it("returns to the chamber with a fresh deadline and logs the re-entry", () => {
+    const { session, atMs } = deadlocked();
+    const result = reduce(session, { type: "retry_chamber" }, atMs);
+
+    expect(result.session.machine.phase).toBe("IN_CHAMBER");
+    expect(result.session.machine.chamber).toBe("airlock");
+    expect(result.session.chamberDeadlineMs).toBe(atMs + timerMs("airlock", "standard"));
+    expect(result.events).toMatchObject([{ type: "chamber_enter", chamber: "airlock" }]);
+  });
+
+  it("preserves the seed on the first retry, so nothing learned is thrown away", () => {
+    const { session, atMs } = deadlocked();
+    const before = session.airlock!.params;
+    const { session: retried, toolText } = reduce(session, { type: "retry_chamber" }, atMs);
+    expect(retried.airlock!.params).toEqual(before);
+    expect(toolText).toContain("exactly where you found it");
+  });
+
+  it("re-randomises on the second retry (doc 02 section 7)", () => {
+    // Deadlock, retry, deadlock again, retry again: the second reset is the
+    // one that re-keys the chamber.
+    const { session, atMs } = deadlocked();
+    const first = reduce(session, { type: "retry_chamber" }, atMs).session;
+    const secondExpiry = first.chamberDeadlineMs! + 1;
+    const again = reduce(first, { type: "pull_lever", leverId: "lever_a" }, secondExpiry).session;
+    const { session: second, toolText } = reduce(again, { type: "retry_chamber" }, secondExpiry);
+
+    expect(second.machine.retries).toBe(2);
+    expect(second.airlock!.params).not.toEqual(first.airlock!.params);
+    expect(toolText).toContain("re-keyed");
+  });
+
+  it("keeps progress through earlier chambers", () => {
+    // Deadlock in the Signal Room; the airlock stays solved behind it.
+    const session = signalRoomSession();
+    const atMs = session.chamberDeadlineMs! + 1;
+    const dead = reduce(session, { type: "press_key", keyId: 1 }, atMs).session;
+    const { session: retried } = reduce(dead, { type: "retry_chamber" }, atMs);
+
+    expect(retried.machine.chamber).toBe("signal_room");
+    expect(retried.airlock!.pulled).toHaveLength(1);
+    expect(retried.signalRoom!.pressedSequence).toEqual([]);
+  });
+});
+
+describe("time penalties", () => {
+  const wrongLever = (session: PersistedSession) =>
+    airlock.LEVERS.find((l) => l !== airlock.correctLever(session.airlock!.params))!;
+
+  it("charges a wrong lever twenty seconds against the deadline", () => {
+    const session = begunSession();
+    const result = reduce(session, { type: "pull_lever", leverId: wrongLever(session) }, NOW);
+    expect(result.session.chamberDeadlineMs).toBe(
+      session.chamberDeadlineMs! - airlock.WRONG_LEVER_PENALTY_MS,
+    );
+  });
+
+  it("logs the charge as a state delta, so a replay can redraw the timer", () => {
+    const session = begunSession();
+    const result = reduce(session, { type: "pull_lever", leverId: wrongLever(session) }, NOW);
+    expect(result.events).toContainEqual(
+      expect.objectContaining({
+        type: "state_delta",
+        path: "chamberDeadlineMs",
+        from: session.chamberDeadlineMs,
+        to: session.chamberDeadlineMs! - airlock.WRONG_LEVER_PENALTY_MS,
+      }),
+    );
+  });
+
+  it("charges nothing for the correct lever", () => {
+    const session = begunSession();
+    const correct = airlock.correctLever(session.airlock!.params);
+    const result = reduce(session, { type: "pull_lever", leverId: correct }, NOW);
+    expect(result.events.some((e) => e.type === "state_delta")).toBe(false);
+  });
+
+  it("charges a wrong key fifteen seconds", () => {
+    const session = signalRoomSession();
+    const target = signalRoom.correctSequence(session.signalRoom!.params);
+    const wrong = signalRoom.KEYS.find((k) => k !== target[0])!;
+    const result = reduce(session, { type: "press_key", keyId: wrong }, NOW);
+    expect(result.session.chamberDeadlineMs).toBe(
+      session.chamberDeadlineMs! - signalRoom.WRONG_KEY_PENALTY_MS,
+    );
+  });
+
+  it("charges a RACE CONDITION thirty seconds instead of the usual fifteen", () => {
+    let session = signalRoomSession();
+    const target = signalRoom.correctSequence(session.signalRoom!.params);
+    const wrong = signalRoom.KEYS.find((k) => k !== target[0])!;
+
+    const deadlines = [session.chamberDeadlineMs!];
+    for (let i = 0; i < 3; i++) {
+      session = reduce(session, { type: "press_key", keyId: wrong }, NOW).session;
+      deadlines.push(session.chamberDeadlineMs!);
+    }
+    const charged = deadlines.slice(1).map((d, i) => deadlines[i]! - d);
+    expect(charged).toEqual([
+      signalRoom.WRONG_KEY_PENALTY_MS,
+      signalRoom.WRONG_KEY_PENALTY_MS,
+      signalRoom.RACE_CONDITION_PENALTY_MS,
+    ]);
+  });
+
+  it("halves penalties in Relaxed and drops them entirely in Practice", () => {
+    for (const [difficulty, expected] of [
+      ["relaxed", airlock.WRONG_LEVER_PENALTY_MS / 2],
+      ["practice", 0],
+    ] as const) {
+      const session = reduce(
+        reduce(fresh(), { type: "begin_shift", designation: "K" }, NOW).session,
+        { type: "start", difficulty, mode: "full" },
+        NOW,
+      ).session;
+      const result = reduce(session, { type: "pull_lever", leverId: wrongLever(session) }, NOW);
+      // Practice is untimed, so there is no deadline to charge against at all.
+      const charged =
+        session.chamberDeadlineMs === null
+          ? 0
+          : session.chamberDeadlineMs - result.session.chamberDeadlineMs!;
+      expect(charged).toBe(expected);
+    }
+  });
+
+  it("can push the deadline into the past, which deadlocks on the next call", () => {
+    let session = begunSession();
+    // Wind the clock to within one penalty of the deadline, then get it wrong.
+    const atMs = session.chamberDeadlineMs! - airlock.WRONG_LEVER_PENALTY_MS + 1;
+    session = reduce(session, { type: "pull_lever", leverId: wrongLever(session) }, atMs).session;
+    expect(session.chamberDeadlineMs).toBeLessThan(atMs);
+    expect(session.machine.phase).toBe("IN_CHAMBER");
+
+    const next = reduce(session, { type: "pull_lever", leverId: "lever_a" }, atMs + 1);
+    expect(next.session.machine.phase).toBe("DEADLOCK");
+  });
+});
+
+describe("Chamber II's gauge drift", () => {
+  it("pulls every raised gauge one mark closer to zero per interval", () => {
+    const session = blindPanelSession();
+    const panel = session.blindPanel!;
+    const gauge = panel.params.dialToGauge[1];
+
+    // Raise one gauge, then let two drift intervals pass before looking again.
+    const raised = reduce(
+      session,
+      { type: "rotate_dial", dialId: 1, direction: "clockwise", clicks: 6 },
+      NOW,
+    ).session;
+    const before = blindPanel.gaugeValues(raised.blindPanel!)[gauge];
+
+    const later = blindPanel.settle(raised.blindPanel!, NOW + 2 * blindPanel.DRIFT_INTERVAL_MS);
+    expect(blindPanel.gaugeValues(later)[gauge]).toBe(Math.max(0, before - 2));
+  });
+
+  it("never pushes a gauge below zero", () => {
+    const session = blindPanelSession();
+    const parked = blindPanel.settle(session.blindPanel!, NOW + 100 * blindPanel.DRIFT_INTERVAL_MS);
+    expect(Object.values(blindPanel.gaugeValues(parked))).toEqual([0, 0, 0, 0]);
+  });
+
+  it("is off in Practice, where the panel holds whatever it is set to", () => {
+    expect(blindPanel.driftIntervalFor(DIFFICULTIES.practice.driftScale)).toBeNull();
+    expect(blindPanel.driftIntervalFor(DIFFICULTIES.relaxed.driftScale)).toBe(
+      blindPanel.DRIFT_INTERVAL_MS * 2,
+    );
+  });
+
+  it("costs clicks that were registered before the drift, not after it", () => {
+    // A gauge raised to 6 and left to fall for three intervals reads 3, so a
+    // subsequent 8-click command registers only up to the bound from there.
+    const session = blindPanelSession();
+    const first = reduce(
+      session,
+      { type: "rotate_dial", dialId: 1, direction: "clockwise", clicks: 6 },
+      NOW,
+    ).session;
+    const at = NOW + 3 * blindPanel.DRIFT_INTERVAL_MS;
+    const second = reduce(
+      first,
+      { type: "rotate_dial", dialId: 1, direction: "clockwise", clicks: 8 },
+      at,
+    ).session;
+
+    const registered = blindPanel.lastRegisteredClicks(second.blindPanel!);
+    const inverted = second.blindPanel!.params.inversions[1];
+    // Not inverted: the gauge sat at 3 after drifting, so 5 clicks reach 8.
+    // Inverted: it was already driven to its bound, so nothing registers.
+    expect(registered).toBe(inverted ? 0 : 5);
   });
 });
