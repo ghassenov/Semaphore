@@ -15,6 +15,9 @@ The Phaser client. It renders PILOT's world and hosts the WebMCP tool director. 
 - **The palette is locked at 14 colours** (doc 06 section 2). Adding a fifteenth is a decision-log entry, not a judgement call. There is no green: success is a bone-white flash and a shape change.
 - **Native resolution is 320x180, integer scaling only.** Fractional scaling produces half-pixel shimmer that reads as carelessness.
 - **Greybox before art.** Every chamber ships as flat rectangles in palette colours and is playtested before a single final sprite is drawn.
+- **Phaser is imported dynamically, in `render/station.ts`, and nowhere else** (D-026). It is 358KB gzipped against a 400KB budget, and the gate screen must never fetch it. A static `import ... from "phaser"` anywhere else undoes that silently; `scripts/check-bundle.mjs` fails the build when it does.
+- **What a frame contains is decided in `render/rooms.ts` and `render/hud.ts`, which are pure.** The scenes only paint. Anything that can be decided without a canvas is decided there, because that is the half that can be wrong in a way nobody notices by looking, and it is the half with tests.
+- **The room ends at `ROOM_RIGHT`.** Everything from `GRATE_X` rightward is KEEPER's, and a piece drawn past it is a mechanism PILOT could walk to. Captions are centred under their piece and are routinely wider than it, so the caption is what reaches the grate first; the tests measure the caption, not the rectangle.
 - Tool descriptions are agent-facing UI copy. Budgets are 500 characters per description, 150 per parameter description, 30 per name, 1500 per output, and they are enforced by `src/webmcp/budgets.test.ts` over the tool objects rather than by a lint rule over the source (D-022). That test also pins the annotations, so adding a tool means adding it to the mutating or untrusted-content list there, deliberately.
 
 ## Change Log
@@ -24,3 +27,4 @@ The Phaser client. It renders PILOT's world and hosts the WebMCP tool director. 
 | 2026-08-27 | Ahmed Saad | Created. Client rules recorded ahead of the rewrite. |
 | 2026-08-28 | Ahmed Saad | WebMCP tool layer landed: adapter, director, tool modules. Budgets enforced by test rather than lint (D-022); registry-follows-server rule added (D-021). |
 | 2026-08-28 | Ahmed Saad | The view feed landed (`net/socket.ts`, D-025). No rule change: the no-puzzle-values-in-DOM rule already governed it, and the operator console prints fact names only because of it. |
+| 2026-08-28 | Ahmed Saad | Phaser and the scenes landed (plan 1.4). Rules added for the dynamic import (D-026), the pure-layout split, and the grate boundary. The operator console is gone: its view feed, manifest and log are drawn on the canvas now. |

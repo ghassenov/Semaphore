@@ -1,11 +1,14 @@
 /*
- * Greybox styling for the gate screen and the operator console.
+ * Greybox styling for the gate screen and the station page.
  *
  * Palette values are the subset of doc 06 section 2 these two surfaces need:
  * bone-white for what both parties perceive, amber for PILOT, cyan for
  * KEEPER. That is not decoration, it is the game's information architecture,
- * so the console uses cyan for the tool manifest and amber for PILOT's own
- * controls even at this stage - the habit is easier to keep than to retrofit.
+ * so amber is reserved for PILOT's own controls even at this stage - the habit
+ * is easier to keep than to retrofit.
+ *
+ * The canvas is the game. Everything here is the frame around it, so the stage
+ * gets the width and the controls below it get whatever is left.
  */
 
 :root {
@@ -112,45 +115,25 @@ button:focus-visible {
   border-color: var(--amber);
 }
 
-.status {
-  display: grid;
-  grid-template-columns: 10rem 1fr;
-  gap: 0.2rem 1rem;
-  margin: 0;
+/*
+ * The canvas stage.
+ *
+ * Sized in `aspect-ratio` rather than fixed pixels so the browser hands Phaser
+ * a box of the right shape and its own integer snapping picks the multiple.
+ * `image-rendering: pixelated` matters on the CSS side as well as the WebGL
+ * one: without it the browser resamples the upscale and the integer snapping
+ * we went to the trouble of configuring is undone at the last step.
+ */
+.stage {
+  width: 100%;
+  max-width: 40rem;
+  margin: 0 auto 1.5rem;
+  aspect-ratio: 16 / 9;
+  background: #0d0f14;
+  border: 1px solid var(--rule);
 }
 
-.status dt {
-  color: var(--bone-dim);
-}
-
-.status dd {
-  margin: 0;
-}
-
-.manifest,
-.log {
-  margin: 0;
-  padding-left: 1.2rem;
-}
-
-.manifest {
-  color: var(--cyan);
-  list-style: square;
-}
-
-.manifest .empty {
-  color: var(--bone-dim);
-  font-style: italic;
-}
-
-.log {
-  color: var(--bone-dim);
-  font-size: 0.85rem;
-  list-style: none;
-  padding-left: 0;
-}
-
-.log li {
-  padding: 0.2rem 0;
-  border-bottom: 1px solid var(--rule);
+.stage canvas {
+  display: block;
+  image-rendering: pixelated;
 }
