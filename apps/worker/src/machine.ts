@@ -140,3 +140,23 @@ function transitionOut(state: MachineState): MachineState {
 export function preservesSeed(state: MachineState): boolean {
   return state.retries === 1;
 }
+
+/**
+ * The seed a chamber is generated from on entry, and on every retry after a
+ * DEADLOCK.
+ *
+ * Doc 02 section 7: the first retry preserves the seed, because a chamber's
+ * hard-won empirical knowledge (Chamber II's dial mapping above all) would be
+ * pure punishment to re-roll. A second retry re-randomises. `preservesSeed`
+ * is the single definition of which retry that is; a first entry, with no
+ * retries at all, trivially uses the base seed.
+ *
+ * Lives here rather than in the reducer because two callers now need it and
+ * only one of them mutates: the reducer generates a chamber from it, and
+ * `manual.ts` derives the Signal Room's vandalism flag from it so the manual
+ * reads the same before the room is entered as it does inside it.
+ */
+export function chamberSeed(seed: string, chamber: ChamberId, state: MachineState): string {
+  const preserved = state.retries === 0 || preservesSeed(state);
+  return preserved ? `${seed}:${chamber}` : `${seed}:${chamber}:retry${state.retries}`;
+}
