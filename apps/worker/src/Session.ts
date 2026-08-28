@@ -57,6 +57,10 @@ function labelFor(action: Action): string {
       return "aligning a bolt";
     case "speak_passphrase":
       return "speaking the passphrase";
+    case "read_station_log":
+      return "reading the station log";
+    case "leave_archive":
+      return "leaving the archive";
   }
 }
 
@@ -134,6 +138,13 @@ export class Session {
     if (pathname.endsWith("/speak_passphrase")) {
       const body = (await request.json()) as { phrase?: unknown };
       return this.#act({ type: "speak_passphrase", phrase: String(body.phrase ?? "") });
+    }
+    if (pathname.endsWith("/read_station_log")) {
+      const body = (await request.json()) as { entry?: unknown };
+      return this.#act({ type: "read_station_log", entry: Number(body.entry ?? 0) });
+    }
+    if (pathname.endsWith("/leave_archive")) {
+      return this.#act({ type: "leave_archive" });
     }
 
     return new Response("Not found", { status: 404 });
