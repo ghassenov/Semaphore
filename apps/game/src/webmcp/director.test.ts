@@ -12,6 +12,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CHAMBER_ORDER, DOCUMENT_TOOL_NAMES } from "@semaphore/protocol";
 import type { Phase, PilotView } from "@semaphore/protocol";
 import { SessionClient, type StateSummary } from "../net/sessionClient.js";
 import { ToolDirector } from "./director.js";
@@ -302,5 +303,92 @@ describe("instrumentation", () => {
     controller.abort();
     await expect(pending).rejects.toThrow(DOMException);
     expect(calls).toEqual(["cancelled"]);
+  });
+});
+
+/**
+ * Delegation to the archive origin (doc 03 section 7).
+ *
+ * The claim being defended is that moving `read_manual` and
+ * `read_station_log` to a second origin changes **where** they are registered
+ * and nothing about **when**. The tier tables stay the one place that says
+ * how long a tool lives, and the director still reads that from the server's
+ * machine state. So each test here has a same-origin twin above it, and the
+ * two should agree on lifetime.
+ */
+describe("cross-origin delegation", () => {
+  /** A director with both document tools handed to another origin. */
+  function delegating(): { director: ToolDirector; sent: string[][] } {
+    const sent: string[][] = [];
+    const client = new SessionClient("s_test");
+    return {
+      director: new ToolDirector(client, {
+        delegated: DOCUMENT_TOOL_NAMES,
+        onDelegate: (tools) => sent.push([...tools]),
+      }),
+      sent,
+    };
+  }
+
+  /** The most recent set asked of the other origin. */
+  const latest = (sent: string[][]): string[] => sent[sent.length - 1] ?? [];
+
+  it("does not register a delegated tool on this page", async () => {
+    const { director: d } = delegating();
+    await d.applyState(state("LOBBY"));
+    expect(registry.names()).toContain("get_status");
+    expect(registry.names()).not.toContain("read_manual");
+  });
+
+  it("asks the other origin for it instead, at the same moment", async () => {
+    const { director: d, sent } = delegating();
+    await d.mountEntry();
+    expect(latest(sent)).toEqual([]);
+    await d.applyState(state("LOBBY"));
+    expect(latest(sent)).toEqual(["read_manual"]);
+  });
+
+  it("adds read_station_log for the Archive beat and takes it away after", async () => {
+    const { director: d, sent } = delegating();
+    await d.applyState(state("LOBBY"));
+    await d.applyState(state("ARCHIVE"));
+    expect(latest(sent)).toEqual(["read_manual", "read_station_log"]);
+
+    await d.applyState(state("IN_CHAMBER", "concord_lock"));
+    expect(latest(sent)).toEqual(["read_manual"]);
+  });
+
+  it("keeps read_manual across every chamber transition, as the session tier does", async () => {
+    const { director: d, sent } = delegating();
+    await d.applyState(state("LOBBY"));
+    for (const chamber of CHAMBER_ORDER) await d.applyState(state("IN_CHAMBER", chamber));
+    expect(latest(sent)).toEqual(["read_manual"]);
+    // Never dropped and re-added along the way: a manual that flickered out
+    // at each door would be the registry lying about KEEPER's faculties.
+    expect(sent.every((set) => set.includes("read_manual") || set.length === 0)).toBe(true);
+  });
+
+  it("takes everything back at the finale, leaving one tool in the whole game", async () => {
+    const { director: d, sent } = delegating();
+    await d.applyState(state("LOBBY"));
+    await d.applyState(state("FINALE"));
+    expect(latest(sent)).toEqual([]);
+    expect(registry.names()).toEqual(["open_the_door"]);
+  });
+
+  it("drains both origins to empty at the end, which is the last beat", async () => {
+    const { director: d, sent } = delegating();
+    await d.applyState(state("LOBBY"));
+    await d.applyState(state("ARCHIVE"));
+    await d.applyState(state("ESCAPED"));
+    expect(latest(sent)).toEqual([]);
+    expect(registry.names()).toEqual([]);
+  });
+
+  it("registers both document tools here when nothing is delegated", async () => {
+    const { director: d } = director();
+    await d.applyState(state("ARCHIVE"));
+    expect(registry.names()).toContain("read_manual");
+    expect(registry.names()).toContain("read_station_log");
   });
 });

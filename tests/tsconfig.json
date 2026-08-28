@@ -1,4 +1,11 @@
 {
   "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    // `cross-origin-delegation.ts` drives a browser over the DevTools
+    // Protocol, so it uses `fetch`, `WebSocket`, `URLSearchParams` and
+    // `console`: web APIs that Node 22+ implements and that the base
+    // configuration's ES2022 library does not declare.
+    "lib": ["ES2022", "DOM"]
+  },
   "include": ["."]
 }

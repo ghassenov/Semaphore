@@ -64,3 +64,21 @@ export type {
   ToolCallEvent,
   ToolCancelEvent,
 } from "./log.js";
+
+export {
+  ARCHIVE_CHANNEL,
+  DOCUMENT_TOOLS,
+  DOCUMENT_TOOL_NAMES,
+  READ_MANUAL,
+  READ_STATION_LOG,
+  isArchiveReady,
+  isArchiveRegistered,
+  isArchiveTools,
+} from "./tools.js";
+export type {
+  ArchiveReadyMessage,
+  ArchiveRegisteredMessage,
+  ArchiveToolsMessage,
+  ToolInputSchema,
+  ToolSpec,
+} from "./tools.js";

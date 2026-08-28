@@ -10,14 +10,15 @@ It answers three questions and only three: where the repo is right now, what to 
 
 | | |
 |---|---|
-| **Last updated** | 2026-08-28, Ahmed Saad |
+| **Last updated** | 2026-08-29, Ahmed Saad |
 | **Spike** | **Run** against Chrome 151, 2026-08-28. Doc 11 filled. Three findings, D-024. ChatGPT's in-app browser still untested. |
-| **Branch** | `feat/phaser-scenes`, off `main` at `3c5b940`, **not pushed** |
-| **Pipeline** | Green: 503 tests, typecheck, lint, format, `vite build` plus the bundle budget, real `wrangler deploy --dry-run` |
-| **Played** | A full session, end to end, in Chrome 151 against a live `wrangler dev`: all four chambers, the Archive, the finale, ~17s. The registry ends genuinely empty. |
+| **Branch** | `feat/archive-origin`, off `main` at `9a9e775`, **not pushed** |
+| **Pipeline** | Green: 580 tests, typecheck, lint, format, both `vite build`s plus the bundle budget, real `wrangler deploy --dry-run` |
+| **Played** | A full session, end to end, in Chrome 151 against a live `wrangler dev`: all four chambers, the Archive, the finale. The registry ends genuinely empty. |
+| **Delegation** | **Working and proved.** `apps/archive` serves `read_manual` and `read_station_log` from a second origin. `tests/cross-origin-delegation.ts`: 17 checks, run twice (frame embedded, and fallback), both green on Chrome 151, 2026-08-29. `ARCHIVE_ORIGIN` stays `same` (D-033). |
 | **Verify with** | `pnpm install && pnpm typecheck && pnpm lint && pnpm test && pnpm build` |
-| **Run it** | `cd apps/worker && npx wrangler dev` in one shell, `cd apps/game && pnpm dev` in another. Vite proxies `/session` to `127.0.0.1:8787`, WebSocket included. |
-| **Bundle** | Entry **11.6KB** gzipped of a 400KB budget. Phaser is a separate 358KB chunk, fetched only when a shift starts (D-026). |
+| **Run it** | `cd apps/worker && npx wrangler dev` in one shell, `cd apps/game && pnpm dev` in another. Vite proxies `/session` to `127.0.0.1:8787`, WebSocket included. For the cross-origin path, see `apps/archive/CLAUDE.md`. |
+| **Bundle** | Entry **10.8KB** gzipped of a 400KB budget; the archive origin is **2.2KB**. Phaser is a separate 358KB chunk, fetched only when a shift starts (D-026). |
 | **Cloudflare** | Logged in. D1 database `semaphore-sessions` provisioned and migrated, local and remote. |
 
 ### What exists
@@ -25,13 +26,13 @@ It answers three questions and only three: where the repo is right now, what to 
 | Path | State |
 |---|---|
 | `docs/design/` | Numbered set 00-12, complete. Plan sections 0.4 and 1.4 ticked. |
-| `docs/` | Decision log at D-030, lessons journal live. |
+| `docs/` | Decision log at D-033, lessons journal live. |
 | `packages/seed`, `packages/protocol` | Done. |
 | `apps/worker/src/chambers/*.ts` | Done. All four chambers: generation, state, facts, world enumeration. |
 | `apps/worker/src/reducer.ts` | Done end to end, ENTRY through **ESCAPED**. `ambiguityFor` is now exported, for the CONCORD route. |
 | `apps/worker/src/views.ts`, `pilot.ts`, `manual.ts` | Done. `pilot.ts` also exports `inTheRoom`, the one phase gate the frame and the meter share. |
 | `apps/worker/src/Session.ts` | Done. Read routes, machine state on every response, `/socket` (D-025), `/concord` (D-027) and the notepad's two routes (D-028). |
-| `apps/game/src/webmcp/*` | Done. Adapter (now covering the declarative API too), three-tier director, 14 tools. `tools.notepad.ts` holds both halves of the pad. |
+| `apps/game/src/webmcp/*` | Done. Adapter (declarative API and `fromOrigins` too), three-tier director, 14 tools, and the archive frame. `tools.notepad.ts` holds both halves of the pad. |
 | `apps/game/src/net/*` | Done. `sessionClient` gained `concord()`; the socket is unchanged. |
 | `apps/game/src/render/palette.ts` | The 14 locked colours, and the one place a channel becomes a colour. |
 | `apps/game/src/render/rooms.ts` | **Pure.** All four rooms as geometry, from one `PilotView`. Takes no other input, by design and by type. |
@@ -42,7 +43,12 @@ It answers three questions and only three: where the repo is right now, what to 
 | `apps/game/src/ui.ts` | The DOM shell: gate screen, canvas mount, prompt card, PILOT's buttons. The operator console is gone. |
 | `tests/possible-worlds.test.ts` | Done and passing for all four chambers. The headline proof, honestly scoped. |
 | `apps/spike/` | Built and **run** (Chrome 151, headless, 2026-08-28): 24 checks, 1 failing, 3 awaiting a model. |
-| `apps/archive/`, `bench/` | Rules files only, no code. |
+| `apps/archive/src/*` | Done. `registrar.ts` is this origin's only spec contact; `station.ts` fetches the worker; `main.ts` is the boot and the message bridge. Holds no content of its own. |
+| `apps/game/src/webmcp/archiveFrame.ts` | The game's half: the hidden `allow="tools"` frame, and the pipe the director's tool set travels down. |
+| `apps/worker/src/cors.ts` | The origin allowlist, applied in the router so no route can forget it. `ALLOWED_ORIGINS` is a var; empty means same-origin only. |
+| `packages/protocol/src/tools.ts` | The two document tools, declared once for the two origins that register them, plus the bridge's message shapes. |
+| `tests/cross-origin-delegation.ts` | The browser proof. Node plays a session, Chrome follows, and the registry is read out of the browser at every beat. |
+| `bench/` | Rules file only, no code. |
 
 ---
 
@@ -74,14 +80,7 @@ and which the game now genuinely uses.
 one-tool page gets discovered unprompted, whether `untrustedContentHint`
 changes behaviour, and the latency distribution that sizes Chamber III's window.
 
-### 3. `apps/archive`, and moving `read_manual` and `read_station_log` to it
-
-D-017 and D-020 record exactly what moves. One shape to know in advance: the
-vandalised Signal Room page is drawn from the session seed and the archive
-origin holds no storage binding, so it will serve static section text and fetch
-the session-scoped annotation from the worker.
-
-### 4. The rest of the art
+### 3. The rest of the art
 
 The glyphs, the bodies and the hull tiles are drawn (D-029). Still greybox
 rectangles: levers, keys, gauges, dials, bolts, the cipher wheel, the door.
@@ -89,15 +88,26 @@ rectangles: levers, keys, gauges, dials, bolts, the cipher wheel, the door.
 same checks. Do this after the playtest, not before: the layout constants are
 the whole vertical budget and a sprite pass changes what is drawn, not where.
 
+### 4. Deploy the archive origin as its own Pages project
+
+The code is done and proved locally; what is not done is the second Cloudflare
+Pages project and the preview-deploy wiring for it. Until that exists the
+cross-origin path cannot be tested on a URL, which is what a playtester and
+ChatGPT's in-app browser both need. `VITE_ARCHIVE_ORIGIN` and the worker's
+`ALLOWED_ORIGINS` are the only two settings involved.
+
 ## Things that will bite you
 
+- **A default `getTools()` does not include a cross-origin frame's tools**, even when `allow="tools"` and `exposedTo` are both satisfied. The consumer has to pass `fromOrigins` (doc 11 section 4). The manifest plate is what notices, and it notices by silently showing four tools where there are five.
+- **The archive frame's fetches need `ALLOWED_ORIGINS` in `apps/worker/.dev.vars`,** which is git-ignored, so every checkout writes its own. Without it the manual silently does not exist and the console says CORS, not "the game is broken".
+- **One `AbortController` per delegated tool, never one per message** (D-033). Rebuilding the set on each change would abort and re-register `read_manual` at every door, which is the registry telling an agent its manual was taken away and given back.
 - **A declarative tool leaves the registry only when its element leaves the DOM** (D-024, fixed in D-028). Aborting a signal will not do it. `endSession` and `#enterFinale` both remove the notepad form, and anything that adds a second declarative tool has to do both too. `fake-registry.ts` models this now, so a regression fails a test rather than a demo.
-- **The scripted playthrough is the fastest way to find a rendering bug.** It plays a full session in about seventeen seconds and screenshots every beat. Three of this session's five defects were invisible to unit tests and obvious in a frame.
+- **A scripted playthrough is the fastest way to find a rendering or registry bug.** `tests/cross-origin-delegation.ts` plays a full session against live servers in about twenty seconds; three of the greybox phase's five defects were invisible to unit tests and obvious in a frame.
 - **Never import Phaser statically outside `render/station.ts`** (D-026). One top-level import moves 358KB into the entry chunk, and nothing about the page looks wrong. `apps/game/scripts/check-bundle.mjs` fails the build, which is the only thing that will tell you.
 - **Captions are wider than their pieces.** A caption is centred under its piece and routinely overhangs it, so the caption is what collides with the next piece, runs past the grate, or falls out of the room band. Three separate layout bugs in this phase were all this one thing, and all three were invisible to a test that measured rectangles. The tests now measure caption extents; keep it that way.
 - **The server writes for an agent, not for a 172-pixel panel.** `start full` answers with a paragraph. Anything from a tool response that reaches the HUD goes through `truncate` first, or it draws straight through the panel beside it.
 - **`execute` takes one argument and no `AbortSignal`** in Chrome 151, reversing D-007. The plumbing is kept, typed optional and documented as unimplemented (D-024).
-- **A host invocation delivers input as an object; the page-side `executeTool` helper wants a JSON string** (D-024). The game is only ever host-invoked. The benchmark harness will have to serialise.
+- **A host invocation delivers input as an object; the page-side `executeTool` helper wants a JSON string** (D-024). The game is only ever host-invoked. The benchmark harness will have to serialise. Driving one over CDP, `WebMCP.invokeTool` also takes a `frameId` and returns only an `invocationId`: the output arrives later on `WebMCP.toolResponded`, and a driver that reads the command's own return value concludes the tool is broken.
 - **`machine.chamber` outlives the room** (D-025). `pilot.inTheRoom` is the shared gate; use it rather than writing a second phase list. The renderer additionally treats an empty `facts` as "no room here", which is the same answer arrived at from the frame.
 - **A read-only route must not take the semaphore** (D-019, and now D-027). The CONCORD meter is polled every 2.5 seconds; if it took a permit it would return `E_BUSY` for looking.
 - **`describe_chamber` must answer every phase, not just the chambers.** An agent that has lost the thread needs a next action, not a diagnosis.
@@ -127,7 +137,8 @@ the whole vertical budget and a sprite pass changes what is drawn, not where.
 
 | Item | Owner | Note |
 |---|---|---|
-| Spike in ChatGPT's in-app browser | Human | The only thing keeping `ARCHIVE_ORIGIN` at `same`. Chrome already passes cross-origin delegation. |
+| Spike in ChatGPT's in-app browser | Human | Still the only thing keeping `ARCHIVE_ORIGIN` at `same`. Chrome passes the whole delegated path now, not just the spike. |
+| A second Pages project for `apps/archive` | Human | Needs a Cloudflare project and preview-deploy wiring. Until it exists the cross-origin path only runs locally. |
 | Socket behaviour through Cloudflare's edge | Human | Verified against local `workerd` only. Watch a deployed session through one full chamber before rehearsing the demo on it. |
 | A real agent session | Human | Everything needed exists and has been driven in headless Chrome. Doc 11 sections 6 and 7 stay empty until a model meets the page. |
 | Playtesters | Human | Doc 08 section 0.1 wants six. The greybox is now playable, so this unblocks. The only task that does not parallelise. |

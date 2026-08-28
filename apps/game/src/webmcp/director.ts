@@ -83,6 +83,23 @@ export interface DirectorHooks {
    * outcome, not a degraded one.
    */
   readonly notepadHost?: HTMLElement;
+  /**
+   * Tools this page must not register because another origin serves them.
+   *
+   * Empty in the single-origin fallback, and `DOCUMENT_TOOL_NAMES` when the
+   * archive origin is embedded (doc 03 section 7). A delegated tool is
+   * filtered out of whichever tier it belongs to and its name is passed to
+   * `onDelegate` instead, so the tier tables stay the one place that says
+   * which tools live how long. Where a tool is *registered* changes; when it
+   * exists does not.
+   */
+  readonly delegated?: readonly string[];
+  /**
+   * Called with the delegated tools that should exist right now, every time a
+   * tier changes. The complete set rather than a delta, so a frame that
+   * missed a message is corrected by the next one rather than drifting.
+   */
+  readonly onDelegate?: (tools: readonly string[]) => void;
 }
 
 /**
@@ -154,6 +171,17 @@ export class ToolDirector {
 
   /** Serialises `applyState`, so two responses landing together cannot double-register. */
   #queue: Promise<void> = Promise.resolve();
+
+  /**
+   * The delegated tools currently asked for, so the two tiers that can hold
+   * one can be recombined without either forgetting the other.
+   *
+   * `read_manual` belongs to the session tier and `read_station_log` to the
+   * Archive beat's chamber tier, and they overlap in time. A single "what did
+   * I last send" would therefore be wrong the moment the Archive opens.
+   */
+  #delegatedSession: readonly string[] = [];
+  #delegatedChamber: readonly string[] = [];
 
   constructor(
     private readonly client: SessionClient,
@@ -236,9 +264,13 @@ export class ToolDirector {
     this.#entryCtl?.abort();
     this.#chamberCtl?.abort();
     this.#chamberCtl = null;
+    const session = persistentTools(this.client);
+    this.#delegatedSession = this.#theirs(session);
+    this.#delegatedChamber = [];
+    this.#announceDelegated();
     if (!this.#sessionCtl) {
       this.#sessionCtl = new AbortController();
-      await this.#register(persistentTools(this.client), this.#sessionCtl.signal);
+      await this.#register(this.#own(session), this.#sessionCtl.signal);
       // `read_note` came up in that list. `write_note` cannot: it is a form,
       // and putting the element in the document is the registration. The pad
       // is the one tool in the game that needs both mechanisms.
@@ -270,7 +302,9 @@ export class ToolDirector {
     await this.#startSession();
     this.#chamberCtl?.abort();
     this.#chamberCtl = new AbortController();
-    await this.#register(tools, this.#chamberCtl.signal);
+    this.#delegatedChamber = this.#theirs(tools);
+    this.#announceDelegated();
+    await this.#register(this.#own(tools), this.#chamberCtl.signal);
   }
 
   /**
@@ -289,6 +323,9 @@ export class ToolDirector {
     this.#sessionCtl?.abort();
     this.#sessionCtl = null;
     this.#removeNotepad();
+    this.#delegatedSession = [];
+    this.#delegatedChamber = [];
+    this.#announceDelegated();
     this.#chamberCtl = new AbortController();
     await this.#register(finaleTools(this.client), this.#chamberCtl.signal);
     this.#tier = { kind: "finale" };
@@ -327,6 +364,9 @@ export class ToolDirector {
     this.#chamberCtl?.abort();
     this.#sessionCtl?.abort();
     this.#removeNotepad();
+    this.#delegatedSession = [];
+    this.#delegatedChamber = [];
+    this.#announceDelegated();
     this.#chamberCtl = null;
     this.#sessionCtl = null;
     this.#tier = { kind: "ended" };
@@ -335,6 +375,31 @@ export class ToolDirector {
   /** Register a tier's tools, instrumented, in order. */
   async #register(tools: readonly GameTool[], signal: AbortSignal): Promise<void> {
     for (const tool of tools) await registerTool(this.#instrument(tool), signal);
+  }
+
+  /** The tools in this tier this page registers itself. */
+  #own(tools: readonly GameTool[]): readonly GameTool[] {
+    const delegated = this.hooks.delegated ?? [];
+    if (delegated.length === 0) return tools;
+    return tools.filter((tool) => !delegated.includes(tool.name));
+  }
+
+  /** The tools in this tier another origin registers. */
+  #theirs(tools: readonly GameTool[]): readonly string[] {
+    const delegated = this.hooks.delegated ?? [];
+    if (delegated.length === 0) return [];
+    return tools.filter((tool) => delegated.includes(tool.name)).map((tool) => tool.name);
+  }
+
+  /**
+   * Tell the other origin the full set it should be holding.
+   *
+   * Called after every tier change, including the ones that remove
+   * everything, because the ending is the registry draining to empty and a
+   * tool left alive on another origin would make that a lie.
+   */
+  #announceDelegated(): void {
+    this.hooks.onDelegate?.([...this.#delegatedSession, ...this.#delegatedChamber]);
   }
 
   /**
