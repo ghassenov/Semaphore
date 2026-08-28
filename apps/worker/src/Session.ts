@@ -44,6 +44,23 @@ export interface Env {
   SESSIONS_DB: D1Database;
 }
 
+/**
+ * The POST body, as an object, whatever arrived.
+ *
+ * Never throws. An empty body, a malformed one and a body that is not an
+ * object all answer `{}`, and every route already defaults every field it
+ * reads, so a bad body produces the game's own validation message rather than
+ * a 500. The important part is that the stream is always consumed.
+ */
+async function readBody(request: Request): Promise<Record<string, unknown>> {
+  try {
+    const parsed: unknown = await request.json();
+    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
 /** A label for the `E_BUSY` message a concurrent caller would see. */
 function labelFor(action: Action): string {
   switch (action.type) {
@@ -141,12 +158,19 @@ export class Session {
     }
     if (request.method !== "POST") return new Response("Not found", { status: 404 });
 
+    // Drain the body once, before any route decides anything.
+    //
+    // Several actions take no parameters and used to answer without reading
+    // it. The client posts `{}` to all of them regardless, and a response sent
+    // while the request stream is still open is a real fault: workerd raises
+    // "Can't read from request stream after response has been sent", which in
+    // local development takes down wrangler's proxy and with it the whole dev
+    // session. Reading here means no route can forget.
+    const body = await readBody(request);
     if (pathname.endsWith("/begin_shift")) {
-      const body = (await request.json()) as { designation?: unknown };
       return this.#act({ type: "begin_shift", designation: String(body.designation ?? "") });
     }
     if (pathname.endsWith("/start")) {
-      const body = (await request.json()) as { difficulty?: unknown; mode?: unknown };
       return this.#act({
         type: "start",
         difficulty: (body.difficulty as PersistedSession["difficulty"] | undefined) ?? "standard",
@@ -154,22 +178,15 @@ export class Session {
       });
     }
     if (pathname.endsWith("/pull_lever")) {
-      const body = (await request.json()) as { lever_id?: unknown };
       return this.#act({ type: "pull_lever", leverId: String(body.lever_id ?? "") as LeverId });
     }
     if (pathname.endsWith("/press_key")) {
-      const body = (await request.json()) as { key_id?: unknown };
       return this.#act({ type: "press_key", keyId: Number(body.key_id ?? 0) as KeyId });
     }
     if (pathname.endsWith("/reset_sequence")) {
       return this.#act({ type: "reset_sequence" });
     }
     if (pathname.endsWith("/rotate_dial")) {
-      const body = (await request.json()) as {
-        dial_id?: unknown;
-        direction?: unknown;
-        clicks?: unknown;
-      };
       return this.#act({
         type: "rotate_dial",
         dialId: Number(body.dial_id ?? 0) as DialId,
@@ -181,15 +198,12 @@ export class Session {
     if (pathname.endsWith("/grip_bar")) return this.#act({ type: "grip_bar" });
     if (pathname.endsWith("/release_bar")) return this.#act({ type: "release_bar" });
     if (pathname.endsWith("/align_bolt")) {
-      const body = (await request.json()) as { bolt_id?: unknown };
       return this.#act({ type: "align_bolt", boltId: Number(body.bolt_id ?? 0) as BoltId });
     }
     if (pathname.endsWith("/speak_passphrase")) {
-      const body = (await request.json()) as { phrase?: unknown };
       return this.#act({ type: "speak_passphrase", phrase: String(body.phrase ?? "") });
     }
     if (pathname.endsWith("/read_station_log")) {
-      const body = (await request.json()) as { entry?: unknown };
       return this.#act({ type: "read_station_log", entry: Number(body.entry ?? 0) });
     }
     if (pathname.endsWith("/leave_archive")) {
@@ -202,7 +216,6 @@ export class Session {
       return this.#act({ type: "retry_chamber" });
     }
     if (pathname.endsWith("/write_note")) {
-      const body = (await request.json()) as { text?: unknown; author?: unknown };
       // The author is asserted by the client, from `SubmitEvent.agentInvoked`.
       // Nothing here can verify it, and nothing needs to: the pad is a shared
       // scratchpad, not a puzzle surface, so the worst a forged author buys is
