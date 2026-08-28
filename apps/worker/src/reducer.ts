@@ -37,6 +37,7 @@ import {
 import { Rng } from "@semaphore/seed";
 import * as airlock from "./chambers/airlock.js";
 import * as signalRoom from "./chambers/signal_room.js";
+import * as blindPanel from "./chambers/blind_panel.js";
 import { projectForKeeper, projectedHash } from "./projection.js";
 import { concordBits } from "./worlds.js";
 import { transition, type MachineState } from "./machine.js";
@@ -45,9 +46,9 @@ import { transition, type MachineState } from "./machine.js";
  * Everything the reducer needs to remember between calls.
  *
  * A strict subset of doc 05 section 3's `WorldState`, scoped to what is
- * actually implemented: Chambers 0 and I. Extending this to Chamber II means
- * adding a `blindPanel` field the same way `signalRoom` was, never widening
- * what an existing field means.
+ * actually implemented: Chambers 0, I and II. Extending this to Chamber III
+ * means adding a `concordLock` field the same way `blindPanel` was, never
+ * widening what an existing field means.
  */
 export interface PersistedSession {
   readonly sessionId: string;
@@ -57,6 +58,7 @@ export interface PersistedSession {
   readonly machine: MachineState;
   readonly airlock: airlock.AirlockState | null;
   readonly signalRoom: signalRoom.SignalRoomState | null;
+  readonly blindPanel: blindPanel.BlindPanelState | null;
   /**
    * Inter-call gaps observed for chamber actions, in call order. Feeds
    * `staminaWindowMs` (doc 05 section 6). See D-010 for why this is the gap
@@ -86,6 +88,7 @@ export function newSession(sessionId: string, seed: string, nowMs: number): Pers
     machine: { phase: "ENTRY", chamber: null, mode: "full", retries: 0 },
     airlock: null,
     signalRoom: null,
+    blindPanel: null,
     observedLatencyMs: [],
     seq: 0,
     startedAtMs: nowMs,
@@ -98,7 +101,13 @@ export type Action =
   | { readonly type: "start"; readonly difficulty: Difficulty; readonly mode: SessionMode }
   | { readonly type: "pull_lever"; readonly leverId: airlock.LeverId }
   | { readonly type: "press_key"; readonly keyId: signalRoom.KeyId }
-  | { readonly type: "reset_sequence" };
+  | { readonly type: "reset_sequence" }
+  | {
+      readonly type: "rotate_dial";
+      readonly dialId: blindPanel.DialId;
+      readonly direction: blindPanel.Direction;
+      readonly clicks: number;
+    };
 
 export interface ReduceResult {
   readonly session: PersistedSession;
@@ -120,6 +129,8 @@ export function reduce(session: PersistedSession, action: Action, nowMs: number)
       return pullLever(session, action.leverId, nowMs);
     case "press_key":
       return pressKey(session, action.keyId, nowMs);
+    case "rotate_dial":
+      return rotateDial(session, action.dialId, action.direction, action.clicks, nowMs);
     case "reset_sequence":
       return resetSequence(session, nowMs);
   }
@@ -210,6 +221,9 @@ const CHAMBER_ENTRY: Partial<
   }),
   signal_room: (session) => ({
     signalRoom: signalRoom.initial(signalRoom.generate(new Rng(`${session.seed}:signal_room`))),
+  }),
+  blind_panel: (session) => ({
+    blindPanel: blindPanel.initial(blindPanel.generate(new Rng(`${session.seed}:blind_panel`))),
   }),
 };
 
@@ -307,6 +321,14 @@ function describeChamber(session: PersistedSession): string {
     return (
       `THE SIGNAL ROOM. Six keys, ids 1-6. Pressed so far: ${JSON.stringify(view.pressedSequence)}. ` +
       `Strikes: ${view.strikes}. Read the manual before acting.`
+    );
+  }
+  if (session.machine.chamber === "blind_panel" && session.blindPanel) {
+    const view = projectForKeeper(blindPanel.facts(session.blindPanel));
+    return (
+      "THE BLIND PANEL. Four dials, ids 1-4, behind a grate. You cannot see the gauges. " +
+      `Rotations so far: ${view.rotationCount}. Last registered clicks: ${JSON.stringify(view.lastClicks)}. ` +
+      "Ask PILOT what moved."
     );
   }
   return "No chamber is active. Call begin_shift to begin your shift.";
@@ -417,14 +439,11 @@ function pressKey(session: PersistedSession, keyId: signalRoom.KeyId, nowMs: num
     throw errors.invalidInput("key_id", "one of 1, 2, 3, 4, 5, 6", keyId);
   }
 
+  // No "already solved" branch here, for the same reason pullLever no longer
+  // has one: solving now auto-advances the chamber to blind_panel in the
+  // same request, so the chamber-mismatch check above already refuses any
+  // further press_key call before this line could ever be reached.
   const before = session.signalRoom;
-  if (signalRoom.isSolved(before)) {
-    return {
-      session,
-      events: [],
-      toolText: "The ring has already settled. This chamber is solved.",
-    };
-  }
 
   const target = signalRoom.correctSequence(before.params);
   const correct = keyId === target[before.pressedSequence.length];
@@ -549,4 +568,97 @@ function resetSequence(session: PersistedSession, nowMs: number): ReduceResult {
     lastRespondedAtMs: nowMs,
   };
   return { session: next, events: [event], toolText: "Sequence cleared. Ready to begin again." };
+}
+
+const BLIND_PANEL_CHAMBER = {
+  id: "blind_panel" as const,
+  facts: blindPanel.facts,
+  candidates: blindPanel.candidates,
+  correctAction: blindPanel.correctAction,
+};
+
+function rotateDial(
+  session: PersistedSession,
+  dialId: blindPanel.DialId,
+  direction: blindPanel.Direction,
+  clicks: number,
+  nowMs: number,
+): ReduceResult {
+  const latencyMs = nowMs - session.lastRespondedAtMs;
+
+  if (session.machine.phase === "ENTRY" || session.machine.phase === "LOBBY") {
+    throw errors.noSession();
+  }
+  if (session.machine.chamber !== "blind_panel" || !session.blindPanel) {
+    throw errors.staleTool();
+  }
+  if (!blindPanel.DIALS.includes(dialId)) {
+    throw errors.invalidInput("dial_id", "one of 1, 2, 3, 4", dialId);
+  }
+  if (!Number.isInteger(clicks) || clicks < 1 || clicks > 8) {
+    throw errors.invalidInput("clicks", "an integer from 1 to 8", clicks);
+  }
+
+  const before = session.blindPanel;
+  if (blindPanel.isSolved(before)) {
+    // Free and inert, matching the other chambers' already-solved precedent.
+    return { session, events: [], toolText: "All four gauges already read their targets." };
+  }
+
+  // Wasted here means the rotation could not have taught KEEPER anything: no
+  // channel-computable ambiguity was eliminated. This is doc 02 section 5's
+  // own definition of "informative" for this chamber ("a pull that
+  // eliminates nothing"), not a repeat-of-a-failed-guess heuristic, because
+  // rotation here has no pass/fail outcome to repeat.
+  const bitsBefore = concordBits(BLIND_PANEL_CHAMBER, before);
+  const keeperViewHash = projectedHash(blindPanel.facts(before), "KEEPER");
+  const after = blindPanel.rotate(before, dialId, direction, clicks);
+  const bitsAfter = concordBits(BLIND_PANEL_CHAMBER, after);
+  const wasted = bitsAfter === bitsBefore;
+
+  const solved = blindPanel.isSolved(after);
+  let machine = session.machine;
+  if (solved) machine = transition(machine, { type: "CHAMBER_SOLVED" });
+
+  const registered = blindPanel.lastRegisteredClicks(after);
+  const events: SessionEvent[] = [
+    {
+      t: elapsed(session, nowMs),
+      seq: session.seq,
+      type: "tool_call",
+      tool: "rotate_dial",
+      input: { dial_id: dialId, direction, clicks },
+      result: "ok",
+      latencyMs,
+      keeperViewHash,
+      concordBits: bitsAfter,
+      wasted,
+    },
+  ];
+  if (solved) {
+    events.push({
+      t: elapsed(session, nowMs),
+      seq: session.seq + events.length,
+      type: "chamber_solved",
+      chamber: "blind_panel",
+    });
+  }
+
+  const withUpdate: PersistedSession = {
+    ...session,
+    blindPanel: after,
+    machine,
+    observedLatencyMs: [...session.observedLatencyMs, latencyMs],
+    seq: session.seq + events.length,
+    lastRespondedAtMs: nowMs,
+  };
+
+  const settled = settleTransition(withUpdate, nowMs);
+  const enteredNewChamber = settled.session.machine.chamber !== withUpdate.machine.chamber;
+  const baseText = solved
+    ? "The last gauge settles onto its mark. All four hold their targets at once."
+    : `You feel ${registered} of ${clicks} commanded clicks register through the dial.`;
+  const toolText = enteredNewChamber ? `${baseText} ${describeChamber(settled.session)}` : baseText;
+
+  return { session: settled.session, events: [...events, ...settled.events], toolText };
 }

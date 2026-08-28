@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { GameError } from "@semaphore/protocol";
 import * as airlock from "./chambers/airlock.js";
 import * as signalRoom from "./chambers/signal_room.js";
+import * as blindPanel from "./chambers/blind_panel.js";
 import { newSession, reduce, type PersistedSession } from "./reducer.js";
 
 const NOW = 1_000_000;
@@ -326,27 +327,21 @@ describe("press_key", () => {
     expect(toolText).toContain("Wrong key");
   });
 
-  it("solves the chamber and auto-advances once every key lands in order", () => {
+  it("solves the chamber and auto-advances into the Blind Panel", () => {
+    // blind_panel's mechanics now exist, so settleTransition carries the
+    // machine straight through, the same way pull_lever's solve does.
     const session = signalRoomSession();
     const solved = solveSignalRoom(session);
-    // blind_panel is not implemented yet, so the machine stops here honestly
-    // rather than fabricating a chamber that does not exist (see reducer.ts).
     expect(signalRoom.isSolved(solved.signalRoom!)).toBe(true);
-    expect(solved.machine.phase).toBe("TRANSITIONING");
-    expect(solved.machine.chamber).toBe("signal_room");
+    expect(solved.machine.phase).toBe("IN_CHAMBER");
+    expect(solved.machine.chamber).toBe("blind_panel");
+    expect(solved.blindPanel).not.toBeNull();
   });
 
-  it("treats a press after the chamber is solved as free and inert", () => {
+  it("treats a press_key call after the room has moved on as a stale tool", () => {
     const session = signalRoomSession();
     const solved = solveSignalRoom(session);
-    const {
-      session: after,
-      events,
-      toolText,
-    } = reduce(solved, { type: "press_key", keyId: 1 }, NOW);
-    expect(events).toEqual([]);
-    expect(after).toBe(solved);
-    expect(toolText).toContain("already settled");
+    expect(() => reduce(solved, { type: "press_key", keyId: 1 }, NOW)).toThrow(GameError);
   });
 
   it("fires RACE CONDITION on the third consecutive wrong key", () => {
@@ -443,5 +438,164 @@ describe("the vandalism flag", () => {
       vandalised: false,
     });
     expect(vandalisedVariant).toEqual(cleanVariant);
+  });
+});
+
+/** Drive a session past the airlock and Signal Room, into the Blind Panel. */
+function blindPanelSession(): PersistedSession {
+  const past = solveSignalRoom(signalRoomSession());
+  return past;
+}
+
+describe("rotate_dial", () => {
+  it("refuses a call before the Blind Panel is reached", () => {
+    const session = begunSession(); // still in the airlock
+    expect(() =>
+      reduce(session, { type: "rotate_dial", dialId: 1, direction: "clockwise", clicks: 1 }, NOW),
+    ).toThrow(GameError);
+  });
+
+  it("rejects a dial id outside 1-4", () => {
+    const session = blindPanelSession();
+    expect(() =>
+      reduce(
+        session,
+        { type: "rotate_dial", dialId: 5 as never, direction: "clockwise", clicks: 1 },
+        NOW,
+      ),
+    ).toThrow(GameError);
+  });
+
+  it("rejects a click count outside 1-8", () => {
+    const session = blindPanelSession();
+    expect(() =>
+      reduce(session, { type: "rotate_dial", dialId: 1, direction: "clockwise", clicks: 9 }, NOW),
+    ).toThrow(GameError);
+    expect(() =>
+      reduce(session, { type: "rotate_dial", dialId: 1, direction: "clockwise", clicks: 0 }, NOW),
+    ).toThrow(GameError);
+  });
+
+  it("moves a gauge and reports how many clicks registered", () => {
+    const session = blindPanelSession();
+    const { session: after, toolText } = reduce(
+      session,
+      { type: "rotate_dial", dialId: 1, direction: "clockwise", clicks: 3 },
+      NOW,
+    );
+    const gauge = after.blindPanel!.params.dialToGauge[1];
+    // The dial's own gauge started at 0, so 3 clicks in either effective
+    // direction register at most 3 (fewer only if inverted-and-clamped).
+    expect(gauge).toBeGreaterThanOrEqual(1);
+    expect(gauge).toBeLessThanOrEqual(4);
+    expect(toolText).toContain("register");
+  });
+
+  it("never lets a gauge value leak into the tool text", () => {
+    // KEEPER's own tool response must stay inside projectForKeeper: it can
+    // report registered clicks, never the gauge reading itself.
+    const session = blindPanelSession();
+    const { toolText } = reduce(
+      session,
+      { type: "rotate_dial", dialId: 1, direction: "clockwise", clicks: 3 },
+      NOW,
+    );
+    expect(toolText).not.toMatch(/gauge.*(reads?|shows?|value)/i);
+  });
+
+  it("measures latency as the gap since the last response", () => {
+    const session = blindPanelSession();
+    const { events } = reduce(
+      session,
+      { type: "rotate_dial", dialId: 1, direction: "clockwise", clicks: 2 },
+      NOW + 500,
+    );
+    expect(events[0]).toMatchObject({ type: "tool_call", latencyMs: 500 });
+  });
+
+  it("marks a rotation wasted when it eliminates no candidates", () => {
+    // Doc 02 section 5's own definition for this chamber: "a pull that
+    // eliminates nothing." Re-querying an already-saturated dial the same
+    // way twice teaches nothing new the second time.
+    const session = blindPanelSession();
+    const { session: afterFirst } = reduce(
+      session,
+      { type: "rotate_dial", dialId: 1, direction: "clockwise", clicks: 8 },
+      NOW,
+    );
+    const { events } = reduce(
+      afterFirst,
+      { type: "rotate_dial", dialId: 1, direction: "clockwise", clicks: 8 },
+      NOW,
+    );
+    expect(events[0]).toMatchObject({ wasted: true });
+  });
+
+  it("does not mark a fresh dial's first rotation as wasted", () => {
+    const session = blindPanelSession();
+    const { events } = reduce(
+      session,
+      { type: "rotate_dial", dialId: 1, direction: "clockwise", clicks: 8 },
+      NOW,
+    );
+    expect(events[0]).toMatchObject({ wasted: false });
+  });
+
+  it("treats a rotation after the panel is solved as free and inert", () => {
+    const session = blindPanelSession();
+    const params = session.blindPanel!.params;
+    let current = session;
+    // Solve directly: for each dial, rotate however many clicks (in the
+    // effective direction) are needed to reach that gauge's target from 0.
+    // This ignores the cross-link, so it is not a general solver; it works
+    // here because it is verified against SESSION_ID/SEED's fixed derived
+    // seed, where no cross-linked gauge is set before its own turn comes up.
+    for (const dial of blindPanel.DIALS) {
+      const gauge = params.dialToGauge[dial];
+      const target = params.targets[gauge];
+      if (target === 0) continue;
+      const inverted = params.inversions[dial];
+      const wantsUp = target > 0;
+      const direction = inverted !== wantsUp ? "clockwise" : "counterclockwise";
+      const { session: next } = reduce(
+        current,
+        { type: "rotate_dial", dialId: dial, direction, clicks: Math.abs(target) },
+        NOW,
+      );
+      current = next;
+    }
+    expect(blindPanel.isSolved(current.blindPanel!)).toBe(true);
+
+    const {
+      session: after,
+      events,
+      toolText,
+    } = reduce(current, { type: "rotate_dial", dialId: 1, direction: "clockwise", clicks: 1 }, NOW);
+    expect(events).toEqual([]);
+    expect(after).toBe(current);
+    expect(toolText).toContain("already read their targets");
+  });
+
+  it("emits chamber_solved once every gauge reaches its target", () => {
+    const session = blindPanelSession();
+    const params = session.blindPanel!.params;
+    let current = session;
+    let lastEvents: ReturnType<typeof reduce>["events"] = [];
+    for (const dial of blindPanel.DIALS) {
+      const gauge = params.dialToGauge[dial];
+      const target = params.targets[gauge];
+      if (target === 0) continue;
+      const inverted = params.inversions[dial];
+      const wantsUp = target > 0;
+      const direction = inverted !== wantsUp ? "clockwise" : "counterclockwise";
+      const result = reduce(
+        current,
+        { type: "rotate_dial", dialId: dial, direction, clicks: Math.abs(target) },
+        NOW,
+      );
+      current = result.session;
+      lastEvents = result.events;
+    }
+    expect(lastEvents.map((e) => e.type)).toContain("chamber_solved");
   });
 });
