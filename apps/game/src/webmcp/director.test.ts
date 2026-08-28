@@ -12,7 +12,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Phase } from "@semaphore/protocol";
+import type { Phase, PilotView } from "@semaphore/protocol";
 import { SessionClient, type StateSummary } from "../net/sessionClient.js";
 import { ToolDirector } from "./director.js";
 import { installFakeRegistry, type FakeRegistry } from "./fake-registry.js";
@@ -83,6 +83,7 @@ describe("the session tier", () => {
       "get_status",
       "inspect",
       "read_manual",
+      "read_note",
     ]);
   });
 
@@ -240,6 +241,34 @@ describe("instrumentation", () => {
     release?.();
     await pending;
     expect(order).toEqual(["start:begin_shift", "fetch", "done:begin_shift"]);
+  });
+
+  it("takes machine state from a pushed frame, not only from a response", async () => {
+    // A chamber whose timer runs out with nobody calling is deadlocked by the
+    // Durable Object's alarm (D-018): a frame arrives on the socket and there
+    // is no response anywhere. `PilotView` is a structural superset of
+    // `StateSummary`, so the same `applyState` handles both channels, and
+    // without that the registry keeps `pull_lever` on a dead room.
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(body("IN_CHAMBER", "airlock"));
+    const { director: d } = director();
+    await d.mountEntry();
+    await d.applyState(state("IN_CHAMBER", "airlock"));
+    expect(registry.names()).toContain("pull_lever");
+
+    // A `PilotView`, not a `StateSummary`: this is the socket's own frame, and
+    // it reaches `applyState` because the view is a structural superset.
+    const frame: PilotView = {
+      phase: "DEADLOCK",
+      chamber: "airlock",
+      designation: "KEEPER",
+      remainingMs: 0,
+      retries: 0,
+      facts: {},
+      notes: [],
+    };
+    await d.applyState(frame);
+    expect(registry.names()).not.toContain("pull_lever");
+    expect(registry.names()).toContain("get_status");
   });
 
   it("hands a failed call text to act on rather than a rejection", async () => {

@@ -137,3 +137,38 @@ button:focus-visible {
   display: block;
   image-rendering: pixelated;
 }
+
+/*
+ * The notepad form.
+ *
+ * Styled as a control rather than as a panel, because it is one: the canvas
+ * draws the pad, this is the pen. Amber because PILOT is the one typing here;
+ * KEEPER reaches the same form through the host and never sees this styling.
+ */
+.notepad-host textarea {
+  display: block;
+  width: 100%;
+  margin: 0 0 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--rule);
+  border-left: 2px solid var(--amber);
+  background: #131617;
+  color: var(--bone);
+  font: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
+}
+
+.notepad-host textarea:focus-visible {
+  border-color: var(--amber);
+  outline: none;
+}
+
+.notepad-host label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--bone-dim);
+}

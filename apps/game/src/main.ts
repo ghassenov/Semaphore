@@ -43,15 +43,19 @@ async function start(root: HTMLElement): Promise<void> {
   );
 
   let station: StationHandle | null = null;
+  const shell = renderStation(root, {
+    client,
+    onNote: (line) => station?.note(line),
+  });
+
+  // The shell is built before the director because the director needs
+  // somewhere to put the notepad form the moment the session tier mounts, and
+  // that can happen on the very first response.
   const director = new ToolDirector(client, {
     onState: (state) => station?.setState(state),
     onCallStart: (tool) => station?.callStarted(tool),
     onCall: (call) => station?.recordCall(call),
-  });
-
-  const shell = renderStation(root, {
-    client,
-    onNote: (line) => station?.note(line),
+    notepadHost: shell.notepadHost,
   });
 
   // PILOT's view arrives on its own channel, pushed. Opened before the front
@@ -61,6 +65,17 @@ async function start(root: HTMLElement): Promise<void> {
     workerOrigin: import.meta.env.VITE_WORKER_ORIGIN ?? "",
   });
   socket.watch((view) => station?.setView(view));
+  // The frame also moves the registry, and it is the only thing that can in
+  // one case: a chamber whose timer runs out with nobody calling is deadlocked
+  // by the Durable Object's alarm (D-018), which produces a pushed frame and
+  // no response at all. Without this, `press_key` stays registered on a room
+  // that cannot answer, which is the registry telling an agent a lie.
+  //
+  // `PilotView` is a structural superset of `StateSummary`, so this is the
+  // same machine state by the same route, arriving on the other channel.
+  // `applyState` is idempotent by tier, so a frame that changes nothing costs
+  // one comparison.
+  socket.watch((view) => void director.applyState(view));
   socket.open();
 
   // The engine, on demand. `watch` replays the latest frame to a subscriber

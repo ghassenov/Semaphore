@@ -33,7 +33,7 @@ const ALL_TOOLS: readonly GameTool[] = [
 ];
 
 /** The three channels doc 03 section 10 names as genuinely adversarial. */
-const UNTRUSTED_CONTENT_TOOLS = ["read_manual", "read_station_log"];
+const UNTRUSTED_CONTENT_TOOLS = ["read_manual", "read_station_log", "read_note"];
 
 /** Every tool that moves the station. Everything else must be read-only. */
 const MUTATING_TOOLS = [
