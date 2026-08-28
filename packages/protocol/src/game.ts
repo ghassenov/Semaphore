@@ -194,6 +194,16 @@ export const NOTE_CAPACITY = 20;
 export interface PilotView {
   readonly phase: Phase;
   readonly chamber: ChamberId | null;
+  /**
+   * Which chambers this session is playing, so the cutaway knows how many
+   * floors the station has.
+   *
+   * `SHARED` by construction: both parties are told the session length when it
+   * starts, and BRIEF drops Chamber II. Without it the client would have to
+   * guess, and a station drawn with a floor nobody will ever enter is a
+   * station promising a room that does not exist.
+   */
+  readonly mode: SessionMode;
   readonly designation: string | null;
   /** Milliseconds left on this chamber's deadline, or null when untimed. */
   readonly remainingMs: number | null;
