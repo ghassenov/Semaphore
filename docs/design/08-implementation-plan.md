@@ -34,37 +34,37 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 - [ ] **Gate:** if a chamber is not fun on paper, redesign it now. Do not code a chamber that failed here.
 - [ ] Second paper pass with fresh testers after redesign
 - [ ] **Build the glyph-description corpus** — show 12 glyphs to 10 people cold, record every phrase used
-- [ ] Lock the puzzle rules for all four chambers and the Archive
+- [x] Lock the puzzle rules for all four chambers and the Archive
 
 ### 0.3 WebMCP integration spike ◆★
 
-- [ ] Minimal page registering three throwaway tools via `document.modelContext.registerTool`
-- [ ] Verify `AbortSignal` teardown actually removes tools from `getTools()`
-- [ ] Verify `toolchange` fires on **both** registration and abort, and with an **empty** final list
+- [x] Minimal page registering three throwaway tools via `document.modelContext.registerTool`
+- [x] Verify `AbortSignal` teardown actually removes tools from `getTools()`
+- [x] Verify `toolchange` fires on **both** registration and abort, and with an **empty** final list *(a declaratively registered tool leaves only when its form leaves the DOM, D-024)*
 - [ ] **Open in ChatGPT's in-app browser; confirm the agent discovers and calls the tools**
 - [ ] **Resolve OQ-1:** does the agent have visual access to the rendered canvas? Document the finding.
 - [ ] **Resolve OQ-2:** does `allow="tools"` cross-origin delegation work there? Test `exposedTo` both ways.
-- [ ] **Resolve OQ-3:** does `execute` receive a second argument? Does `requestUserInteraction` exist?
+- [x] **Resolve OQ-3:** does `execute` receive a second argument? Does `requestUserInteraction` exist? *(no to both, D-024)*
 - [ ] Verify the **declarative form API** works in both browsers, and that `SubmitEvent.agentInvoked` is observable
 - [ ] Test the **single-tool front door**: does an agent reliably discover and call one tool with a compelling description?
 - [ ] Measure agent round-trip latency across ≥3 backends → **feeds the Chamber III adaptive window**
 - [ ] Confirm observable behaviour of `readOnlyHint` and `untrustedContentHint`
-- [ ] Record exact Chrome version and date
-- [ ] **Write `docs/design/11-spec-notes.md` with everything learned** ★
+- [x] Record exact Chrome version and date
+- [x] **Write `docs/design/11-spec-notes.md` with everything learned** ★ *(sections 6 and 7 stay empty until a model meets the page)*
 
 ### 0.4 Repository and tooling
 
-- [ ] Monorepo scaffold (pnpm workspaces) per doc 05 §8
+- [x] Monorepo scaffold (pnpm workspaces) per doc 05 §8
 - [ ] `apps/game` — Vite + TypeScript + Phaser 4.2, `pixelArt: true`, integer scaling
 - [ ] `apps/archive` — the cross-origin tool provider
-- [ ] `apps/worker` — Wrangler, Durable Object binding, R2 binding
-- [ ] `packages/protocol` — shared types, `Channel`, error codes
-- [ ] `packages/seed` — xorshift128+ deterministic PRNG
-- [ ] **MIT `LICENSE` at repo root**, license field configured so GitHub's About section shows it ★
-- [ ] ESLint + Prettier + strict `tsconfig`
-- [ ] **Custom lint rule: tool description budgets** (500 / 150 / 30 / 1500)
+- [x] `apps/worker` — Wrangler, Durable Object binding, R2 binding *(R2 replaced by D1 plus Durable Object SQLite, D-006 and D-008)*
+- [x] `packages/protocol` — shared types, `Channel`, error codes
+- [x] `packages/seed` — xorshift128+ deterministic PRNG
+- [x] **MIT `LICENSE` at repo root**, license field configured so GitHub's About section shows it ★ *(the About panel itself can only be confirmed once the repo is public)*
+- [x] ESLint + Prettier + strict `tsconfig`
+- [x] **Custom lint rule: tool description budgets** (500 / 150 / 30 / 1500) *(enforced by `budgets.test.ts` over the tool objects rather than by a lint rule over the source, D-022)*
 - [ ] Vitest across all packages; Playwright with a **mock `document.modelContext`**
-- [ ] GitHub Actions: typecheck → lint → test → build
+- [x] GitHub Actions: typecheck → lint → test → build
 - [ ] Cloudflare Pages + Workers preview deploys on PR, **including the archive origin**
 - [ ] **Measure the Phaser bundle now** against the 400KB budget
 
@@ -78,47 +78,47 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 
 ### 1.1 Server foundation ★
 
-- [ ] `Session` Durable Object with lifecycle (create, join, end)
-- [ ] `WorldState` with `Tagged<T>` five-channel tagging (doc 05 §3)
-- [ ] `projectForPilot` / `projectForKeeper` as **pure functions**
-- [ ] Server-authoritative timer with tick events
-- [ ] Action semaphore `act()` returning `E_BUSY`, **with latency observation**
-- [ ] State machine: `ENTRY → LOBBY → IN_CHAMBER → TRANSITIONING → FINALE → ESCAPED`, plus `PENALISED`, `ARCHIVE`, `DEADLOCK`
-- [ ] Append-only event log → R2 JSONL, in the doc 05 §7 format
-- [ ] WebSocket endpoint pushing `PilotView` deltas
-- [ ] Seeded puzzle generation for Chamber 0
+- [x] `Session` Durable Object with lifecycle (create, join, end)
+- [x] `WorldState` with `Tagged<T>` five-channel tagging (doc 05 §3)
+- [x] `projectForPilot` / `projectForKeeper` as **pure functions**
+- [x] Server-authoritative timer with tick events
+- [x] Action semaphore `act()` returning `E_BUSY`, **with latency observation**
+- [x] State machine: `ENTRY → LOBBY → IN_CHAMBER → TRANSITIONING → FINALE → ESCAPED`, plus `PENALISED`, `ARCHIVE`, `DEADLOCK`
+- [x] Append-only event log → R2 JSONL, in the doc 05 §7 format *(gzipped into D1, one row per session, D-008)*
+- [x] WebSocket endpoint pushing `PilotView` deltas *(whole views rather than deltas, so a reconnect needs no catch-up protocol, D-025)*
+- [x] Seeded puzzle generation for Chamber 0
 
 ### 1.2 The proof layer ★
 
-- [ ] `consistentWorlds(state)` in `worker/src/worlds.ts` — one implementation, three consumers (proof, CONCORD, benchmark)
-- [ ] `enumerateReachableStates(seed)` for Chamber 0
-- [ ] **`tests/possible-worlds.test.ts`** — `|W| > 1` **and** consistent worlds disagree about the correct action
-- [ ] Mirror test for `projectForPilot`
+- [x] `consistentWorlds(state)` in `worker/src/worlds.ts` — one implementation, three consumers (proof, CONCORD, benchmark)
+- [x] `enumerateReachableStates(seed)` for Chamber 0
+- [x] **`tests/possible-worlds.test.ts`** — `|W| > 1` **and** consistent worlds disagree about the correct action *(all four chambers)*
+- [x] Mirror test for `projectForPilot`
 - [ ] `tests/asymmetry.smoke.test.ts` with a documented allow-list
-- [ ] Assert `HIDDEN` fields appear in **neither** projection
+- [x] Assert `HIDDEN` fields appear in **neither** projection
 - [ ] Bits-table generator wired to the same code
-- [ ] Wire all of it as a **blocking CI gate**
+- [x] Wire all of it as a **blocking CI gate**
 
 ### 1.3 WebMCP layer ★
 
-- [ ] `webmcp/adapter.ts` — the only file touching the spec; feature-detects `document` then `navigator`
-- [ ] Graceful degradation → the gate screen, never a throw
-- [ ] `ToolDirector` with **three-tier** `AbortController`s (doc 03 §4.1)
-- [ ] **`begin_shift` as the sole entry tool**, with the briefing text (doc 04 §3)
+- [x] `webmcp/adapter.ts` — the only file touching the spec; feature-detects `document` then `navigator`
+- [x] Graceful degradation → the gate screen, never a throw
+- [x] `ToolDirector` with **three-tier** `AbortController`s (doc 03 §4.1)
+- [x] **`begin_shift` as the sole entry tool**, with the briefing text (doc 04 §3)
 - [ ] Persistent tools: `get_status`, `describe_chamber`, `inspect`, `read_note`
 - [ ] **Archive origin**: `read_manual`, `read_station_log` with `exposedTo`, embedded via `allow="tools"`
 - [ ] Single-origin fallback behind `ARCHIVE_ORIGIN=same|cross`
 - [ ] **Declarative notepad form** exposing `write_note`
-- [ ] Correct `readOnlyHint` everywhere; `untrustedContentHint` on the three untrusted-content tools
-- [ ] Chamber 0 tool: `pull_lever`
-- [ ] Full error taxonomy with descriptive messages (doc 03 §9)
-- [ ] Every `execute` wrapped in a timing decorator
+- [x] Correct `readOnlyHint` everywhere; `untrustedContentHint` on the three untrusted-content tools
+- [x] Chamber 0 tool: `pull_lever`
+- [x] Full error taxonomy with descriptive messages (doc 03 §9)
+- [x] Every `execute` wrapped in a timing decorator
 
 ### 1.4 Client foundation
 
 - [ ] Phaser boot, scale config, 320×180 native with integer snap
-- [ ] `sessionClient` (fetch) + `socket` (WebSocket with reconnect)
-- [ ] Read-only `PilotView` store fed by socket deltas
+- [x] `sessionClient` (fetch) + `socket` (WebSocket with reconnect)
+- [x] Read-only `PilotView` store fed by socket deltas *(the socket holds the latest frame; a separate store would do nothing more, D-025)*
 - [ ] `LandingScene` with the **starter prompt card** and copy button ★
 - [ ] `ChamberScene` rendering greybox from `PilotView`
 - [ ] PILOT avatar: keyboard movement, greybox rectangle
@@ -127,9 +127,9 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 
 ### 1.5 Chamber 0 complete
 
-- [ ] Full loop: describe → agent calls `pull_lever` → door opens
-- [ ] Wrong-lever penalty with timer deduction and feedback
-- [ ] Solvability + possible-worlds tests for Chamber 0
+- [x] Full loop: describe → agent calls `pull_lever` → door opens *(through the tool surface; nothing renders it yet)*
+- [x] Wrong-lever penalty with timer deduction and feedback
+- [x] Solvability + possible-worlds tests for Chamber 0
 - [ ] **Playtest with a real agent in ChatGPT's in-app browser**
 
 ▸ **Checkpoint: a stranger with ChatGPT completes Chamber 0. Every layer is proven, including cross-origin and declarative.**
@@ -142,28 +142,28 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 
 ### 2.1 Chamber I — Signal Room ★
 
-- [ ] Glyph system: 12-glyph pool, 6 per session, stroke-count table
-- [ ] Manual sections: `index`, `glyph_table`, `signal_room`
-- [ ] **The vandalised page**: seeded flag, the injected text, and the `VISUAL` handwriting state
-- [ ] `press_key`, `reset_sequence`
-- [ ] Ordered-sequence validation with reset on error
-- [ ] Three-strike **RACE CONDITION**
+- [x] Glyph system: 12-glyph pool, 6 per session, stroke-count table
+- [x] Manual sections: `index`, `glyph_table`, `signal_room`
+- [x] **The vandalised page**: seeded flag, the injected text, and the `VISUAL` handwriting state
+- [x] `press_key`, `reset_sequence`
+- [x] Ordered-sequence validation with reset on error
+- [x] Three-strike **RACE CONDITION**
 - [ ] Greybox: ring of six, key bank, beacon, wall-mounted manual page
-- [ ] Verify 1,956 sequences resist brute force under the Standard timer
+- [x] Verify 1,956 sequences resist brute force under the Standard timer
 - [ ] **Two visually-similar glyphs included deliberately**, validated against the description corpus
 - [ ] Playtest ×3 — **and specifically test whether agents obey the vandalism**
 
 ### 2.2 Chamber II — Blind Panel ★
 
-- [ ] Dial→gauge permutation + inversions, seeded, **`HIDDEN`**
-- [ ] `rotate_dial` with detent semantics
+- [x] Dial→gauge permutation + inversions, seeded, **`HIDDEN`**
+- [x] `rotate_dial` with detent semantics
 - [ ] **`AUDIBLE` channel: `lastClicks` in both projections** — sound for PILOT, text for KEEPER, and a visible pip counter for deaf players
-- [ ] Gauge drift toward zero (1 mark / 20s, difficulty-scaled)
-- [ ] Dial 4 cross-link to gauge 1 (the late complication)
-- [ ] Simultaneous-target win condition
-- [ ] `inspect("dial_n")` returns tactile info, never the mapping
+- [x] Gauge drift toward zero (1 mark / 20s, difficulty-scaled)
+- [x] Dial 4 cross-link to gauge 1 (the late complication)
+- [x] Simultaneous-target win condition
+- [x] `inspect("dial_n")` returns tactile info, never the mapping
 - [ ] **CONCORD wired to live permutation elimination** — this is where the meter earns its place
-- [ ] Verify the mapping is genuinely underdetermined from `projectForKeeper`
+- [x] Verify the mapping is genuinely underdetermined from `projectForKeeper`
 - [ ] Playtest ×3 — **most likely to frustrate; tune drift rate carefully**
 
 ### 2.3 The Archive ★
@@ -172,27 +172,27 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 - [ ] `read_station_log({ entry })` on the archive origin
 - [ ] `ArchiveScene` with the CRT monitor running the replay renderer at 1:4
 - [ ] The split: PILOT sees ghost movement, KEEPER reads ghost calls, neither half sufficient
-- [ ] Required-to-progress gating; teaches the Chamber III mechanic diegetically
+- [x] Required-to-progress gating; teaches the Chamber III mechanic diegetically *(gating only; the scene that teaches it is not built)*
 - [ ] Playtest — **does the pair actually reconstruct the release-bar mechanic from it?**
 
 ### 2.4 Chamber III — Concord Lock ★
 
-- [ ] Passphrase generation + Caesar encipherment, seeded
+- [x] Passphrase generation + Caesar encipherment, seeded
 - [ ] Cipher wheel readable only at the wheel anchor with lamp raised
 - [ ] **Release bar with a draining stamina meter**; grip, slip below 20%, release resets bolts
-- [ ] **`staminaWindowMs` derived at runtime** from observed latency (doc 05 §6) — do not hardcode
-- [ ] `read_ciphertext`, `get_lock_state`, `align_bolt`, `speak_passphrase`
-- [ ] Lockout on wrong phrase while armed: 30s seal + re-encipherment
-- [ ] `E_NOT_ARMED` descriptive error when called unarmed
+- [x] **`staminaWindowMs` derived at runtime** from observed latency (doc 05 §6) — do not hardcode
+- [x] `read_ciphertext`, `get_lock_state`, `align_bolt`, `speak_passphrase`
+- [x] Lockout on wrong phrase while armed: 30s seal + re-encipherment
+- [x] `E_NOT_ARMED` descriptive error when called unarmed
 - [ ] Greybox: great door, twelve bolts, wheel, release bar
 - [ ] Playtest ×3, **specifically for whether the pair talks about remaining stamina**
 
 ### 2.5 Cross-chamber systems
 
-- [ ] Chamber transitions with tool-set swap
-- [ ] Difficulty presets: Practice / Relaxed / Standard / Deadline
-- [ ] **BRIEF mode** (0, I, III + abridged Archive)
-- [ ] DEADLOCK → chamber retry, **first retry preserves the seed**
+- [x] Chamber transitions with tool-set swap
+- [x] Difficulty presets: Practice / Relaxed / Standard / Deadline
+- [x] **BRIEF mode** (0, I, III + abridged Archive)
+- [x] DEADLOCK → chamber retry, **first retry preserves the seed**
 - [ ] Notepad with per-line authorship via `agentInvoked`
 - [ ] **The station-notices line** on repeated wasted calls
 - [ ] Possible-worlds + solvability tests for everything, across 20 seeds
@@ -209,7 +209,7 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 ### 3.1 The `toolchange` sequence ★★
 
 - [ ] One `toolchange` listener on `document.modelContext`, feeding two renderers
-- [ ] **Manifest panel** renders from **actual `getTools()`**, never a parallel guess
+- [x] **Manifest panel** renders from **actual `getTools()`**, never a parallel guess *(greybox `<ul>`; the panel's art and motion are still Phase 3)*
 - [ ] Char-and-flake removal (~500ms); stamp-in with overshoot, brass ping, dust
 - [ ] **KEEPER's body**: seven attachments, name-mapped, unlatch-and-fall / unfold-and-lock
 - [ ] Fallen attachments persist on the floor as accumulating debris
@@ -220,7 +220,7 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 
 - [ ] `enterFinale()`: chamber + session controllers abort, everything falls, manifest empties
 - [ ] `open_the_door` stamps in alone; KEEPER calls it; bolts retract
-- [ ] `endSession()`: the **final `toolchange` fires with an empty registry**
+- [x] `endSession()`: the **final `toolchange` fires with an empty registry** *(holds only until the notepad form exists, which `endSession` must then also remove, D-024)*
 - [ ] Balcony at dawn, both avatars at the rail. **Hold ten seconds. Let it breathe.**
 - [ ] *Then* the stats card, including the derived stamina window and final CONCORD
 - [ ] Link to `/replay/:id` — the same monitor the ghosts were on
