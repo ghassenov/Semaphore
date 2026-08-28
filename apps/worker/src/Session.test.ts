@@ -347,3 +347,81 @@ describe("the view socket", () => {
     expect(alive.sent).toHaveLength(1);
   });
 });
+
+describe("the CONCORD route", () => {
+  /** A GET against a session, returning the parsed body. */
+  async function read(session: Session, path: string): Promise<Record<string, unknown>> {
+    const response = await session.fetch(
+      new Request(`https://station.example/session/${SESSION_ID}/${path}`),
+    );
+    return (await response.json()) as Record<string, unknown>;
+  }
+
+  it("measures the ambiguity KEEPER is actually left with", async () => {
+    const storage = fakeStorage();
+    const session = await sessionOver(storage, inAirlock(1_000));
+    const body = await read(session, "concord");
+
+    // Chamber 0 opens with three levers and three courses of action, which is
+    // log2(3) bits. The failure card quotes courses of action, not worlds.
+    expect(body).toMatchObject({ chamber: "airlock", worlds: 6, actions: 3 });
+    expect(body.bits).toBeCloseTo(Math.log2(3), 2);
+  });
+
+  it("drops to certainty once the room is solved", async () => {
+    const storage = fakeStorage();
+    const start = inAirlock(1_000);
+    const solved = reduce(
+      start,
+      { type: "pull_lever", leverId: correctLever(start.airlock!.params) },
+      2_000,
+    ).session;
+    const session = await sessionOver(storage, solved);
+
+    // Solving the airlock auto-advances into the next room, so what this
+    // asserts is that the meter followed the machine rather than staying
+    // pinned to the room that was just left.
+    const body = await read(session, "concord");
+    expect(body.chamber).toBe("signal_room");
+    expect(body.bits).not.toBeNull();
+  });
+
+  it("reports nothing at all outside a chamber", async () => {
+    // `machine.chamber` outlives the room (D-025). A meter that read it alone
+    // would keep reporting the Blind Panel while the pair is in the Archive.
+    const storage = fakeStorage();
+    const start = inAirlock(1_000);
+    const parked: PersistedSession = {
+      ...start,
+      machine: { ...start.machine, phase: "ARCHIVE" },
+    };
+    const session = await sessionOver(storage, parked);
+
+    expect(await read(session, "concord")).toEqual({
+      chamber: "airlock",
+      bits: null,
+      worlds: null,
+      actions: null,
+    });
+  });
+
+  it("refuses before there is a session, with text an agent can act on", async () => {
+    const storage = fakeStorage();
+    const session = await sessionOver(storage, null);
+    const response = await session.fetch(
+      new Request(`https://station.example/session/${SESSION_ID}/concord`),
+    );
+    expect(response.status).toBe(409);
+  });
+
+  it("changes nothing, so the HUD can poll it as often as it likes", async () => {
+    // A read that takes the semaphore or moves the deadline would make the
+    // meter itself a source of E_BUSY, punishing the pair for looking at it.
+    const storage = fakeStorage();
+    const before = inAirlock(1_000);
+    const session = await sessionOver(storage, before);
+    for (let i = 0; i < 5; i += 1) await read(session, "concord");
+    expect(storage.raw.get("meta")).toEqual(before);
+    expect(storage.alarmAt).toBeNull();
+  });
+});
