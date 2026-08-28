@@ -497,3 +497,52 @@ Option 2. Hibernation is the reason: a session sits idle while two people talk, 
 **Result.** 31 new tests, 396 total. `pilot.test.ts` checks each chamber against its own `facts()` rather than a hand-written field list, so a field added later is covered on the day it is added. Verified against a real workerd as well as the fakes: the upgrade lands, the greeting arrives, an action pushes a frame unasked, and no `TACTILE` or `HIDDEN` field appears on the wire. What the unit tests cannot cover is the `101` response itself, because Node's `Response` rejects that status and workerd requires it; the live run is what covers it.
 
 **Not done here.** The CONCORD meter reads `concordBits`, which for the Blind Panel enumerates 384 candidates and replays the rotation history under each. That is too much to run on every push, so it stays out of `PilotView` until the HUD needs it and can ask for it on its own terms.
+
+---
+
+### D-026 Phaser is fetched on demand, not bundled
+
+**Date.** 2026-08-28
+
+**Decision.** `apps/game` depends on Phaser 4.2.1, and imports it through a dynamic `import()` inside `render/station.ts` rather than statically. A build-time script, `apps/game/scripts/check-bundle.mjs`, fails `pnpm build` if the eager entry chunk exceeds 400KB gzipped.
+
+**The measurement, first.** Plan section 0.4 said measure before writing four chambers of scene code against the API, and that turned out to be the whole decision. Phaser 4.2.1 with four bare imports and no scene code is **365KB gzipped** against doc 07's 400KB budget: 91% of the budget spent before a single rectangle is drawn. The rest of the client was 7.3KB at the time.
+
+**Options considered.**
+1. Bundle it eagerly, as one chunk.
+2. Bundle it eagerly and raise the budget.
+3. Load it on demand, when a session actually begins.
+4. Drop Phaser and render with the Canvas 2D API directly.
+
+Option 3. Option 1 leaves 28KB for four chambers, a HUD and the two `toolchange` renderings, which is not a budget so much as a countdown. Option 2 gives up the only number that would have told us the client had got heavy. Option 4 is genuinely tempting - the greybox is flat rectangles and 8px text, which Canvas 2D does in a fraction of the code - but it contradicts docs 05, 06 and 10, and gives up scene lifecycle, tweens and asset loading that later phases assume.
+
+What makes option 3 more than a trick is that it is *correct* independently of the budget: a browser without WebMCP gets the gate screen and never reaches a canvas at all. Downloading a game engine in order to tell somebody they cannot play is 365KB spent on nothing, and for some judges that screen is the entire submission.
+
+**Result.** The eager entry is **10.3KB gzipped**, 2.6% of budget. Phaser lands in a 358KB chunk fetched when `startStation` runs, alongside a 2.2KB chunk holding the scenes. Verified in Chrome 151 against a live `wrangler dev`: the canvas comes up at 320x180, the registry moves from `begin_shift` through the airlock's tier to the Signal Room's, and the console is clean.
+
+The budget script exists because this arrangement is one careless top-level `import Phaser from "phaser"` away from being undone, and nothing about the resulting page would look wrong.
+
+---
+
+### D-027 The CONCORD meter gets a route, not a field on the frame
+
+**Date.** 2026-08-28
+
+**Decision.** `GET /session/:id/concord` answers `{ chamber, bits, worlds, actions }`, computed on demand from the same `measure()` the possible-worlds proof uses. The HUD polls it every 2.5 seconds. It is not on `PilotView` and not on `/status`.
+
+**Why not the socket.** D-025 left this open with the reason: `concordBits` enumerates every world consistent with what KEEPER knows and replays the rotation history under each. For the Blind Panel that is 384 candidates. Running it inside every socket push would put that work behind every lever pull, every timer tick and every gauge drift, on the path that has to stay cheap enough to be pushed unasked.
+
+**Why not `/status`.** `get_status` is the agent's re-orientation call, designed to stay cheap under a long session because a confused agent needs to be able to afford it. Hanging a 384-world enumeration off it would make the one tool an agent reaches for under pressure the most expensive one on the surface.
+
+**Options considered.**
+1. A route of its own, polled.
+2. On `PilotView`, pushed.
+3. Computed client-side from a rotation history sent over the socket.
+
+Option 1. Option 3 was rejected outright: it puts a solution-adjacent derivation in the browser, which this app's rules forbid, and the enumeration needs the chamber parameters that are `HIDDEN` by construction.
+
+**Two things the route inherits rather than reinvents.** It is gated by `pilot.inTheRoom`, exported for this and shared with the frame, so the meter cannot report a room the pair has already left - `machine.chamber` outlives the room. And it takes no semaphore permit, appends no event and writes no storage, following D-019: a meter that could return `E_BUSY` would punish the pair for looking at it.
+
+**The scale is per-room, deliberately.** `meterFill` normalises against the largest reading seen in the current chamber rather than a fixed maximum. The Airlock opens at log2(3) = 1.58 bits and the Signal Room at 10.93; on a fixed scale the Airlock would read as permanently near-empty and teach the player nothing. The label stays REMAINING AMBIGUITY, because the server cannot hear the pair talk and the meter therefore does not move when PILOT merely explains something (doc 02 section 5).
+
+**Result.** Verified live: 1.58 bits and 3 courses of action on entering the Airlock, dropping to 1.00 bits and 2 after a wrong lever eliminates a world, and 10.93 bits on arrival in the Signal Room.
