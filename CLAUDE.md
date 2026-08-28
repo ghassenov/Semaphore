@@ -35,13 +35,14 @@ Judging is four equally weighted criteria: **WebMCP Leverage**, **Execution**, *
 | [docs/design/](docs/design/) | The numbered document set 00-12. Source of truth for every design decision. | Complete |
 | [docs/](docs/) | The decision log and the lessons journal, beside the set rather than in it. | Live |
 | [docs/hackathonspecs/](docs/hackathonspecs/) | Captured hackathon rules and WebMCP reference. Read-only source material. | Complete |
-| [packages/](packages/) | Code shared by client, worker, archive and bench. Pure, no I/O. | `seed` only |
+| [packages/](packages/) | Code shared by client, worker, archive and bench. Pure, no I/O. | `seed`, `protocol` built |
 | `packages/seed/` | Deterministic xorshift128+ PRNG. Same seed, same puzzle, always. | Built |
-| `packages/protocol/` | Channel tags, error codes, wire types. One definition each. | To write |
+| `packages/protocol/` | Channel tags, error codes, wire types. One definition each. | Built |
 | [apps/game/](apps/game/) | Phaser client. Renders PILOT's view, hosts the WebMCP tool director. | To write |
-| [apps/worker/](apps/worker/) | Cloudflare Worker plus the Session Durable Object. Authoritative state. | To write |
-| [apps/archive/](apps/archive/) | Cross-origin tool provider: the manual and the ghost logs. | To write |
-| [tests/](tests/) | Cross-cutting proofs: possible-worlds, asymmetry smoke, solvability. | To write |
+| [apps/worker/](apps/worker/) | Cloudflare Worker plus the Session Durable Object. Authoritative state. | All four chambers, the reducer and the Archive beat built; timer alarm outstanding |
+| [apps/archive/](apps/archive/) | Cross-origin tool provider: the manual and the ghost logs. | To write. Archive beat lives in `apps/worker` until this exists (D-017) |
+| [fixtures/ghosts/](fixtures/ghosts/) | Authored ghost session logs, generated from real play. | One ghost built |
+| [tests/](tests/) | Cross-cutting proofs: possible-worlds, asymmetry smoke, solvability. | Possible-worlds proof covers all four chambers |
 | [bench/](bench/) | Ablation harness, scripted partners, the Cooperative Benchmark. | To write |
 
 Root tooling: pnpm workspaces, strict TypeScript, ESLint, Prettier, Vitest, GitHub Actions.
@@ -141,3 +142,4 @@ Rules that follow from this:
 | 2026-08-28 | Ahmed Saad | Deployment: R2 replaced by D1 plus Durable Object SQLite. Added the rule that no product requiring a payment method is adopted. |
 | 2026-08-28 | Ahmed Saad | Added NEXT-STEPS.md as the handoff file, and the rule that it is updated at the end of every session. |
 | 2026-08-28 | Ahmed Saad | Repository map updated for the docs/design/ move. |
+| 2026-08-28 | Ahmed Saad | Repository map brought up to date: protocol, worker, archive beat, fixtures/ghosts/, and the proof's coverage of all four chambers. |

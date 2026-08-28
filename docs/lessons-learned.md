@@ -197,3 +197,13 @@ Three things worth carrying:
 3. **Check the doc's examples, not just its rules.** Every bits figure this session has been verified by running `measure()` before writing the assertion (D-009, D-011, D-013). This one needed a different check: enumerate what an adversary would actually try. Worth doing for any chamber whose secret is small enough to enumerate, which is all of them.
 
 The correction is D-014, and the submission copy needs updating before it quotes doc 02's example.
+
+### 2026-08-28 - Generating a fixture from real code found a bug the fixture had nothing to do with
+
+Authoring the Archive's ghost session meant actually playing a session through the reducer rather than hand-writing JSONL, specifically so the fixture could never drift from the real event schema. The first attempt produced a session_start event reading `"mode":"full"` for a session played in BRIEF mode.
+
+That was not a mistake in the generator script. It was a real, already-shipped bug: `session_start` fires inside `begin_shift()`, and `begin_shift()` happens before `start()`, which is the call that actually chooses the mode. The event's own field could not have been correct for any non-default mode, for every session that had ever been played, and every test passed anyway, because every test written so far happened to use full mode.
+
+**Generating a fixture from the real system is itself a test, even when nothing was written with testing in mind.** The goal was fidelity (make sure the archive's data is genuine reducer output, not fiction), and the bug-finding was a side effect of that fidelity requirement, not a separate effort. This is the same shape of benefit doc 02's "the benchmark corpus is the game's archive" line is reaching for: an artifact built for one purpose (a ghost to read) turns out to load-bear a second one (a probe that would not have been written on purpose) for free.
+
+The general habit worth keeping: **when a fixture, a demo, or an example needs to be authored, generate it from the real code path rather than writing it by hand**, even when the fixture's job has nothing to do with testing. Hand-authored fixtures are blind to exactly the class of bug real usage finds.
