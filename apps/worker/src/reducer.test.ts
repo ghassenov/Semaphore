@@ -4,6 +4,7 @@ import * as airlock from "./chambers/airlock.js";
 import * as signalRoom from "./chambers/signal_room.js";
 import * as blindPanel from "./chambers/blind_panel.js";
 import * as concordLock from "./chambers/concord_lock.js";
+import * as archive from "./archive/index.js";
 import { newSession, reduce, type PersistedSession } from "./reducer.js";
 
 const NOW = 1_000_000;
@@ -59,20 +60,13 @@ describe("begin_shift", () => {
     expect(toolText).toContain("read_manual('index')");
   });
 
-  it("emits a session_start event carrying the seed and designation", () => {
+  it("emits no event yet: session_start waits for start(), where mode is known", () => {
+    // A session_start event whose own mode field is required cannot be
+    // honestly emitted before start() has chosen a mode. Moving it here was
+    // a real bug fix, not a preference: the old code hardcoded "full"
+    // regardless of what the player later picked (see the test below).
     const { events } = reduce(fresh(), { type: "begin_shift", designation: "KEEPER" }, NOW);
-    expect(events).toEqual([
-      {
-        t: 0,
-        seq: 0,
-        type: "session_start",
-        sessionId: SESSION_ID,
-        seed: SEED,
-        difficulty: "standard",
-        mode: "full",
-        designation: "KEEPER",
-      },
-    ]);
+    expect(events).toEqual([]);
   });
 
   it("rejects an empty designation", () => {
@@ -113,7 +107,7 @@ describe("start", () => {
     expect(a.airlock).toEqual(b.airlock);
   });
 
-  it("emits a chamber_enter event for the airlock", () => {
+  it("emits session_start, with the real mode, then chamber_enter for the airlock", () => {
     const { session: afterBegin } = reduce(
       fresh(),
       { type: "begin_shift", designation: "KEEPER" },
@@ -121,10 +115,22 @@ describe("start", () => {
     );
     const { events } = reduce(
       afterBegin,
-      { type: "start", difficulty: "standard", mode: "full" },
+      { type: "start", difficulty: "standard", mode: "brief" },
       NOW,
     );
-    expect(events).toEqual([{ t: 0, seq: 1, type: "chamber_enter", chamber: "airlock" }]);
+    expect(events).toEqual([
+      {
+        t: 0,
+        seq: 0,
+        type: "session_start",
+        sessionId: SESSION_ID,
+        seed: SEED,
+        difficulty: "standard",
+        mode: "brief", // not hardcoded "full": this is the bug the move fixed
+        designation: "KEEPER",
+      },
+      { t: 0, seq: 1, type: "chamber_enter", chamber: "airlock" },
+    ]);
   });
 
   it("describes only what KEEPER's projection allows, never a glyph", () => {
@@ -813,5 +819,108 @@ describe("the Concord Lock", () => {
     const { toolText } = reduce(session, { type: "grip_bar" }, NOW + 99_000);
     expect(toolText).not.toContain(concordLock.normalise(lock.params.passphrase));
     expect(toolText).not.toContain(String(lock.cipherOffset));
+  });
+});
+
+/** Drive a full-mode session through all three implemented chambers, into the Archive. */
+function archiveSession(): PersistedSession {
+  const past = begunSession(); // full mode
+  let s = reduce(
+    past,
+    { type: "pull_lever", leverId: airlock.correctLever(past.airlock!.params) },
+    NOW,
+  ).session;
+  for (const key of signalRoom.correctSequence(s.signalRoom!.params)) {
+    s = reduce(s, { type: "press_key", keyId: key }, NOW).session;
+  }
+  const params = s.blindPanel!.params;
+  for (const dial of blindPanel.DIALS) {
+    const gauge = params.dialToGauge[dial];
+    const target = params.targets[gauge];
+    if (target === 0) continue;
+    const inverted = params.inversions[dial];
+    const direction = inverted !== target > 0 ? "clockwise" : "counterclockwise";
+    s = reduce(
+      s,
+      { type: "rotate_dial", dialId: dial, direction, clicks: Math.abs(target) },
+      NOW,
+    ).session;
+  }
+  return s;
+}
+
+describe("the Archive beat", () => {
+  it("reaches ARCHIVE after solving the Blind Panel, in full mode", () => {
+    const session = archiveSession();
+    expect(session.machine.phase).toBe("ARCHIVE");
+    expect(session.machine.chamber).toBe("blind_panel");
+  });
+
+  it("refuses read_station_log and leave_archive outside the Archive", () => {
+    const early = begunSession();
+    expect(() => reduce(early, { type: "read_station_log", entry: 1 }, NOW)).toThrow(GameError);
+    expect(() => reduce(early, { type: "leave_archive" }, NOW)).toThrow(GameError);
+  });
+
+  it("rejects a non-positive entry number", () => {
+    const session = archiveSession();
+    expect(() => reduce(session, { type: "read_station_log", entry: 0 }, NOW)).toThrow(GameError);
+    expect(() => reduce(session, { type: "read_station_log", entry: -1 }, NOW)).toThrow(GameError);
+  });
+
+  it("describes a real ghost tool call for a valid entry", () => {
+    const session = archiveSession();
+    const { toolText, events } = reduce(session, { type: "read_station_log", entry: 1 }, NOW);
+    expect(toolText).toContain("Entry 1 of");
+    expect(events[0]).toMatchObject({ type: "tool_call", tool: "read_station_log" });
+  });
+
+  it("marks an out-of-range entry as wasted, and a real one as not", () => {
+    const session = archiveSession();
+    const total = archive.keeperEntries(archive.GHOST_LOG).length;
+    const outOfRange = reduce(session, { type: "read_station_log", entry: total + 50 }, NOW);
+    expect(outOfRange.events[0]).toMatchObject({ wasted: true });
+
+    const real = reduce(session, { type: "read_station_log", entry: 1 }, NOW);
+    expect(real.events[0]).toMatchObject({ wasted: false });
+  });
+
+  it("marks re-reading the same entry as wasted", () => {
+    const session = archiveSession();
+    const first = reduce(session, { type: "read_station_log", entry: 1 }, NOW);
+    const second = reduce(first.session, { type: "read_station_log", entry: 1 }, NOW);
+    expect(second.events[0]).toMatchObject({ wasted: true });
+  });
+
+  it("tracks distinct entries read, without duplicates", () => {
+    const session = archiveSession();
+    let s = reduce(session, { type: "read_station_log", entry: 1 }, NOW).session;
+    s = reduce(s, { type: "read_station_log", entry: 1 }, NOW).session;
+    s = reduce(s, { type: "read_station_log", entry: 2 }, NOW).session;
+    expect(s.archiveEntriesRead).toEqual([1, 2]);
+  });
+
+  it("refuses to leave before reading anything", () => {
+    const session = archiveSession();
+    expect(() => reduce(session, { type: "leave_archive" }, NOW)).toThrow(GameError);
+  });
+
+  it("advances straight into the Concord Lock once the log has been read and left", () => {
+    const session = archiveSession();
+    const afterRead = reduce(session, { type: "read_station_log", entry: 1 }, NOW).session;
+    const { session: after, toolText } = reduce(afterRead, { type: "leave_archive" }, NOW);
+    expect(after.machine.phase).toBe("IN_CHAMBER");
+    expect(after.machine.chamber).toBe("concord_lock");
+    expect(after.concordLock).not.toBeNull();
+    expect(toolText).toContain("Concord Lock");
+  });
+
+  it("sizes the finale's stamina window from latency observed across the whole session", () => {
+    const session = archiveSession();
+    const afterRead = reduce(session, { type: "read_station_log", entry: 1 }, NOW).session;
+    const { session: after } = reduce(afterRead, { type: "leave_archive" }, NOW);
+    // Every prior chamber action in this test used latency 0 (fixed NOW), so
+    // the window lands on the clamp floor: 6 x 0, clamped up to 12000.
+    expect(after.concordLock!.staminaWindowMs).toBe(12_000);
   });
 });
