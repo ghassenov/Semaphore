@@ -39,7 +39,8 @@ import * as airlock from "./chambers/airlock.js";
 import * as signalRoom from "./chambers/signal_room.js";
 import * as blindPanel from "./chambers/blind_panel.js";
 import * as concordLock from "./chambers/concord_lock.js";
-import { projectForKeeper, projectedHash } from "./projection.js";
+import * as archive from "./archive/index.js";
+import { projectForKeeper, projectedHash, viewHash } from "./projection.js";
 import { concordBits } from "./worlds.js";
 import { staminaWindowMs } from "./latency.js";
 import { transition, type MachineState } from "./machine.js";
@@ -60,6 +61,8 @@ export interface PersistedSession {
   readonly signalRoom: signalRoom.SignalRoomState | null;
   readonly blindPanel: blindPanel.BlindPanelState | null;
   readonly concordLock: concordLock.ConcordLockState | null;
+  /** Distinct ghost-log entries KEEPER has read so far. Doc 02 section 4: not a puzzle, just required at least once. */
+  readonly archiveEntriesRead: readonly number[];
   /**
    * Inter-call gaps observed for chamber actions, in call order. Feeds
    * `staminaWindowMs` (doc 05 section 6). See D-010 for why this is the gap
@@ -91,6 +94,7 @@ export function newSession(sessionId: string, seed: string, nowMs: number): Pers
     signalRoom: null,
     blindPanel: null,
     concordLock: null,
+    archiveEntriesRead: [],
     observedLatencyMs: [],
     seq: 0,
     startedAtMs: nowMs,
@@ -115,7 +119,10 @@ export type Action =
   | { readonly type: "grip_bar" }
   | { readonly type: "release_bar" }
   | { readonly type: "align_bolt"; readonly boltId: concordLock.BoltId }
-  | { readonly type: "speak_passphrase"; readonly phrase: string };
+  | { readonly type: "speak_passphrase"; readonly phrase: string }
+  // The Archive beat (doc 02 section 4), between Chambers II and III.
+  | { readonly type: "read_station_log"; readonly entry: number }
+  | { readonly type: "leave_archive" };
 
 export interface ReduceResult {
   readonly session: PersistedSession;
@@ -149,6 +156,10 @@ export function reduce(session: PersistedSession, action: Action, nowMs: number)
       return alignBolt(session, action.boltId, nowMs);
     case "speak_passphrase":
       return speakPassphrase(session, action.phrase, nowMs);
+    case "read_station_log":
+      return readStationLog(session, action.entry, nowMs);
+    case "leave_archive":
+      return leaveArchive(session, nowMs);
   }
 }
 
@@ -198,25 +209,21 @@ function beginShift(session: PersistedSession, designation: string, nowMs: numbe
     throw errors.invalidInput("designation", "a non-empty name", designation);
   }
 
+  // No session_start event here. That event's own type requires `mode`, and
+  // mode is not chosen until `start()`, two calls later; emitting it now
+  // would either lie (as an earlier version of this file did, hardcoding
+  // "full" regardless of what the player later picked) or require a
+  // placeholder the type does not allow. session_start moves to `start()`,
+  // where seed, difficulty, mode and designation are all simultaneously
+  // final, which is the first point the event's own fields can be true.
   const machine = transition(session.machine, { type: "BEGIN_SHIFT" });
-  const event: SessionEvent = {
-    t: elapsed(session, nowMs),
-    seq: session.seq,
-    type: "session_start",
-    sessionId: session.sessionId,
-    seed: session.seed,
-    difficulty: session.difficulty,
-    mode: "full",
-    designation,
-  };
   const next: PersistedSession = {
     ...session,
     designation,
     machine,
-    seq: session.seq + 1,
     lastRespondedAtMs: nowMs,
   };
-  return { session: next, events: [event], toolText: briefing(designation) };
+  return { session: next, events: [], toolText: briefing(designation) };
 }
 
 /**
@@ -313,9 +320,19 @@ function start(
 
   const withDifficulty = { ...session, difficulty };
   const fields = CHAMBER_ENTRY[machine.chamber]?.(withDifficulty) ?? {};
-  const event: SessionEvent = {
+  const startEvent: SessionEvent = {
     t: elapsed(session, nowMs),
     seq: session.seq,
+    type: "session_start",
+    sessionId: session.sessionId,
+    seed: session.seed,
+    difficulty,
+    mode,
+    designation: session.designation ?? "",
+  };
+  const event: SessionEvent = {
+    t: elapsed(session, nowMs),
+    seq: session.seq + 1,
     type: "chamber_enter",
     chamber: machine.chamber,
   };
@@ -323,10 +340,10 @@ function start(
     ...withDifficulty,
     ...fields,
     machine,
-    seq: session.seq + 1,
+    seq: session.seq + 2,
     lastRespondedAtMs: nowMs,
   };
-  return { session: next, events: [event], toolText: describeChamber(next) };
+  return { session: next, events: [startEvent, event], toolText: describeChamber(next) };
 }
 
 /**
@@ -917,3 +934,96 @@ function speakPassphrase(session: PersistedSession, phrase: string, nowMs: numbe
 }
 
 const LOCKOUT_SECONDS = concordLock.LOCKOUT_MS / 1000;
+
+/**
+ * Doc 02 section 4's beat. Not a chamber, not a puzzle: reading returns text
+ * from the fixed ghost log rather than anything derived from a per-session
+ * secret, so there is no `HIDDEN` state and no possible-worlds proof here.
+ * `keeperViewHash` is computed over `{ entry, totalRead }` rather than a
+ * channel-tagged projection, since there genuinely is no epistemic state to
+ * capture beyond "which entries has KEEPER looked at so far."
+ */
+function readStationLog(session: PersistedSession, entry: number, nowMs: number): ReduceResult {
+  const latencyMs = nowMs - session.lastRespondedAtMs;
+
+  if (session.machine.phase === "ENTRY" || session.machine.phase === "LOBBY") {
+    throw errors.noSession();
+  }
+  if (session.machine.phase !== "ARCHIVE") throw errors.staleTool();
+  if (!Number.isInteger(entry) || entry < 1) {
+    throw errors.invalidInput("entry", "a positive integer", entry);
+  }
+
+  const text = archive.describeEntry(archive.GHOST_LOG, entry);
+  const entries = archive.keeperEntries(archive.GHOST_LOG);
+  const wasted = entry > entries.length || session.archiveEntriesRead.includes(entry);
+
+  const event: SessionEvent = {
+    t: elapsed(session, nowMs),
+    seq: session.seq,
+    type: "tool_call",
+    tool: "read_station_log",
+    input: { entry },
+    result: "ok",
+    latencyMs,
+    keeperViewHash: viewHash({ entry, totalRead: session.archiveEntriesRead.length }),
+    // No possible-worlds proof applies here (see the module docstring), so
+    // there is no ambiguity remaining to report; 0 is honest, not a stub.
+    concordBits: 0,
+    wasted,
+  };
+
+  const alreadyRead = session.archiveEntriesRead.includes(entry);
+  const next: PersistedSession = {
+    ...session,
+    archiveEntriesRead: alreadyRead
+      ? session.archiveEntriesRead
+      : [...session.archiveEntriesRead, entry],
+    observedLatencyMs: [...session.observedLatencyMs, latencyMs],
+    seq: session.seq + 1,
+    lastRespondedAtMs: nowMs,
+  };
+
+  return { session: next, events: [event], toolText: text };
+}
+
+/**
+ * PILOT's deliberate decision to move on, mirroring `grip_bar`: the beat has
+ * no puzzle to solve, so nothing about it can auto-complete the way a
+ * chamber solve does. Requires at least one `read_station_log` call first,
+ * which is doc 02 section 4's "required to progress, cannot be skipped."
+ */
+function leaveArchive(session: PersistedSession, nowMs: number): ReduceResult {
+  if (session.machine.phase === "ENTRY" || session.machine.phase === "LOBBY") {
+    throw errors.noSession();
+  }
+  if (session.machine.phase !== "ARCHIVE") throw errors.staleTool();
+  if (session.archiveEntriesRead.length === 0) {
+    throw errors.unreachable(
+      "the door to the Concord Lock",
+      "the station log has not been read yet; call read_station_log first",
+    );
+  }
+
+  const machine = transition(session.machine, { type: "ARCHIVE_COMPLETE" });
+  const event: SessionEvent = {
+    t: elapsed(session, nowMs),
+    seq: session.seq,
+    type: "pilot_action",
+    action: "move",
+    target: "concord_lock_door",
+  };
+  const withUpdate: PersistedSession = {
+    ...session,
+    machine,
+    seq: session.seq + 1,
+    lastRespondedAtMs: nowMs,
+  };
+
+  const settled = settleTransition(withUpdate, nowMs);
+  return {
+    session: settled.session,
+    events: [event, ...settled.events],
+    toolText: "The archive door closes behind you. Ahead: the Concord Lock.",
+  };
+}

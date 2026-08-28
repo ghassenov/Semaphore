@@ -287,3 +287,43 @@ A consequence worth noting: with a uniform-random passphrase, offset 0 (cipherte
 Option 2 is exactly computable here, and more sharply than in any other chamber: KEEPER holds the ciphertext, so it can enumerate all 26 decryptions itself, and the rejected list is `SHARED`. A phrase outside that set is one the agent had everything it needed to rule out before calling. Chamber 0's and Chamber I's repeat-of-a-failed-guess rules are cruder proxies for the same idea; this chamber admits the real thing.
 
 **Result.** Both directions are tested: a phrase that was never a candidate is wasted, and a wrong-but-possible decryption is not. The same distinction drives world narrowing, so a rejected candidate is eliminated from `candidates()` while an impossible phrase eliminates nothing, and both behaviours are asserted in the proof suite.
+
+---
+
+### D-016 `session_start` moves from `begin_shift` to `start`, where its own fields are actually true
+
+**Decision.** The `session_start` log event is now emitted inside `start()`, not `beginShift()`. Its `mode` field carries the real chosen mode.
+
+**Options considered.**
+1. Leave it at `begin_shift`, hardcoding `mode: "full"` (the shipped code before this fix).
+2. Leave it at `begin_shift`, with `mode` made optional or nullable until known.
+3. Move the event to `start()`, where `seed`, `difficulty`, `mode` and `designation` are all simultaneously final.
+
+**Why.** Found while generating the ghost fixture for D-017: `fixtures/ghosts/ghost-01.jsonl` is a BRIEF-mode session, and its `session_start` event read `"mode":"full"`, silently wrong, because option 1 was already what shipped. `mode` is not chosen until `start()` is called, two actions after `begin_shift`; the event's own type requires it, so it could not have been true at the point it was being emitted, for any session that was not full mode. Nobody had noticed because every test written so far happened to use full mode.
+
+Option 2 was rejected because it weakens the type to paper over a timing problem rather than fixing the timing: every consumer of the log (the replay viewer, the benchmark, the Archive itself) would then have to handle a `session_start` with an unknown mode, for a session where the mode is knowable and simply was not asked for yet.
+
+Option 3 fixes the actual problem: emit the event at the point every one of its fields is genuinely settled, rather than at the point that reads most naturally as "the shift began." `chamber_enter` for the first chamber already fires at `start()`, so this puts both of the session's opening events at the same, correct instant.
+
+**Result.** `beginShift()` emits no event. `start()` emits `session_start` then `chamber_enter`, `seq` 0 and 1. The ghost fixture and its generator were regenerated after the fix; the log now correctly reads `"mode":"brief"`. Two reducer tests updated to assert the new sequencing.
+
+---
+
+### D-017 The Archive beat lives in `apps/worker` for now, not on a separate origin, and says so
+
+**Decision.** `read_station_log` and the ARCHIVE-to-Concord-Lock progression are implemented as ordinary reducer actions inside `apps/worker`, reading a ghost session bundled as a TypeScript module. Doc 03 section 7's design, a static-asset tool served from a genuinely separate `apps/archive` origin, is not yet built.
+
+**Options considered.**
+1. Build `apps/archive` now, as a real second Cloudflare Pages project, before implementing the Archive beat at all.
+2. Implement the beat's game logic in `apps/worker`, explicitly documented as a temporary placement, and move it once `apps/archive` exists.
+3. Skip the Archive beat entirely until `apps/archive` is built.
+
+**Why.** Option 1 is the eventual correct architecture and is not being abandoned; it is sequenced after the WebMCP client layer in NEXT-STEPS because a cross-origin tool provider has nothing to be cross-origin *from* until there is a client embedding it. Building it in isolation now, before `apps/game` exists to embed it, would mean building against a guess rather than a real consumer.
+
+Option 3 was rejected because the gap it was covering for is real and blocking: solving Chamber II already leaves the machine parked in `ARCHIVE` with no way to progress, so full mode dead-ends today regardless of what `apps/archive` eventually looks like. Leaving that broken until a later phase would mean the possible-worlds proof, the reducer, and every full-mode test kept exercising a path that silently could not finish.
+
+Option 2 unblocks full mode now and costs little to move later: the actual data (the ghost log, `fixtures/ghosts/ghost-01.jsonl`) is already in the format and location doc 05 specifies, and the reducer-level logic in `apps/worker/src/archive/index.ts` (filtering to KEEPER-readable entries, formatting one as text) is the same logic a static-asset tool on the archive origin would run, just invoked from a different place. Moving it later is deleting a `read_station_log` reducer action and standing up an equivalent tool registration in `apps/archive`, not a redesign.
+
+Workers have no filesystem, which the first version of this fix did not account for: `fixtures/ghosts/ghost-01.jsonl` cannot be read at request time by `apps/worker`. `apps/worker/scripts/generate-ghost.ts` now emits both the JSONL fixture (the format contract, and what `apps/archive` will eventually serve directly) and a bundled TypeScript module (`apps/worker/src/archive/ghost-01.ts`, marked generated, not to be hand-edited) from one deterministic run, so the two cannot drift apart while both exist.
+
+**Result.** Full mode now completes end to end, verified by tracing all four chambers through the Archive into the Concord Lock. `apps/worker/src/archive/index.ts` and `ghost-01.ts` carry a docstring stating the eventual move explicitly, so nobody mistakes the current placement for the intended one. `PersistedSession.archiveEntriesRead` and the `leave_archive` PILOT action (mirroring `grip_bar`'s pattern: the beat has no puzzle to auto-complete, so a human decides when to move on) are the two pieces of new reducer state this required.
