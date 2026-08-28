@@ -148,6 +148,15 @@ export interface ShellHandle {
    * and that is the director, not this file.
    */
   readonly notepadHost: HTMLElement;
+  /**
+   * Where the archive origin's hidden frame is mounted, when there is one.
+   *
+   * A mount point for the same reason the notepad has one: the frame is a
+   * tool registration on another origin, so whoever owns tool lifetimes owns
+   * the element. It holds no content of its own and nothing about it is
+   * visible.
+   */
+  readonly archiveHost: HTMLElement;
   dispose(): void;
 }
 
@@ -235,6 +244,10 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
     ),
   );
 
+  // Out of the flow entirely: an empty container for the archive frame, which
+  // is hidden and zero-sized when it exists at all.
+  const archiveHost = el("div", { class: "archive-host", "aria-hidden": "true" });
+
   main.append(
     el("p", { class: "eyebrow" }, "SEMAPHORE"),
     stage,
@@ -242,12 +255,14 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
     begin,
     notepadHost,
     controls,
+    archiveHost,
   );
   root.append(main);
 
   return {
     stage,
     notepadHost,
+    archiveHost,
     dispose() {
       root.replaceChildren();
     },
