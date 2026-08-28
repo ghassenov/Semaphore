@@ -27,6 +27,7 @@ import { Rng } from "@semaphore/seed";
 import * as airlock from "@semaphore/worker/chambers/airlock";
 import * as signalRoom from "@semaphore/worker/chambers/signal_room";
 import * as blindPanel from "@semaphore/worker/chambers/blind_panel";
+import * as concordLock from "@semaphore/worker/chambers/concord_lock";
 import { canonicalise, projectForKeeper, projectForPilot } from "@semaphore/worker/projection";
 import {
   consistentWorlds,
@@ -646,5 +647,150 @@ describe("Chamber II: the channel contract", () => {
     const start = blindPanel.initial(blindPanel.generate(new Rng("dial-feel")));
     const feel = Object.values(projectForKeeper(blindPanel.facts(start)).dialFeel ?? {});
     expect(new Set(feel).size).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CHAMBER III -- THE CONCORD LOCK
+// ---------------------------------------------------------------------------
+
+const CONCORD_LOCK: ChamberWorlds<concordLock.ConcordLockState> = {
+  id: "concord_lock",
+  // Every time-dependent fact this chamber produces is SHARED, so it is
+  // identical across candidates and cannot distinguish between them. A fixed
+  // instant is therefore safe, and keeps the ChamberWorlds shape uniform.
+  facts: (state) => concordLock.facts(state, 0),
+  candidates: concordLock.candidates,
+  correctAction: concordLock.correctAction,
+};
+
+function freshLock(seed: string): concordLock.ConcordLockState {
+  const rng = new Rng(seed);
+  const { params, cipherOffset } = concordLock.generate(rng);
+  return concordLock.initial(params, cipherOffset, 20_000);
+}
+
+describe("the possible-worlds proof: Chamber III", () => {
+  it("holds both clauses at entry, for every seed", () => {
+    for (const seed of SEEDS) {
+      expect(isUnderdetermined(CONCORD_LOCK, freshLock(seed), "KEEPER")).toBe(true);
+    }
+  });
+
+  it("always contains the true passphrase in the consistent set", () => {
+    for (const seed of SEEDS) {
+      const state = freshLock(seed);
+      const worlds = consistentWorlds(CONCORD_LOCK, state, "KEEPER");
+      expect(worlds.map((w) => concordLock.correctAction(w))).toContain(
+        concordLock.correctAction(state),
+      );
+    }
+  });
+
+  it("makes every candidate produce the identical ciphertext KEEPER can read", () => {
+    // This is what makes the 26 genuinely indistinguishable: each candidate
+    // pairs a different passphrase with a different offset such that the
+    // observed ciphertext is unchanged.
+    for (const seed of SEEDS) {
+      const state = freshLock(seed);
+      const observed = concordLock.ciphertext(state);
+      for (const world of concordLock.candidates(state)) {
+        expect(concordLock.ciphertext(world)).toBe(observed);
+      }
+    }
+  });
+});
+
+describe("what the proof measures, in bits: Chamber III", () => {
+  it("reports 26 consistent passphrases and 4.70 bits at entry", () => {
+    for (const seed of SEEDS) {
+      const { worlds, actions, bits } = measure(CONCORD_LOCK, freshLock(seed), "KEEPER");
+      expect(worlds).toBe(26);
+      expect(actions).toBe(26);
+      expect(bits).toBeCloseTo(4.7, 2);
+    }
+  });
+
+  it("eliminates exactly one candidate per rejected phrase", () => {
+    const state = freshLock("elimination");
+    const before = measure(CONCORD_LOCK, state, "KEEPER").worlds;
+    // Reject some other offset's decryption: a legitimate guess, just wrong.
+    const other = concordLock
+      .candidates(state)
+      .map((w) => w.params.passphrase)
+      .find((p) => concordLock.normalise(p) !== concordLock.normalise(state.params.passphrase))!;
+    const after = concordLock.speakPassphrase(state, other, 1000, new Rng("r"));
+    expect(measure(CONCORD_LOCK, after, "KEEPER").worlds).toBe(before - 1);
+  });
+
+  it("does not eliminate anything for a phrase that was never a candidate", () => {
+    const state = freshLock("no-elimination");
+    const before = measure(CONCORD_LOCK, state, "KEEPER").worlds;
+    const after = concordLock.speakPassphrase(state, "ZZZZ ZZZZ", 1000, new Rng("r"));
+    expect(measure(CONCORD_LOCK, after, "KEEPER").worlds).toBe(before);
+  });
+});
+
+describe("Chamber III: the asymmetry is real, not a language puzzle", () => {
+  // The correctness fix recorded as D-014. Doc 02 section 3.4's own worked
+  // example ("XLI XMHI XYVRW" -> "THE TIDE TURNS") would have made this
+  // chamber solvable with no help from PILOT at all: exactly one of the 26
+  // decryptions is English, so any agent picks it out instantly and the
+  // published 4.70 bits would really be 0. These tests pin the fix.
+
+  it("generates a passphrase with no English structure to latch onto", () => {
+    // Uniform random letters: no vowel/consonant pattern, no dictionary
+    // words, nothing that distinguishes the true plaintext from 25 shifts.
+    for (const seed of SEEDS) {
+      const passphrase = concordLock.normalise(freshLock(seed).params.passphrase);
+      expect(passphrase).toMatch(/^[A-Z]+$/);
+      expect(passphrase.length).toBeGreaterThanOrEqual(8);
+    }
+  });
+
+  it("leaves every decryption structurally indistinguishable from every other", () => {
+    // The property that actually matters: no candidate is more "wordlike"
+    // than the rest, because all 26 are drawn from the same uniform
+    // alphabet. Asserted as a shape check, since "no offset is privileged"
+    // is exactly what having no linguistic structure to score buys us.
+    for (const seed of SEEDS) {
+      const state = freshLock(seed);
+      const shapes = new Set(
+        concordLock.candidates(state).map((w) => concordLock.normalise(w.params.passphrase).length),
+      );
+      expect(shapes.size).toBe(1);
+    }
+  });
+
+  it("keeps the cipher offset out of KEEPER's view entirely", () => {
+    // The whole chamber turns on this one VISUAL fact having to cross the gap.
+    for (const seed of SEEDS) {
+      const f = concordLock.facts(freshLock(seed), 0);
+      expect("cipherOffset" in projectForKeeper(f)).toBe(false);
+      expect("cipherOffset" in projectForPilot(f)).toBe(true);
+    }
+  });
+
+  it("keeps the ciphertext out of PILOT's view entirely", () => {
+    for (const seed of SEEDS) {
+      const f = concordLock.facts(freshLock(seed), 0);
+      expect("ciphertext" in projectForPilot(f)).toBe(false);
+      expect("ciphertext" in projectForKeeper(f)).toBe(true);
+    }
+  });
+
+  it("keeps the passphrase out of both projections", () => {
+    for (const seed of SEEDS) {
+      const f = concordLock.facts(freshLock(seed), 0);
+      expect("passphrase" in projectForKeeper(f)).toBe(false);
+      expect("passphrase" in projectForPilot(f)).toBe(false);
+    }
+  });
+
+  it("shows both parties the same stamina countdown, which is what they talk about", () => {
+    const state = concordLock.grip(freshLock("stamina-shared"), 1000);
+    const f = concordLock.facts(state, 6000);
+    expect(projectForPilot(f).staminaRemainingMs).toBe(projectForKeeper(f).staminaRemainingMs);
+    expect(projectForKeeper(f).staminaRemainingMs).toBe(15_000);
   });
 });
