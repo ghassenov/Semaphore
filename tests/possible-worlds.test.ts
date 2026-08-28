@@ -508,6 +508,24 @@ const BLIND_PANEL: ChamberWorlds<blindPanel.BlindPanelState> = {
   correctAction: blindPanel.correctAction,
 };
 
+/**
+ * A Blind Panel at rest. Drift defaults to off so the numeric claims below
+ * measure the hidden wiring alone; drift is a function of elapsed time only
+ * and is therefore identical under every candidate, which the final test in
+ * this section proves rather than assumes.
+ */
+const blindPanelAt = (seed: string, driftIntervalMs: number | null = null) =>
+  blindPanel.initial(blindPanel.generate(new Rng(seed)), 0, driftIntervalMs);
+
+/** One rotation at a given instant. Timestamps only matter once drift is on. */
+const rotateAt = (
+  state: blindPanel.BlindPanelState,
+  dial: blindPanel.DialId,
+  direction: blindPanel.Direction,
+  clicks: number,
+  atMs = 0,
+) => blindPanel.rotate(state, dial, direction, clicks, atMs);
+
 describe("the possible-worlds proof: Chamber II", () => {
   it("holds both clauses at entry, for every seed", () => {
     // Unlike Chambers 0 and I, there is no natural "cooperative path" to walk
@@ -518,14 +536,14 @@ describe("the possible-worlds proof: Chamber II", () => {
     // ambiguous, so it is asserted across the whole corpus; a worked example
     // of narrowing through play follows below for one specific seed.
     for (const seed of SEEDS) {
-      const start = blindPanel.initial(blindPanel.generate(new Rng(seed)));
+      const start = blindPanelAt(seed);
       expect(isUnderdetermined(BLIND_PANEL, start, "KEEPER")).toBe(true);
     }
   });
 
   it("always contains a witness whose wiring matches the true wiring", () => {
     for (const seed of SEEDS) {
-      const start = blindPanel.initial(blindPanel.generate(new Rng(seed)));
+      const start = blindPanelAt(seed);
       const worlds = consistentWorlds(BLIND_PANEL, start, "KEEPER");
       const truth = blindPanel.correctAction(start);
       expect(worlds.map((w) => blindPanel.correctAction(w))).toContain(truth);
@@ -537,7 +555,7 @@ describe("what the proof measures, in bits: Chamber II", () => {
   it("reports 384 consistent wirings and 8.58 bits at entry", () => {
     // 24 permutations times 16 inversion combinations, doc 02 section 3.2.
     for (const seed of SEEDS) {
-      const start = blindPanel.initial(blindPanel.generate(new Rng(seed)));
+      const start = blindPanelAt(seed);
       const { worlds, actions, bits } = measure(BLIND_PANEL, start, "KEEPER");
       expect(worlds).toBe(384);
       expect(actions).toBe(384);
@@ -556,10 +574,10 @@ describe("what the proof measures, in bits: Chamber II", () => {
     // means inverted, from a gauge starting at rest), halving the
     // consistent set every time: 384 -> 192 -> 96 -> 48 -> 24.
     const seed = "proof-seed-0";
-    let state = blindPanel.initial(blindPanel.generate(new Rng(seed)));
+    let state = blindPanelAt(seed);
     const expectedWorlds = [192, 96, 48, 24];
     for (const [i, dial] of blindPanel.DIALS.entries()) {
-      state = blindPanel.rotate(state, dial, "clockwise", 8);
+      state = rotateAt(state, dial, "clockwise", 8);
       const registered = blindPanel.lastRegisteredClicks(state);
       expect(registered === 0 || registered === 8).toBe(true);
       expect(measure(BLIND_PANEL, state, "KEEPER").worlds).toBe(expectedWorlds[i]);
@@ -572,11 +590,11 @@ describe("what the proof measures, in bits: Chamber II", () => {
     // Doc 02 section 5: "a pull that eliminates nothing must not move it."
     // Re-querying an already-saturated dial teaches nothing new.
     const seed = "proof-seed-0";
-    let state = blindPanel.initial(blindPanel.generate(new Rng(seed)));
-    for (const dial of blindPanel.DIALS) state = blindPanel.rotate(state, dial, "clockwise", 8);
+    let state = blindPanelAt(seed);
+    for (const dial of blindPanel.DIALS) state = rotateAt(state, dial, "clockwise", 8);
     const before = measure(BLIND_PANEL, state, "KEEPER");
 
-    state = blindPanel.rotate(state, 1, "clockwise", 8); // dial 1 is already saturated
+    state = rotateAt(state, 1, "clockwise", 8); // dial 1 is already saturated
     const registered = blindPanel.lastRegisteredClicks(state);
     const after = measure(BLIND_PANEL, state, "KEEPER");
 
@@ -591,7 +609,7 @@ describe("what the proof measures, in bits: Chamber II", () => {
     // longer history is a strictly harder match, so this holds for any
     // rotation sequence, not just a hand-picked one.
     const seed = "monotone-blind-panel";
-    let state = blindPanel.initial(blindPanel.generate(new Rng(seed)));
+    let state = blindPanelAt(seed);
     let lastBits = measure(BLIND_PANEL, state, "KEEPER").bits;
     const script: readonly [blindPanel.DialId, blindPanel.Direction, number][] = [
       [1, "clockwise", 3],
@@ -602,10 +620,45 @@ describe("what the proof measures, in bits: Chamber II", () => {
       [2, "clockwise", 1],
     ];
     for (const [dial, direction, clicks] of script) {
-      state = blindPanel.rotate(state, dial, direction, clicks);
+      state = rotateAt(state, dial, direction, clicks);
       const bits = measure(BLIND_PANEL, state, "KEEPER").bits;
       expect(bits).toBeLessThanOrEqual(lastBits);
       lastBits = bits;
+    }
+  });
+
+  it("does not narrow anything by the passage of time alone", () => {
+    // Doc 02 section 3.3's drift is pressure, not information. It falls on
+    // every gauge equally and depends only on elapsed time, so it is
+    // identical under all 384 candidate wirings and cannot distinguish
+    // between them. If this ever fails, drift has become a back channel.
+    for (const seed of SEEDS) {
+      const start = blindPanelAt(seed, blindPanel.DRIFT_INTERVAL_MS);
+      const muchLater = blindPanel.settle(start, blindPanel.DRIFT_INTERVAL_MS * 30);
+      expect(measure(BLIND_PANEL, muchLater, "KEEPER")).toEqual(
+        measure(BLIND_PANEL, start, "KEEPER"),
+      );
+    }
+  });
+
+  it("holds both clauses while gauges are actively drifting", () => {
+    // The same proof, run against a chamber whose readings are moving under
+    // the pair rather than sitting still. Drift changes when a gauge rests
+    // against a bound, which changes what `lastClicks` reports, so it is
+    // replayed inside candidates() rather than applied after the fact; this
+    // asserts that replay stays honest, truth included.
+    const interval = blindPanel.DRIFT_INTERVAL_MS;
+    for (const seed of SEEDS) {
+      let state = blindPanelAt(seed, interval);
+      let at = 0;
+      for (const dial of blindPanel.DIALS) {
+        at += interval * 2; // two marks of drift fall between every rotation
+        state = rotateAt(state, dial, "clockwise", 5, at);
+      }
+      expect(isUnderdetermined(BLIND_PANEL, state, "KEEPER")).toBe(true);
+      const truth = blindPanel.correctAction(state);
+      const worlds = consistentWorlds(BLIND_PANEL, state, "KEEPER");
+      expect(worlds.map((w) => blindPanel.correctAction(w))).toContain(truth);
     }
   });
 });
@@ -613,7 +666,7 @@ describe("what the proof measures, in bits: Chamber II", () => {
 describe("Chamber II: the channel contract", () => {
   it("never lets a gauge reading reach KEEPER's view", () => {
     for (const seed of SEEDS) {
-      const start = blindPanel.initial(blindPanel.generate(new Rng(seed)));
+      const start = blindPanelAt(seed);
       const view = projectForKeeper(blindPanel.facts(start));
       expect("gaugeValues" in view).toBe(false);
       expect("targets" in view).toBe(false);
@@ -622,7 +675,7 @@ describe("Chamber II: the channel contract", () => {
 
   it("never lets the wiring reach either projection", () => {
     for (const seed of SEEDS) {
-      const start = blindPanel.initial(blindPanel.generate(new Rng(seed)));
+      const start = blindPanelAt(seed);
       const f = blindPanel.facts(start);
       for (const field of ["dialToGauge", "inversions", "crossLink"] as const) {
         expect(field in projectForKeeper(f)).toBe(false);
@@ -633,10 +686,10 @@ describe("Chamber II: the channel contract", () => {
 
   it("renders lastClicks identically to both parties, and it is null before any rotation", () => {
     const seed = "audible-blind-panel";
-    const start = blindPanel.initial(blindPanel.generate(new Rng(seed)));
+    const start = blindPanelAt(seed);
     expect(projectForKeeper(blindPanel.facts(start)).lastClicks).toBeNull();
 
-    const rotated = blindPanel.rotate(start, 1, "clockwise", 4);
+    const rotated = rotateAt(start, 1, "clockwise", 4);
     const f = blindPanel.facts(rotated);
     expect(projectForPilot(f).lastClicks).toBe(projectForKeeper(f).lastClicks);
   });
@@ -644,7 +697,7 @@ describe("Chamber II: the channel contract", () => {
   it("gives KEEPER identical, uninformative feel for every dial", () => {
     // Mirrors chamber 0's lever-feel guard: if dial feel varied with the
     // wiring it would be a TACTILE back channel, defeating clause (a).
-    const start = blindPanel.initial(blindPanel.generate(new Rng("dial-feel")));
+    const start = blindPanelAt("dial-feel");
     const feel = Object.values(projectForKeeper(blindPanel.facts(start)).dialFeel ?? {});
     expect(new Set(feel).size).toBe(1);
   });

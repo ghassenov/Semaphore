@@ -27,8 +27,10 @@
  */
 
 import {
+  DIFFICULTIES,
   errors,
   MODE_CHAMBERS,
+  timerFor,
   type ChamberId,
   type Difficulty,
   type SessionEvent,
@@ -41,9 +43,9 @@ import * as blindPanel from "./chambers/blind_panel.js";
 import * as concordLock from "./chambers/concord_lock.js";
 import * as archive from "./archive/index.js";
 import { projectForKeeper, projectedHash, viewHash } from "./projection.js";
-import { concordBits } from "./worlds.js";
+import { concordBits, measure, type Ambiguity, type ChamberWorlds } from "./worlds.js";
 import { staminaWindowMs } from "./latency.js";
-import { transition, type MachineState } from "./machine.js";
+import { preservesSeed, transition, type MachineState } from "./machine.js";
 
 /**
  * Everything the reducer needs to remember between calls.
@@ -57,6 +59,17 @@ export interface PersistedSession {
   readonly designation: string | null;
   readonly difficulty: Difficulty;
   readonly machine: MachineState;
+  /**
+   * Server clock at which the current chamber deadlocks, or `null` when
+   * nothing is being timed: Practice, the Archive beat, and the moments
+   * between chambers all sit here.
+   *
+   * The deadline is stored rather than the remaining time, so it survives a
+   * Durable Object eviction and cannot be advanced by a client that stops
+   * calling. Doc 05 section 1 requires exactly this: a client timer is one
+   * `debugger` away from infinite.
+   */
+  readonly chamberDeadlineMs: number | null;
   readonly airlock: airlock.AirlockState | null;
   readonly signalRoom: signalRoom.SignalRoomState | null;
   readonly blindPanel: blindPanel.BlindPanelState | null;
@@ -90,6 +103,7 @@ export function newSession(sessionId: string, seed: string, nowMs: number): Pers
     designation: null,
     difficulty: "standard",
     machine: { phase: "ENTRY", chamber: null, mode: "full", retries: 0 },
+    chamberDeadlineMs: null,
     airlock: null,
     signalRoom: null,
     blindPanel: null,
@@ -122,7 +136,10 @@ export type Action =
   | { readonly type: "speak_passphrase"; readonly phrase: string }
   // The Archive beat (doc 02 section 4), between Chambers II and III.
   | { readonly type: "read_station_log"; readonly entry: number }
-  | { readonly type: "leave_archive" };
+  | { readonly type: "leave_archive" }
+  // The only way out of DEADLOCK (doc 02 section 5). PILOT's decision, not
+  // KEEPER's: an agent cannot restart a chamber it cannot see.
+  | { readonly type: "retry_chamber" };
 
 export interface ReduceResult {
   readonly session: PersistedSession;
@@ -133,8 +150,208 @@ export interface ReduceResult {
 
 const LEVER_IDS: ReadonlySet<string> = new Set(airlock.LEVERS);
 
-/** Apply one action. Throws `GameError` for anything the game itself refuses. */
+const AIRLOCK_CHAMBER: ChamberWorlds<airlock.AirlockState> = {
+  id: "airlock",
+  facts: airlock.facts,
+  candidates: airlock.candidates,
+  correctAction: airlock.correctAction,
+};
+
+const SIGNAL_ROOM_CHAMBER: ChamberWorlds<signalRoom.SignalRoomState> = {
+  id: "signal_room",
+  facts: signalRoom.facts,
+  candidates: signalRoom.candidates,
+  correctAction: signalRoom.correctAction,
+};
+
+const BLIND_PANEL_CHAMBER: ChamberWorlds<blindPanel.BlindPanelState> = {
+  id: "blind_panel",
+  facts: blindPanel.facts,
+  candidates: blindPanel.candidates,
+  correctAction: blindPanel.correctAction,
+};
+
+const CONCORD_LOCK_CHAMBER: ChamberWorlds<concordLock.ConcordLockState> = {
+  id: "concord_lock",
+  // `facts` needs a clock, unlike the other chambers. Every time-dependent
+  // field it produces is SHARED, so it is identical across candidates and
+  // cannot distinguish between them; a fixed instant is therefore safe here
+  // and keeps the ChamberWorlds shape uniform across all four chambers.
+  facts: (state: concordLock.ConcordLockState) => concordLock.facts(state, 0),
+  candidates: concordLock.candidates,
+  correctAction: concordLock.correctAction,
+};
+
+/**
+ * The ambiguity still standing in whichever chamber is active, or `null` when
+ * none is. This is what the DEADLOCK failure card reads back, so the run's
+ * last line is "you were this many bits short" rather than "you lost".
+ */
+function ambiguityFor(session: PersistedSession): Ambiguity | null {
+  switch (session.machine.chamber) {
+    case "airlock":
+      return session.airlock ? measure(AIRLOCK_CHAMBER, session.airlock) : null;
+    case "signal_room":
+      return session.signalRoom ? measure(SIGNAL_ROOM_CHAMBER, session.signalRoom) : null;
+    case "blind_panel":
+      return session.blindPanel ? measure(BLIND_PANEL_CHAMBER, session.blindPanel) : null;
+    case "concord_lock":
+      return session.concordLock ? measure(CONCORD_LOCK_CHAMBER, session.concordLock) : null;
+    case null:
+      return null;
+  }
+}
+
+/**
+ * The seed a chamber is generated from on entry, and on every retry after a
+ * DEADLOCK.
+ *
+ * Doc 02 section 7: the first retry preserves the seed, because a chamber's
+ * hard-won empirical knowledge (Chamber II's dial mapping above all) would be
+ * pure punishment to re-roll. A second retry re-randomises. `preservesSeed`
+ * is the single definition of which retry that is; a first entry, with no
+ * retries at all, trivially uses the base seed.
+ */
+function chamberSeed(seed: string, chamber: ChamberId, machine: MachineState): string {
+  const preserved = machine.retries === 0 || preservesSeed(machine);
+  return preserved ? `${seed}:${chamber}` : `${seed}:${chamber}:retry${machine.retries}`;
+}
+
+/**
+ * Charge a time penalty against the chamber deadline (doc 02 sections 3.1,
+ * 3.2 and 8), and produce the log line that lets a replay redraw the timer.
+ *
+ * Penalties are subtracted from the deadline rather than freezing the agent
+ * out for a stretch: doc 02 section 8's wording is that a wrong action "costs
+ * seconds against a timer", and a subtraction is both the literal reading and
+ * the one that stays a pure function of stored timestamps (D-018). Practice
+ * scales every penalty to zero, and an untimed chamber has nothing to charge.
+ */
+function chargePenalty(
+  session: PersistedSession,
+  baseMs: number,
+  nowMs: number,
+): { session: PersistedSession; events: readonly SessionEvent[] } {
+  const cost = Math.round(baseMs * DIFFICULTIES[session.difficulty].penaltyScale);
+  if (session.chamberDeadlineMs === null || cost === 0) return { session, events: [] };
+
+  const to = session.chamberDeadlineMs - cost;
+  const event: SessionEvent = {
+    t: elapsed(session, nowMs),
+    seq: session.seq,
+    type: "state_delta",
+    path: "chamberDeadlineMs",
+    from: session.chamberDeadlineMs,
+    to,
+  };
+  return {
+    session: { ...session, chamberDeadlineMs: to, seq: session.seq + 1 },
+    events: [event],
+  };
+}
+
+/**
+ * Apply one action. Throws `GameError` for anything the game itself refuses.
+ *
+ * Every call settles the session against the clock first, so a chamber whose
+ * timer ran out while nobody was calling deadlocks on the next call rather
+ * than silently granting extra time. A deadlocked session accepts exactly one
+ * action, `retry_chamber`; everything else is answered with text saying so,
+ * rather than a thrown error, because the settle that produced the deadlock
+ * has state and a log line to persist and a throw would discard both.
+ */
 export function reduce(session: PersistedSession, action: Action, nowMs: number): ReduceResult {
+  const settled = settleSession(session, nowMs);
+  const current = settled.session;
+
+  if (current.machine.phase === "DEADLOCK" && action.type !== "retry_chamber") {
+    return {
+      session: { ...current, lastRespondedAtMs: nowMs },
+      events: settled.events,
+      toolText: deadlockText(current),
+    };
+  }
+
+  const result = apply(current, action, nowMs);
+  return { ...result, events: [...settled.events, ...result.events] };
+}
+
+/**
+ * Bring a session up to date with the clock.
+ *
+ * The whole server-authoritative timer is this function: no background tick,
+ * no client heartbeat, just a stored deadline compared against the server's
+ * own clock wherever the session is read. That is the pattern
+ * `concord_lock.settle` already established for the finale's grip window
+ * (D-018), and it is what keeps the timer testable without a Durable Object.
+ *
+ * Exported because the Durable Object alarm in `Session.ts` is a *second
+ * caller* of this same function, never a second implementation: the alarm
+ * exists only so the deadlock is recorded at the moment it happens even when
+ * no tool call arrives to observe it.
+ *
+ * Only `IN_CHAMBER` expires. The Archive beat parks a stale deadline behind a
+ * phase this guard rejects, which is how doc 02 section 4's breather stays
+ * untimed without a second flag to track.
+ */
+export function settleSession(
+  session: PersistedSession,
+  nowMs: number,
+): { session: PersistedSession; events: readonly SessionEvent[] } {
+  const { machine, chamberDeadlineMs } = session;
+  if (machine.phase !== "IN_CHAMBER" || !machine.chamber) return { session, events: [] };
+  if (chamberDeadlineMs === null || nowMs < chamberDeadlineMs) return { session, events: [] };
+
+  const event: SessionEvent = {
+    t: elapsed(session, nowMs),
+    seq: session.seq,
+    type: "failure",
+    failure: "DEADLOCK",
+    chamber: machine.chamber,
+    concordBits: ambiguityFor(session)?.bits ?? 0,
+  };
+  return {
+    session: {
+      ...session,
+      machine: transition(machine, { type: "TIMER_EXPIRED" }),
+      chamberDeadlineMs: null,
+      seq: session.seq + 1,
+    },
+    events: [event],
+  };
+}
+
+/**
+ * The failure card, in words (doc 02 section 6, doc 06 section 5).
+ *
+ * Reads back the CONCORD meter's final value rather than merely announcing
+ * the loss, because the information-theoretic framing lands hardest at the
+ * moment the player is most receptive to it: the run did not fail for lack of
+ * time so much as for lack of the bits PILOT still had to give.
+ *
+ * The count read back is the number of **distinct courses of action** still
+ * open, not the number of consistent worlds. Doc 06 section 5's draft copy
+ * says "worlds", but `bits` is `log2(actions)` by deliberate design (see
+ * `worlds.ts`: worlds that agree on what to do next are ambiguity that costs
+ * the pair nothing), so quoting the world count beside it would print two
+ * numbers that do not agree with each other. Chamber 0 is the clearest case:
+ * six consistent worlds, three courses of action, 1.58 bits.
+ */
+function deadlockText(session: PersistedSession): string {
+  const ambiguity = ambiguityFor(session);
+  const reason =
+    ambiguity && ambiguity.actions > 1
+      ? ` Time ran out with ${ambiguity.actions} courses of action still open to KEEPER: ` +
+        `PILOT still had ${ambiguity.bits.toFixed(2)} bits to give.`
+      : "";
+  return (
+    `DEADLOCK. The chamber timer reached zero.${reason} ` +
+    "Progress through earlier chambers is kept. PILOT can call retry_chamber to reset this chamber."
+  );
+}
+
+/** Apply one action to a session already settled against the clock. */
+function apply(session: PersistedSession, action: Action, nowMs: number): ReduceResult {
   switch (action.type) {
     case "begin_shift":
       return beginShift(session, action.designation, nowMs);
@@ -160,6 +377,8 @@ export function reduce(session: PersistedSession, action: Action, nowMs: number)
       return readStationLog(session, action.entry, nowMs);
     case "leave_archive":
       return leaveArchive(session, nowMs);
+    case "retry_chamber":
+      return retryChamber(session, nowMs);
   }
 }
 
@@ -237,19 +456,34 @@ function beginShift(session: PersistedSession, designation: string, nowMs: numbe
  * independent random streams rather than correlated prefixes of the same one.
  */
 const CHAMBER_ENTRY: Partial<
-  Record<ChamberId, (session: PersistedSession) => Partial<PersistedSession>>
+  Record<
+    ChamberId,
+    (session: PersistedSession, machine: MachineState, nowMs: number) => Partial<PersistedSession>
+  >
 > = {
-  airlock: (session) => ({
-    airlock: airlock.initial(airlock.generate(new Rng(`${session.seed}:airlock`))),
+  airlock: (session, machine) => ({
+    airlock: airlock.initial(
+      airlock.generate(new Rng(chamberSeed(session.seed, "airlock", machine))),
+    ),
   }),
-  signal_room: (session) => ({
-    signalRoom: signalRoom.initial(signalRoom.generate(new Rng(`${session.seed}:signal_room`))),
+  signal_room: (session, machine) => ({
+    signalRoom: signalRoom.initial(
+      signalRoom.generate(new Rng(chamberSeed(session.seed, "signal_room", machine))),
+    ),
   }),
-  blind_panel: (session) => ({
-    blindPanel: blindPanel.initial(blindPanel.generate(new Rng(`${session.seed}:blind_panel`))),
+  blind_panel: (session, machine, nowMs) => ({
+    blindPanel: blindPanel.initial(
+      blindPanel.generate(new Rng(chamberSeed(session.seed, "blind_panel", machine))),
+      nowMs,
+      // Drift is pressure, so it scales with the preset exactly as the timer
+      // does. Practice turns it off entirely (doc 02 section 7).
+      blindPanel.driftIntervalFor(DIFFICULTIES[session.difficulty].driftScale),
+    ),
   }),
-  concord_lock: (session) => {
-    const { params, cipherOffset } = concordLock.generate(new Rng(`${session.seed}:concord_lock`));
+  concord_lock: (session, machine) => {
+    const { params, cipherOffset } = concordLock.generate(
+      new Rng(chamberSeed(session.seed, "concord_lock", machine)),
+    );
     // The payoff of D-010: the finale's grip window is sized from the rhythm
     // this pair actually showed across the earlier chambers, never hardcoded.
     return {
@@ -261,6 +495,27 @@ const CHAMBER_ENTRY: Partial<
     };
   },
 };
+
+/**
+ * Everything that changes when a chamber becomes the live one: its freshly
+ * generated puzzle state, and the deadline it must be solved inside.
+ *
+ * The one place a deadline is ever set, so first entry and a post-DEADLOCK
+ * retry cannot drift apart. `timerFor` returns `null` in Practice, which is
+ * how an untimed session stays untimed without a second code path.
+ */
+function chamberEntryFields(
+  session: PersistedSession,
+  machine: MachineState,
+  nowMs: number,
+): Partial<PersistedSession> {
+  if (!machine.chamber) return { chamberDeadlineMs: null };
+  const timer = timerFor(machine.chamber, session.difficulty);
+  return {
+    ...(CHAMBER_ENTRY[machine.chamber]?.(session, machine, nowMs) ?? {}),
+    chamberDeadlineMs: timer === null ? null : nowMs + timer,
+  };
+}
 
 /**
  * After a chamber is solved and the machine reaches `TRANSITIONING`, advance
@@ -284,8 +539,7 @@ function settleTransition(
   if (next && !CHAMBER_ENTRY[next]) return { session, events: [] }; // next chamber not built yet
 
   const machine = transition(session.machine, { type: "TRANSITION_COMPLETE" });
-  const entry = machine.chamber ? CHAMBER_ENTRY[machine.chamber] : undefined;
-  const fields = entry ? entry(session) : {};
+  const fields = chamberEntryFields(session, machine, nowMs);
   const advanced: PersistedSession = { ...session, ...fields, machine, seq: session.seq + 1 };
 
   const events: SessionEvent[] = machine.chamber
@@ -319,7 +573,7 @@ function start(
   if (!machine.chamber) throw new Error("START produced a machine with no chamber");
 
   const withDifficulty = { ...session, difficulty };
-  const fields = CHAMBER_ENTRY[machine.chamber]?.(withDifficulty) ?? {};
+  const fields = chamberEntryFields(withDifficulty, machine, nowMs);
   const startEvent: SessionEvent = {
     t: elapsed(session, nowMs),
     seq: session.seq,
@@ -429,13 +683,6 @@ function pullLever(
   let machine = session.machine;
   if (solved) machine = transition(machine, { type: "CHAMBER_SOLVED" });
 
-  const chamber = {
-    id: "airlock" as const,
-    facts: airlock.facts,
-    candidates: airlock.candidates,
-    correctAction: airlock.correctAction,
-  };
-
   const events: SessionEvent[] = [
     {
       t: elapsed(session, nowMs),
@@ -446,7 +693,7 @@ function pullLever(
       result: "ok",
       latencyMs,
       keeperViewHash,
-      concordBits: concordBits(chamber, after),
+      concordBits: concordBits(AIRLOCK_CHAMBER, after),
       wasted,
     },
   ];
@@ -468,14 +715,24 @@ function pullLever(
     lastRespondedAtMs: nowMs,
   };
 
-  const settled = settleTransition(withUpdate, nowMs);
+  // Doc 02 section 3.1: a wrong lever vents the chamber and costs twenty
+  // seconds. No lockout, because Chamber 0 cannot be failed permanently.
+  const penalty = correct
+    ? { session: withUpdate, events: [] as readonly SessionEvent[] }
+    : chargePenalty(withUpdate, airlock.WRONG_LEVER_PENALTY_MS, nowMs);
+
+  const settled = settleTransition(penalty.session, nowMs);
   const enteredNewChamber = settled.session.machine.chamber !== withUpdate.machine.chamber;
   const baseText = correct
     ? "The lever clunks home. Bolts run back. The door to the Signal Room is open."
     : "The chamber vents with a hiss. That was not the correct lever. Ask PILOT again.";
   const toolText = enteredNewChamber ? `${baseText} ${describeChamber(settled.session)}` : baseText;
 
-  return { session: settled.session, events: [...events, ...settled.events], toolText };
+  return {
+    session: settled.session,
+    events: [...events, ...penalty.events, ...settled.events],
+    toolText,
+  };
 }
 
 function pressKey(session: PersistedSession, keyId: signalRoom.KeyId, nowMs: number): ReduceResult {
@@ -509,13 +766,6 @@ function pressKey(session: PersistedSession, keyId: signalRoom.KeyId, nowMs: num
   let machine = session.machine;
   if (solved) machine = transition(machine, { type: "CHAMBER_SOLVED" });
 
-  const chamber = {
-    id: "signal_room" as const,
-    facts: signalRoom.facts,
-    candidates: signalRoom.candidates,
-    correctAction: signalRoom.correctAction,
-  };
-
   const events: SessionEvent[] = [
     {
       t: elapsed(session, nowMs),
@@ -526,7 +776,7 @@ function pressKey(session: PersistedSession, keyId: signalRoom.KeyId, nowMs: num
       result: "ok",
       latencyMs,
       keeperViewHash,
-      concordBits: concordBits(chamber, after),
+      concordBits: concordBits(SIGNAL_ROOM_CHAMBER, after),
       wasted,
     },
   ];
@@ -539,7 +789,7 @@ function pressKey(session: PersistedSession, keyId: signalRoom.KeyId, nowMs: num
       type: "failure",
       failure: "RACE_CONDITION",
       chamber: "signal_room",
-      concordBits: concordBits(chamber, after),
+      concordBits: concordBits(SIGNAL_ROOM_CHAMBER, after),
     });
   }
   if (solved) {
@@ -560,7 +810,20 @@ function pressKey(session: PersistedSession, keyId: signalRoom.KeyId, nowMs: num
     lastRespondedAtMs: nowMs,
   };
 
-  const settled = settleTransition(withUpdate, nowMs);
+  // Doc 02 section 3.2: fifteen seconds for a wrong key, thirty when the
+  // third wrong press in a row makes it a RACE CONDITION. The heavier charge
+  // replaces the lighter one rather than stacking on top of it.
+  const penaltyMs = raceCondition
+    ? signalRoom.RACE_CONDITION_PENALTY_MS
+    : correct
+      ? 0
+      : signalRoom.WRONG_KEY_PENALTY_MS;
+  const penalty =
+    penaltyMs === 0
+      ? { session: withUpdate, events: [] as readonly SessionEvent[] }
+      : chargePenalty(withUpdate, penaltyMs, nowMs);
+
+  const settled = settleTransition(penalty.session, nowMs);
   const enteredNewChamber = settled.session.machine.chamber !== withUpdate.machine.chamber;
   const baseText = solved
     ? "The ring settles with a deep chime. The sequence is complete."
@@ -571,7 +834,11 @@ function pressKey(session: PersistedSession, keyId: signalRoom.KeyId, nowMs: num
         : "Wrong key. The ring flashes alarm-red and the sequence resets.";
   const toolText = enteredNewChamber ? `${baseText} ${describeChamber(settled.session)}` : baseText;
 
-  return { session: settled.session, events: [...events, ...settled.events], toolText };
+  return {
+    session: settled.session,
+    events: [...events, ...penalty.events, ...settled.events],
+    toolText,
+  };
 }
 
 function resetSequence(session: PersistedSession, nowMs: number): ReduceResult {
@@ -592,12 +859,6 @@ function resetSequence(session: PersistedSession, nowMs: number): ReduceResult {
   }
 
   const after = signalRoom.reset(before);
-  const chamber = {
-    id: "signal_room" as const,
-    facts: signalRoom.facts,
-    candidates: signalRoom.candidates,
-    correctAction: signalRoom.correctAction,
-  };
   const event: SessionEvent = {
     t: elapsed(session, nowMs),
     seq: session.seq,
@@ -607,7 +868,7 @@ function resetSequence(session: PersistedSession, nowMs: number): ReduceResult {
     result: "ok",
     latencyMs,
     keeperViewHash: projectedHash(signalRoom.facts(before), "KEEPER"),
-    concordBits: concordBits(chamber, after),
+    concordBits: concordBits(SIGNAL_ROOM_CHAMBER, after),
     // A deliberate reset always succeeds at what it does; "wasted" describes
     // a call that could not have succeeded, which does not apply here.
     wasted: false,
@@ -621,13 +882,6 @@ function resetSequence(session: PersistedSession, nowMs: number): ReduceResult {
   };
   return { session: next, events: [event], toolText: "Sequence cleared. Ready to begin again." };
 }
-
-const BLIND_PANEL_CHAMBER = {
-  id: "blind_panel" as const,
-  facts: blindPanel.facts,
-  candidates: blindPanel.candidates,
-  correctAction: blindPanel.correctAction,
-};
 
 function rotateDial(
   session: PersistedSession,
@@ -651,7 +905,10 @@ function rotateDial(
     throw errors.invalidInput("clicks", "an integer from 1 to 8", clicks);
   }
 
-  const before = session.blindPanel;
+  // Settle the chamber's own clock first, so every gauge read below (the
+  // wasted-call bits, the KEEPER view hash, the solve check) sees the drift
+  // that has accumulated since the last call rather than a stale panel.
+  const before = blindPanel.settle(session.blindPanel, nowMs);
   if (blindPanel.isSolved(before)) {
     // Free and inert, matching the other chambers' already-solved precedent.
     return { session, events: [], toolText: "All four gauges already read their targets." };
@@ -664,7 +921,7 @@ function rotateDial(
   // rotation here has no pass/fail outcome to repeat.
   const bitsBefore = concordBits(BLIND_PANEL_CHAMBER, before);
   const keeperViewHash = projectedHash(blindPanel.facts(before), "KEEPER");
-  const after = blindPanel.rotate(before, dialId, direction, clicks);
+  const after = blindPanel.rotate(before, dialId, direction, clicks, nowMs);
   const bitsAfter = concordBits(BLIND_PANEL_CHAMBER, after);
   const wasted = bitsAfter === bitsBefore;
 
@@ -714,17 +971,6 @@ function rotateDial(
 
   return { session: settled.session, events: [...events, ...settled.events], toolText };
 }
-
-const CONCORD_LOCK_CHAMBER = {
-  id: "concord_lock" as const,
-  // `facts` needs a clock, unlike the other chambers. Every time-dependent
-  // field it produces is SHARED, so it is identical across candidates and
-  // cannot distinguish between them; a fixed instant is therefore safe here
-  // and keeps the ChamberWorlds shape uniform across all four chambers.
-  facts: (state: concordLock.ConcordLockState) => concordLock.facts(state, 0),
-  candidates: concordLock.candidates,
-  correctAction: concordLock.correctAction,
-};
 
 /** Shared guard: the finale's chamber must be live before any of its actions run. */
 function requireConcordLock(session: PersistedSession): concordLock.ConcordLockState {
@@ -1026,4 +1272,41 @@ function leaveArchive(session: PersistedSession, nowMs: number): ReduceResult {
     events: [event, ...settled.events],
     toolText: "The archive door closes behind you. Ahead: the Concord Lock.",
   };
+}
+
+/**
+ * PILOT resets a deadlocked chamber (doc 02 section 5).
+ *
+ * A PILOT action rather than a KEEPER tool, for the same reason `grip_bar` is
+ * one: an agent that cannot see the chamber cannot decide to restart it, and
+ * the decision to spend a retry is exactly the kind the pair should make out
+ * loud. Nothing about earlier chambers is touched, so a fifteen-minute run is
+ * never lost to one timer.
+ */
+function retryChamber(session: PersistedSession, nowMs: number): ReduceResult {
+  if (session.machine.phase !== "DEADLOCK") {
+    throw errors.unreachable("a chamber reset", "this chamber has not deadlocked");
+  }
+
+  const machine = transition(session.machine, { type: "RETRY" });
+  if (!machine.chamber) throw new Error("RETRY produced a machine with no chamber");
+
+  const event: SessionEvent = {
+    t: elapsed(session, nowMs),
+    seq: session.seq,
+    type: "chamber_enter",
+    chamber: machine.chamber,
+  };
+  const next: PersistedSession = {
+    ...session,
+    ...chamberEntryFields(session, machine, nowMs),
+    machine,
+    seq: session.seq + 1,
+    lastRespondedAtMs: nowMs,
+  };
+
+  const opening = preservesSeed(machine)
+    ? "The chamber resets. Everything is exactly where you found it."
+    : "The chamber resets, and the station has re-keyed it. What you learned no longer holds.";
+  return { session: next, events: [event], toolText: `${opening} ${describeChamber(next)}` };
 }

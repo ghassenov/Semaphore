@@ -22,6 +22,13 @@ import { AIRLOCK_GLYPHS, type GlyphId } from "./glyphs.js";
 /** The three levers, left to right. Ids are stable; positions are described. */
 export type LeverId = "lever_a" | "lever_b" | "lever_c";
 
+/**
+ * Doc 02 section 3.1: a wrong lever vents the chamber and costs twenty
+ * seconds against the chamber timer. There is no lockout here, because
+ * Chamber 0 teaches the mechanic and must not be failable permanently.
+ */
+export const WRONG_LEVER_PENALTY_MS = 20_000;
+
 export const LEVERS: readonly LeverId[] = ["lever_a", "lever_b", "lever_c"] as const;
 
 /** Where each lever sits, which is all `describe_chamber` tells KEEPER. */
