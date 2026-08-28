@@ -19,7 +19,7 @@
  * which this project does not use anywhere.
  */
 
-import { GameError, errors, type ChamberId } from "@semaphore/protocol";
+import { GameError, errors } from "@semaphore/protocol";
 import { appendEvent, gzipJsonl, readAllEvents } from "./log.js";
 import {
   newSession,
@@ -30,6 +30,7 @@ import {
 } from "./reducer.js";
 import { ActionSemaphore } from "./semaphore.js";
 import { describeChamber, inspectObject, lockState, readCiphertext } from "./views.js";
+import { pilotView, stateSummary } from "./pilot.js";
 import { MANUAL_SECTIONS, isManualSection, manualSection } from "./manual.js";
 import { percentile, staminaWindowMs } from "./latency.js";
 import type { LeverId } from "./chambers/airlock.js";
@@ -77,6 +78,7 @@ function labelFor(action: Action): string {
 }
 
 export class Session {
+  readonly #state: DurableObjectState;
   readonly #storage: DurableObjectStorage;
   readonly #db: D1Database;
   readonly #semaphore = new ActionSemaphore();
@@ -90,6 +92,7 @@ export class Session {
   #session: PersistedSession | null = null;
 
   constructor(state: DurableObjectState, env: Env) {
+    this.#state = state;
     this.#storage = state.storage;
     this.#db = env.SESSIONS_DB;
     this.#sessionId = state.id.name ?? state.id.toString();
@@ -101,6 +104,8 @@ export class Session {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const { pathname } = url;
+
+    if (pathname.endsWith("/socket")) return this.#socket(request);
 
     if (request.method === "GET") {
       if (pathname.endsWith("/status")) return this.#status();
@@ -250,21 +255,65 @@ export class Session {
    * `remainingMs` rather than the deadline itself, so a client with a skewed
    * clock cannot turn its own skew into the game's problem.
    */
-  #stateSummary(session: PersistedSession): {
-    phase: string;
-    chamber: ChamberId | null;
-    designation: string | null;
-    remainingMs: number | null;
-  } {
-    return {
-      phase: session.machine.phase,
-      chamber: session.machine.chamber,
-      designation: session.designation,
-      remainingMs:
-        session.chamberDeadlineMs === null
-          ? null
-          : Math.max(0, session.chamberDeadlineMs - Date.now()),
-    };
+  #stateSummary(session: PersistedSession) {
+    return stateSummary(session, Date.now());
+  }
+
+  /**
+   * PILOT's socket (doc 05 section 1).
+   *
+   * Accepted through the hibernation API rather than `server.accept()`, so the
+   * Durable Object may be evicted between beats without dropping the page:
+   * `getWebSockets()` gives the live set back on wake-up, which also means
+   * this class keeps no connection bookkeeping of its own to leak.
+   *
+   * The current view goes out immediately on connect. Without it a client that
+   * joins mid-chamber renders nothing until the next action, which for a pair
+   * mid-conversation is indistinguishable from the game being broken.
+   *
+   * Nothing is ever read from this socket. The client is a view, never an
+   * authority (see `net/sessionClient.ts`): everything that moves the station
+   * arrives as an HTTP action, so an inbound frame here would be a route into
+   * the state machine that bypasses the action semaphore. There is deliberately
+   * no `webSocketMessage` handler.
+   */
+  #socket(request: Request): Response {
+    if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
+      return new Response("Expected a WebSocket upgrade", { status: 426 });
+    }
+
+    const pair = new WebSocketPair();
+    const client = pair[0];
+    const server = pair[1];
+    this.#state.acceptWebSocket(server);
+    if (this.#session) server.send(JSON.stringify(pilotView(this.#session, Date.now())));
+
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  /**
+   * Push the current view to every connected client.
+   *
+   * Called after anything that settles state: an action, and the alarm. It is
+   * a whole view rather than a diff, because the view is small, a diff would
+   * need a version handshake to survive a reconnect, and a client that missed
+   * one frame would then be wrong rather than merely late.
+   *
+   * A dead socket must not break the call that triggered the push, so a failed
+   * send is swallowed. The runtime removes closed sockets from
+   * `getWebSockets()` on its own; a send that throws for any other reason is a
+   * transport problem for one viewer and not a reason to fail the agent's tool
+   * call.
+   */
+  #broadcast(session: PersistedSession): void {
+    const frame = JSON.stringify(pilotView(session, Date.now()));
+    for (const socket of this.#state.getWebSockets()) {
+      try {
+        socket.send(frame);
+      } catch {
+        // Closed or closing. Nothing to do and nothing worth logging.
+      }
+    }
   }
 
   /**
@@ -286,6 +335,7 @@ export class Session {
       await this.#syncAlarm(result.session);
 
       if (result.session.machine.phase === "ESCAPED") await this.#flushToD1(result.session);
+      this.#broadcast(result.session);
 
       return Response.json({
         content: [{ type: "text", text: result.toolText }],
@@ -336,6 +386,7 @@ export class Session {
     this.#session = settled.session;
     await this.#storage.put("meta", settled.session);
     await this.#syncAlarm(settled.session);
+    this.#broadcast(settled.session);
   }
 
   async #status(): Promise<Response> {

@@ -138,3 +138,29 @@ export function timerFor(chamber: ChamberId, difficulty: Difficulty): number | n
   const scale = DIFFICULTIES[difficulty].timerScale;
   return scale === null ? null : Math.round(CHAMBER_TIMER_MS[chamber] * scale);
 }
+
+/**
+ * Everything the client is allowed to render, as pushed over the session
+ * socket (doc 05 section 1).
+ *
+ * This is the PILOT half of the design law. `facts` is the output of
+ * `projectForPilot` over the active chamber and nothing else, so a fact tagged
+ * `TACTILE` or `HIDDEN` is structurally unable to reach a frame. The machine
+ * fields beside it are `SHARED` by construction: both parties always know
+ * which room they are in and how long is left.
+ *
+ * `remainingMs` rather than the deadline, for the same reason the tool
+ * responses carry it that way: a client with a skewed clock must not be able
+ * to turn its own skew into the game's problem.
+ */
+export interface PilotView {
+  readonly phase: Phase;
+  readonly chamber: ChamberId | null;
+  readonly designation: string | null;
+  /** Milliseconds left on this chamber's deadline, or null when untimed. */
+  readonly remainingMs: number | null;
+  /** How many times the current chamber has been reset after a deadlock. */
+  readonly retries: number;
+  /** `projectForPilot` of the active chamber's facts. Empty outside a chamber. */
+  readonly facts: Readonly<Record<string, unknown>>;
+}
