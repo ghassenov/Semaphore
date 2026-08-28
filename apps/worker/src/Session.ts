@@ -42,6 +42,16 @@ import type { BoltId } from "./chambers/concord_lock.js";
 export interface Env {
   SESSIONS: DurableObjectNamespace;
   SESSIONS_DB: D1Database;
+  /**
+   * Origins allowed to call these routes from a browser, comma-separated.
+   *
+   * Two callers need it: the game's Pages project, and `apps/archive`, which
+   * is a separate origin on purpose (doc 03 section 7) and fetches the manual
+   * and the station log from here because it holds no state of its own.
+   * Empty in development, where Vite proxies `/session` onto this worker and
+   * every request is therefore same-origin.
+   */
+  ALLOWED_ORIGINS?: string;
 }
 
 /**
