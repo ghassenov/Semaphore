@@ -22,6 +22,7 @@
 import { GameError, errors } from "@semaphore/protocol";
 import { appendEvent, gzipJsonl, readAllEvents } from "./log.js";
 import {
+  ambiguityFor,
   newSession,
   reduce,
   settleSession,
@@ -29,8 +30,8 @@ import {
   type PersistedSession,
 } from "./reducer.js";
 import { ActionSemaphore } from "./semaphore.js";
-import { describeChamber, inspectObject, lockState, readCiphertext } from "./views.js";
-import { pilotView, stateSummary } from "./pilot.js";
+import { describeChamber, inspectObject, lockState, readCiphertext, readNotes } from "./views.js";
+import { inTheRoom, pilotView, stateSummary } from "./pilot.js";
 import { MANUAL_SECTIONS, isManualSection, manualSection } from "./manual.js";
 import { percentile, staminaWindowMs } from "./latency.js";
 import type { LeverId } from "./chambers/airlock.js";
@@ -41,6 +42,23 @@ import type { BoltId } from "./chambers/concord_lock.js";
 export interface Env {
   SESSIONS: DurableObjectNamespace;
   SESSIONS_DB: D1Database;
+}
+
+/**
+ * The POST body, as an object, whatever arrived.
+ *
+ * Never throws. An empty body, a malformed one and a body that is not an
+ * object all answer `{}`, and every route already defaults every field it
+ * reads, so a bad body produces the game's own validation message rather than
+ * a 500. The important part is that the stream is always consumed.
+ */
+async function readBody(request: Request): Promise<Record<string, unknown>> {
+  try {
+    const parsed: unknown = await request.json();
+    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
 }
 
 /** A label for the `E_BUSY` message a concurrent caller would see. */
@@ -74,6 +92,8 @@ function labelFor(action: Action): string {
       return "opening the outer door";
     case "retry_chamber":
       return "resetting the chamber";
+    case "write_note":
+      return "writing to the notepad";
   }
 }
 
@@ -109,6 +129,8 @@ export class Session {
 
     if (request.method === "GET") {
       if (pathname.endsWith("/status")) return this.#status();
+      if (pathname.endsWith("/concord")) return this.#concord();
+      if (pathname.endsWith("/notes")) return this.#read((session) => readNotes(session));
       // Every other GET is a read-only tool. They share one handler because
       // they share the property that makes them safe: `views.ts` and
       // `manual.ts` are pure, so none of them can be made to mutate by a
@@ -136,12 +158,19 @@ export class Session {
     }
     if (request.method !== "POST") return new Response("Not found", { status: 404 });
 
+    // Drain the body once, before any route decides anything.
+    //
+    // Several actions take no parameters and used to answer without reading
+    // it. The client posts `{}` to all of them regardless, and a response sent
+    // while the request stream is still open is a real fault: workerd raises
+    // "Can't read from request stream after response has been sent", which in
+    // local development takes down wrangler's proxy and with it the whole dev
+    // session. Reading here means no route can forget.
+    const body = await readBody(request);
     if (pathname.endsWith("/begin_shift")) {
-      const body = (await request.json()) as { designation?: unknown };
       return this.#act({ type: "begin_shift", designation: String(body.designation ?? "") });
     }
     if (pathname.endsWith("/start")) {
-      const body = (await request.json()) as { difficulty?: unknown; mode?: unknown };
       return this.#act({
         type: "start",
         difficulty: (body.difficulty as PersistedSession["difficulty"] | undefined) ?? "standard",
@@ -149,22 +178,15 @@ export class Session {
       });
     }
     if (pathname.endsWith("/pull_lever")) {
-      const body = (await request.json()) as { lever_id?: unknown };
       return this.#act({ type: "pull_lever", leverId: String(body.lever_id ?? "") as LeverId });
     }
     if (pathname.endsWith("/press_key")) {
-      const body = (await request.json()) as { key_id?: unknown };
       return this.#act({ type: "press_key", keyId: Number(body.key_id ?? 0) as KeyId });
     }
     if (pathname.endsWith("/reset_sequence")) {
       return this.#act({ type: "reset_sequence" });
     }
     if (pathname.endsWith("/rotate_dial")) {
-      const body = (await request.json()) as {
-        dial_id?: unknown;
-        direction?: unknown;
-        clicks?: unknown;
-      };
       return this.#act({
         type: "rotate_dial",
         dialId: Number(body.dial_id ?? 0) as DialId,
@@ -176,15 +198,12 @@ export class Session {
     if (pathname.endsWith("/grip_bar")) return this.#act({ type: "grip_bar" });
     if (pathname.endsWith("/release_bar")) return this.#act({ type: "release_bar" });
     if (pathname.endsWith("/align_bolt")) {
-      const body = (await request.json()) as { bolt_id?: unknown };
       return this.#act({ type: "align_bolt", boltId: Number(body.bolt_id ?? 0) as BoltId });
     }
     if (pathname.endsWith("/speak_passphrase")) {
-      const body = (await request.json()) as { phrase?: unknown };
       return this.#act({ type: "speak_passphrase", phrase: String(body.phrase ?? "") });
     }
     if (pathname.endsWith("/read_station_log")) {
-      const body = (await request.json()) as { entry?: unknown };
       return this.#act({ type: "read_station_log", entry: Number(body.entry ?? 0) });
     }
     if (pathname.endsWith("/leave_archive")) {
@@ -195,6 +214,18 @@ export class Session {
     }
     if (pathname.endsWith("/retry_chamber")) {
       return this.#act({ type: "retry_chamber" });
+    }
+    if (pathname.endsWith("/write_note")) {
+      // The author is asserted by the client, from `SubmitEvent.agentInvoked`.
+      // Nothing here can verify it, and nothing needs to: the pad is a shared
+      // scratchpad, not a puzzle surface, so the worst a forged author buys is
+      // a line in the wrong colour. Anything unrecognised is attributed to
+      // PILOT, because a human hand is the safer default to show.
+      return this.#act({
+        type: "write_note",
+        text: String(body.text ?? ""),
+        author: body.author === "KEEPER" ? "KEEPER" : "PILOT",
+      });
     }
 
     return new Response("Not found", { status: 404 });
@@ -387,6 +418,30 @@ export class Session {
     await this.#storage.put("meta", settled.session);
     await this.#syncAlarm(settled.session);
     this.#broadcast(settled.session);
+  }
+
+  /**
+   * The CONCORD meter's feed: KEEPER's remaining ambiguity in the active room.
+   *
+   * A route of its own rather than a field on the socket frame, because
+   * measuring it enumerates every world consistent with what KEEPER knows and
+   * replays the rotation history under each. For the Blind Panel that is 384
+   * candidates, which is fine a few times a second on demand and absurd on
+   * every push (D-026). The HUD polls it; the frame stays cheap.
+   *
+   * Null outside a chamber, gated by the same `inTheRoom` predicate the frame
+   * uses, so the meter cannot report a room the pair has already left.
+   */
+  #concord(): Response {
+    const session = this.#session;
+    if (!session) return Response.json(errors.noSession().toToolResult(), { status: 409 });
+    const ambiguity = inTheRoom(session.machine.phase) ? ambiguityFor(session) : null;
+    return Response.json({
+      chamber: session.machine.chamber,
+      bits: ambiguity ? Number(ambiguity.bits.toFixed(2)) : null,
+      worlds: ambiguity?.worlds ?? null,
+      actions: ambiguity?.actions ?? null,
+    });
   }
 
   async #status(): Promise<Response> {

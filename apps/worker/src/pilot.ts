@@ -35,10 +35,11 @@ import type { PersistedSession } from "./reducer.js";
 export function stateSummary(
   session: PersistedSession,
   nowMs: number,
-): Pick<PilotView, "phase" | "chamber" | "designation" | "remainingMs"> {
+): Pick<PilotView, "phase" | "chamber" | "mode" | "designation" | "remainingMs"> {
   return {
     phase: session.machine.phase,
     chamber: session.machine.chamber,
+    mode: session.machine.mode,
     designation: session.designation,
     remainingMs:
       session.chamberDeadlineMs === null ? null : Math.max(0, session.chamberDeadlineMs - nowMs),
@@ -58,6 +59,18 @@ export function stateSummary(
 const IN_THE_ROOM: readonly Phase[] = ["IN_CHAMBER", "PENALISED", "DEADLOCK"] as const;
 
 /**
+ * Whether the pair is standing in the chamber `machine.chamber` names.
+ *
+ * Exported because the CONCORD meter needs exactly the same gate the frame
+ * does. A meter that keeps reporting the Blind Panel's ambiguity while the
+ * pair is reading a ghost log in the Archive is reporting a room nobody is in,
+ * and the fix for that is one predicate rather than two lists that drift.
+ */
+export function inTheRoom(phase: Phase): boolean {
+  return IN_THE_ROOM.includes(phase);
+}
+
+/**
  * The active chamber's facts as PILOT perceives them.
  *
  * Empty in every phase with no room to draw: the lobby, the transitions, the
@@ -66,7 +79,7 @@ const IN_THE_ROOM: readonly Phase[] = ["IN_CHAMBER", "PENALISED", "DEADLOCK"] as
  */
 function chamberFacts(session: PersistedSession, nowMs: number): Record<string, unknown> {
   const { chamber, phase } = session.machine;
-  if (!IN_THE_ROOM.includes(phase)) return {};
+  if (!inTheRoom(phase)) return {};
   if (chamber === "airlock" && session.airlock) {
     return projectForPilot(airlock.facts(session.airlock));
   }
@@ -88,5 +101,9 @@ export function pilotView(session: PersistedSession, nowMs: number): PilotView {
     ...stateSummary(session, nowMs),
     retries: session.machine.retries,
     facts: chamberFacts(session, nowMs),
+    // Beside the facts, not inside them. A note is `SHARED` by construction -
+    // one of the two parties wrote it for the other to read - so there is no
+    // channel for `projectForPilot` to strip and nothing it could hide.
+    notes: session.notes,
   };
 }

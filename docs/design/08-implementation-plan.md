@@ -55,7 +55,7 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 ### 0.4 Repository and tooling
 
 - [x] Monorepo scaffold (pnpm workspaces) per doc 05 §8
-- [ ] `apps/game` — Vite + TypeScript + Phaser 4.2, `pixelArt: true`, integer scaling
+- [x] `apps/game` — Vite + TypeScript + Phaser 4.2, `pixelArt: true`, integer scaling
 - [ ] `apps/archive` — the cross-origin tool provider
 - [x] `apps/worker` — Wrangler, Durable Object binding, R2 binding *(R2 replaced by D1 plus Durable Object SQLite, D-006 and D-008)*
 - [x] `packages/protocol` — shared types, `Channel`, error codes
@@ -66,7 +66,7 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 - [ ] Vitest across all packages; Playwright with a **mock `document.modelContext`**
 - [x] GitHub Actions: typecheck → lint → test → build
 - [ ] Cloudflare Pages + Workers preview deploys on PR, **including the archive origin**
-- [ ] **Measure the Phaser bundle now** against the 400KB budget
+- [x] **Measure the Phaser bundle now** against the 400KB budget *(365KB gzipped bare; loaded on demand, entry is 10.3KB, enforced by `apps/game/scripts/check-bundle.mjs`, D-026)*
 
 ▸ **Checkpoint: a deployed URL where an agent in ChatGPT calls a dummy tool, four paper-tested puzzle designs, a filled-in spec-notes doc, and six booked playtesters.**
 
@@ -108,7 +108,7 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 - [ ] Persistent tools: `get_status`, `describe_chamber`, `inspect`, `read_note`
 - [ ] **Archive origin**: `read_manual`, `read_station_log` with `exposedTo`, embedded via `allow="tools"`
 - [ ] Single-origin fallback behind `ARCHIVE_ORIGIN=same|cross`
-- [ ] **Declarative notepad form** exposing `write_note`
+- [x] **Declarative notepad form** exposing `write_note` *(with `read_note` imperative beside it, which is the rule applied rather than an inconsistency, D-028)*
 - [x] Correct `readOnlyHint` everywhere; `untrustedContentHint` on the three untrusted-content tools
 - [x] Chamber 0 tool: `pull_lever`
 - [x] Full error taxonomy with descriptive messages (doc 03 §9)
@@ -116,14 +116,14 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 
 ### 1.4 Client foundation
 
-- [ ] Phaser boot, scale config, 320×180 native with integer snap
+- [x] Phaser boot, scale config, 320×180 native with integer snap *(`render/station.ts`, `Scale.FIT` with a 320×180 snap step)*
 - [x] `sessionClient` (fetch) + `socket` (WebSocket with reconnect)
 - [x] Read-only `PilotView` store fed by socket deltas *(the socket holds the latest frame; a separate store would do nothing more, D-025)*
-- [ ] `LandingScene` with the **starter prompt card** and copy button ★
-- [ ] `ChamberScene` rendering greybox from `PilotView`
-- [ ] PILOT avatar: keyboard movement, greybox rectangle
-- [ ] KEEPER: greybox behind a grate, visor pulse on in-flight calls
-- [ ] HUD: timer, chamber name, action log, **CHANNEL LEGEND**, **CONCORD meter**
+- [x] `LandingScene` with the **starter prompt card** and copy button ★ *(the card stays in the DOM: a canvas cannot be selected or copied)*
+- [x] `ChamberScene` rendering greybox from `PilotView` *(all four rooms, laid out by the pure `render/rooms.ts`)*
+- [x] PILOT avatar: keyboard movement, greybox rectangle *(arrows and WASD, stops at the grate)*
+- [x] KEEPER: greybox behind a grate, visor pulse on in-flight calls *(limb count is `getTools()`, so a failed registration is visible)*
+- [x] HUD: timer, chamber name, action log, **CHANNEL LEGEND**, **CONCORD meter** *(the meter is fed by its own route, D-027)*
 
 ### 1.5 Chamber 0 complete
 
@@ -220,7 +220,7 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 
 - [ ] `enterFinale()`: chamber + session controllers abort, everything falls, manifest empties
 - [ ] `open_the_door` stamps in alone; KEEPER calls it; bolts retract
-- [x] `endSession()`: the **final `toolchange` fires with an empty registry** *(holds only until the notepad form exists, which `endSession` must then also remove, D-024)*
+- [x] `endSession()`: the **final `toolchange` fires with an empty registry** *(the notepad exists now, so this aborts the controllers **and** removes the form element; verified live in Chrome 151, D-028)*
 - [ ] Balcony at dawn, both avatars at the rail. **Hold ten seconds. Let it breathe.**
 - [ ] *Then* the stats card, including the derived stamina window and final CONCORD
 - [ ] Link to `/replay/:id` — the same monitor the ghosts were on

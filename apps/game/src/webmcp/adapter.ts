@@ -163,3 +163,100 @@ export function onToolChange(listener: () => void): () => void {
     mc.removeEventListener("toolchange", listener);
   };
 }
+
+/**
+ * The declarative half of the specification, which is the other API.
+ *
+ * A form carrying `toolname`, `tooldescription` and `toolparamdescription`
+ * registers a tool whose parameters are built from its own field names. No
+ * JavaScript registers it and no signal removes it: the element **is** the
+ * registration, verified on 2026-08-28 in Chrome 151 (doc 11 section 8).
+ *
+ * The rule for which API to use is doc 03 section 8's, and it is the project's
+ * own contribution rather than something the spec says:
+ *
+ *   Declarative for tools that are a form the human can also submit, where
+ *   agent and human do the same thing through the same affordance.
+ *   Imperative for tools that are pure agent capability, where the agent does
+ *   something the human structurally cannot.
+ *
+ * The notepad is the only tool in the game on the first side of that line.
+ */
+
+/** The attributes that turn a `<form>` into a tool. One place, one spelling. */
+export interface FormToolSpec {
+  readonly name: string;
+  readonly description: string;
+  /** Field name to its `toolparamdescription`. Order is the form's own. */
+  readonly params: Readonly<Record<string, string>>;
+  /**
+   * Whether the host may submit the form without a human confirming.
+   *
+   * Reaches the registry as `annotations: { autosubmit: true }`. Its effect on
+   * an actual agent submission is one of the rows doc 11 cannot fill without
+   * a model.
+   */
+  readonly autoSubmit: boolean;
+}
+
+/**
+ * Apply a spec to a form element, registering it as a tool.
+ *
+ * Returns a teardown that removes the element from the document, because that
+ * is the only thing that removes a declaratively registered tool. Aborting a
+ * signal will not do it, and the game's last beat is an empty registry.
+ *
+ * Sets attributes rather than taking pre-marked HTML so that the descriptions
+ * live in a TypeScript object the budget test can measure, alongside every
+ * other tool's. A description written into a template is a description nothing
+ * checks.
+ */
+export function registerFormTool(form: HTMLFormElement, spec: FormToolSpec): () => void {
+  form.setAttribute("toolname", spec.name);
+  form.setAttribute("tooldescription", spec.description);
+  if (spec.autoSubmit) form.setAttribute("toolautosubmit", "");
+  for (const [field, description] of Object.entries(spec.params)) {
+    // `elements` rather than a query, so a field named in the spec but absent
+    // from the form is a silent no-op here and a visible gap in `getTools()`,
+    // which is where a mismatch should show up.
+    const control = form.elements.namedItem(field);
+    if (control instanceof HTMLElement) control.setAttribute("toolparamdescription", description);
+  }
+  return () => {
+    form.remove();
+  };
+}
+
+/**
+ * Whether a submit event came from an agent rather than a hand.
+ *
+ * `SubmitEvent.agentInvoked` is the whole basis of the notepad's per-line
+ * authorship: it is the only signal that distinguishes the two parties using
+ * the same affordance, and without it the pad would be a shared surface with
+ * no idea who said what.
+ *
+ * Reads defensively because the property is new, is not yet in every target,
+ * and is one of the rows doc 11 has not been able to fill: a synthetic submit
+ * only ever proves the human branch. An absent property reads as a human
+ * submission, which is the safer default - attributing a human's line to the
+ * agent would put words in a partner's mouth.
+ */
+export function isAgentSubmission(event: SubmitEvent): boolean {
+  return (event as SubmitEvent & { agentInvoked?: unknown }).agentInvoked === true;
+}
+
+/**
+ * Answer an agent's submission with text, where the host offers the hook.
+ *
+ * `SubmitEvent.respondWith` is how a declarative tool returns something to the
+ * caller; without it an agent submitting the form learns only that it
+ * submitted. Guarded because it is untested against a real agent submission,
+ * and a missing hook must not turn a written note into a thrown error.
+ */
+export function respondToSubmission(event: SubmitEvent, text: Promise<string>): boolean {
+  const respondWith = (event as SubmitEvent & { respondWith?: (value: Promise<string>) => void })
+    .respondWith;
+  if (typeof respondWith !== "function") return false;
+  respondWith.call(event, text);
+  return true;
+}

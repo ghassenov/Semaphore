@@ -3,10 +3,13 @@ import {
   DIFFICULTIES,
   GameError,
   MODE_CHAMBERS,
+  NOTE_CAPACITY,
+  NOTE_MAX_LENGTH,
   timerFor,
   type Difficulty,
 } from "@semaphore/protocol";
 import * as airlock from "./chambers/airlock.js";
+import { correctLever } from "./chambers/airlock.js";
 import * as signalRoom from "./chambers/signal_room.js";
 import * as blindPanel from "./chambers/blind_panel.js";
 import * as concordLock from "./chambers/concord_lock.js";
@@ -1316,5 +1319,146 @@ describe("open_the_door", () => {
     const { session, nowMs } = finaleSession();
     const { session: out } = reduce(session, { type: "open_the_door" }, nowMs + 500);
     expect(out.chamberDeadlineMs).toBeNull();
+  });
+});
+
+describe("the shared notepad", () => {
+  /** A session in the airlock, which is where most notes get written. */
+  function inChamber(): PersistedSession {
+    const begun = reduce(
+      newSession("s_note", "s_note", 0),
+      { type: "begin_shift", designation: "KEEPER" },
+      0,
+    ).session;
+    return reduce(begun, { type: "start", difficulty: "standard", mode: "full" }, 1_000).session;
+  }
+
+  it("records who wrote each line", () => {
+    // The one thing the pad exists to know. Both parties reach the same form
+    // through the same control, and `SubmitEvent.agentInvoked` is all that
+    // distinguishes them (doc 03 section 8).
+    let session = inChamber();
+    session = reduce(
+      session,
+      { type: "write_note", text: "lever_b carries the spiral", author: "PILOT" },
+      2_000,
+    ).session;
+    session = reduce(
+      session,
+      { type: "write_note", text: "Spiral is 4 strokes.", author: "KEEPER" },
+      3_000,
+    ).session;
+
+    expect(session.notes).toEqual([
+      { text: "lever_b carries the spiral", author: "PILOT", atMs: 2_000 },
+      { text: "Spiral is 4 strokes.", author: "KEEPER", atMs: 3_000 },
+    ]);
+  });
+
+  it("trims the line and refuses a blank one", () => {
+    const session = inChamber();
+    expect(
+      reduce(session, { type: "write_note", text: "  spaced  ", author: "PILOT" }, 2_000).session
+        .notes[0]?.text,
+    ).toBe("spaced");
+    expect(() =>
+      reduce(session, { type: "write_note", text: "   ", author: "PILOT" }, 2_000),
+    ).toThrow();
+  });
+
+  it("refuses a line longer than the pad accepts", () => {
+    const session = inChamber();
+    expect(() =>
+      reduce(
+        session,
+        { type: "write_note", text: "x".repeat(NOTE_MAX_LENGTH + 1), author: "KEEPER" },
+        2_000,
+      ),
+    ).toThrow();
+  });
+
+  it("drops the oldest line once the pad is full", () => {
+    // Every note rides on every pushed frame, so an uncapped pad grows the
+    // wire for the whole session.
+    let session = inChamber();
+    for (let i = 0; i < NOTE_CAPACITY + 3; i += 1) {
+      session = reduce(
+        session,
+        { type: "write_note", text: `line ${String(i)}`, author: "PILOT" },
+        2_000 + i,
+      ).session;
+    }
+    expect(session.notes).toHaveLength(NOTE_CAPACITY);
+    expect(session.notes[0]?.text).toBe("line 3");
+    expect(session.notes.at(-1)?.text).toBe(`line ${String(NOTE_CAPACITY + 2)}`);
+  });
+
+  it("does not feed the latency sample Chamber III's window comes from", () => {
+    // D-010: that sample is the agent's rhythm on the mechanisms. Writing a
+    // note is the pair talking, and folding it in would deflate the median
+    // every time they communicated well, which is exactly backwards.
+    const session = inChamber();
+    const after = reduce(
+      session,
+      { type: "write_note", text: "worth remembering", author: "KEEPER" },
+      9_000,
+    ).session;
+    expect(after.observedLatencyMs).toEqual(session.observedLatencyMs);
+    expect(after.lastRespondedAtMs).toBe(session.lastRespondedAtMs);
+  });
+
+  it("logs the author without duplicating the text", () => {
+    // The line itself lives in `notes` on the session and reaches replay
+    // through the state it produced. A second home for the same sentence is a
+    // second thing that can disagree.
+    const result = reduce(
+      inChamber(),
+      { type: "write_note", text: "the page is scratched over", author: "PILOT" },
+      2_000,
+    );
+    const event = result.events.at(-1);
+    expect(event).toMatchObject({ type: "pilot_action", action: "write_note", target: "PILOT" });
+    expect(JSON.stringify(event)).not.toContain("scratched");
+  });
+
+  it("refuses before the shift has begun", () => {
+    expect(() =>
+      reduce(
+        newSession("s_note", "s_note", 0),
+        { type: "write_note", text: "too early", author: "KEEPER" },
+        1_000,
+      ),
+    ).toThrow();
+  });
+
+  it("survives a chamber change, because it is the pair's memory", () => {
+    let session = inChamber();
+    session = reduce(
+      session,
+      { type: "write_note", text: "remember this", author: "PILOT" },
+      2_000,
+    ).session;
+    const solved = reduce(
+      session,
+      { type: "pull_lever", leverId: correctLever(session.airlock!.params) },
+      3_000,
+    ).session;
+
+    expect(solved.machine.chamber).toBe("signal_room");
+    expect(solved.notes.map((note) => note.text)).toEqual(["remember this"]);
+  });
+
+  it("works outside a chamber, where the pair most need to coordinate", () => {
+    // The Archive and the transitions are where a plan gets made. A pad that
+    // only worked inside a room would be shut at exactly the wrong moments.
+    const session = inChamber();
+    const inArchive: PersistedSession = {
+      ...session,
+      machine: { ...session.machine, phase: "ARCHIVE" },
+    };
+    expect(
+      reduce(inArchive, { type: "write_note", text: "plan for the lock", author: "KEEPER" }, 4_000)
+        .session.notes,
+    ).toHaveLength(1);
   });
 });

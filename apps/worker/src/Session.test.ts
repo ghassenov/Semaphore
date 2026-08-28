@@ -347,3 +347,173 @@ describe("the view socket", () => {
     expect(alive.sent).toHaveLength(1);
   });
 });
+
+describe("the CONCORD route", () => {
+  /** A GET against a session, returning the parsed body. */
+  async function read(session: Session, path: string): Promise<Record<string, unknown>> {
+    const response = await session.fetch(
+      new Request(`https://station.example/session/${SESSION_ID}/${path}`),
+    );
+    return (await response.json()) as Record<string, unknown>;
+  }
+
+  it("measures the ambiguity KEEPER is actually left with", async () => {
+    const storage = fakeStorage();
+    const session = await sessionOver(storage, inAirlock(1_000));
+    const body = await read(session, "concord");
+
+    // Chamber 0 opens with three levers and three courses of action, which is
+    // log2(3) bits. The failure card quotes courses of action, not worlds.
+    expect(body).toMatchObject({ chamber: "airlock", worlds: 6, actions: 3 });
+    expect(body.bits).toBeCloseTo(Math.log2(3), 2);
+  });
+
+  it("drops to certainty once the room is solved", async () => {
+    const storage = fakeStorage();
+    const start = inAirlock(1_000);
+    const solved = reduce(
+      start,
+      { type: "pull_lever", leverId: correctLever(start.airlock!.params) },
+      2_000,
+    ).session;
+    const session = await sessionOver(storage, solved);
+
+    // Solving the airlock auto-advances into the next room, so what this
+    // asserts is that the meter followed the machine rather than staying
+    // pinned to the room that was just left.
+    const body = await read(session, "concord");
+    expect(body.chamber).toBe("signal_room");
+    expect(body.bits).not.toBeNull();
+  });
+
+  it("reports nothing at all outside a chamber", async () => {
+    // `machine.chamber` outlives the room (D-025). A meter that read it alone
+    // would keep reporting the Blind Panel while the pair is in the Archive.
+    const storage = fakeStorage();
+    const start = inAirlock(1_000);
+    const parked: PersistedSession = {
+      ...start,
+      machine: { ...start.machine, phase: "ARCHIVE" },
+    };
+    const session = await sessionOver(storage, parked);
+
+    expect(await read(session, "concord")).toEqual({
+      chamber: "airlock",
+      bits: null,
+      worlds: null,
+      actions: null,
+    });
+  });
+
+  it("refuses before there is a session, with text an agent can act on", async () => {
+    const storage = fakeStorage();
+    const session = await sessionOver(storage, null);
+    const response = await session.fetch(
+      new Request(`https://station.example/session/${SESSION_ID}/concord`),
+    );
+    expect(response.status).toBe(409);
+  });
+
+  it("changes nothing, so the HUD can poll it as often as it likes", async () => {
+    // A read that takes the semaphore or moves the deadline would make the
+    // meter itself a source of E_BUSY, punishing the pair for looking at it.
+    const storage = fakeStorage();
+    const before = inAirlock(1_000);
+    const session = await sessionOver(storage, before);
+    for (let i = 0; i < 5; i += 1) await read(session, "concord");
+    expect(storage.raw.get("meta")).toEqual(before);
+    expect(storage.alarmAt).toBeNull();
+  });
+});
+
+describe("the notepad routes", () => {
+  /**
+   * A session in the airlock, already begun, with a live deadline.
+   *
+   * `Date.now()` rather than a fixed epoch: every mutating route settles the
+   * session against the real clock first, so a session started at t=1000 has
+   * been deadlocked for decades by the time the test posts to it, and the
+   * write is answered with the deadlock text and a cheerful 200.
+   */
+  function withNotes(notes: PersistedSession["notes"]): PersistedSession {
+    return { ...inAirlock(Date.now()), notes };
+  }
+
+  async function get(session: Session, path: string): Promise<string> {
+    const response = await session.fetch(
+      new Request(`https://station.example/session/${SESSION_ID}/${path}`),
+    );
+    const body = (await response.json()) as { content?: { text?: string }[] };
+    return String(body.content?.[0]?.text ?? "");
+  }
+
+  async function post(session: Session, path: string, body: unknown): Promise<Response> {
+    return session.fetch(
+      new Request(`https://station.example/session/${SESSION_ID}/${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
+  }
+
+  it("reads back every line with its author and when it was written", async () => {
+    const session = await sessionOver(
+      fakeStorage(),
+      withNotes([
+        { text: "lever_b carries the spiral", author: "PILOT", atMs: 12_000 },
+        { text: "Spiral is 4 strokes.", author: "KEEPER", atMs: 30_000 },
+      ]),
+    );
+    const text = await get(session, "notes");
+    expect(text).toContain("[12s] PILOT: lever_b carries the spiral");
+    expect(text).toContain("[30s] KEEPER: Spiral is 4 strokes.");
+  });
+
+  it("tells an agent what to do with a blank pad rather than returning nothing", async () => {
+    const session = await sessionOver(fakeStorage(), withNotes([]));
+    expect(await get(session, "notes")).toContain("write_note");
+  });
+
+  it("writes a line and pushes the new pad to every viewer", async () => {
+    // The pad is on the frame, so PILOT sees KEEPER's line appear without
+    // asking. That is the whole reason it is server-side.
+    const socket = new FakeSocket();
+    const session = await sessionOver(fakeStorage(), withNotes([]), [socket]);
+    const response = await post(session, "write_note", {
+      text: "the page is scratched over",
+      author: "PILOT",
+    });
+
+    expect(response.ok).toBe(true);
+    expect(lastFrame(socket).notes).toEqual([
+      { text: "the page is scratched over", author: "PILOT", atMs: expect.any(Number) },
+    ]);
+  });
+
+  it("attributes an unrecognised author to PILOT", async () => {
+    // The client asserts the author from `SubmitEvent.agentInvoked` and
+    // nothing here can verify it. A human hand is the safer default to show:
+    // the worst a forged author buys is a line in the wrong colour.
+    const socket = new FakeSocket();
+    const session = await sessionOver(fakeStorage(), withNotes([]), [socket]);
+    await post(session, "write_note", { text: "who wrote this", author: "SOMEONE_ELSE" });
+    expect(lastFrame(socket).notes[0]?.author).toBe("PILOT");
+  });
+
+  it("refuses a blank line with text an agent can act on", async () => {
+    const session = await sessionOver(fakeStorage(), withNotes([]));
+    const response = await post(session, "write_note", { text: "  ", author: "KEEPER" });
+    expect(response.status).toBe(409);
+    const body = (await response.json()) as { content?: { text?: string }[] };
+    expect(String(body.content?.[0]?.text)).toMatch(/text/i);
+  });
+
+  it("changes nothing when read", async () => {
+    const storage = fakeStorage();
+    const before = withNotes([{ text: "held", author: "KEEPER", atMs: 1 }]);
+    const session = await sessionOver(storage, before);
+    await get(session, "notes");
+    expect(storage.raw.get("meta")).toEqual(before);
+  });
+});

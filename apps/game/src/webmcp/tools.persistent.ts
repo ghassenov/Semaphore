@@ -16,17 +16,27 @@
  * class of problem, and it is rare to be able to demonstrate it rather than
  * assert it.
  *
- * `write_note` and `read_note` are not here yet. The notepad is the
- * declarative-API exhibit (doc 03 section 8) and needs a real form in the
- * room, so it lands with the client foundation rather than ahead of it.
+ * `read_note` is here too, authored next door in `tools.notepad.ts` because
+ * it is one half of the pad. The other half, `write_note`, is not in this
+ * list and cannot be: it is a `<form>`, registered by its own attributes
+ * (doc 03 section 8), and the director mounts the element rather than
+ * registering an object. The pad is the one place the two APIs meet, and this
+ * asymmetry in how they are wired is exactly that fact showing through.
  */
 
 import type { SessionClient } from "../net/sessionClient.js";
+import { readNoteTool } from "./tools.notepad.js";
 import { NO_INPUT, type GameTool } from "./tool.js";
 
 /** Every persistent tool, in the order the manifest panel should list them. */
 export function persistentTools(client: SessionClient): readonly GameTool[] {
-  return [statusTool(client), manualTool(client), describeChamberTool(client), inspectTool(client)];
+  return [
+    statusTool(client),
+    manualTool(client),
+    describeChamberTool(client),
+    inspectTool(client),
+    readNoteTool(client),
+  ];
 }
 
 /**
