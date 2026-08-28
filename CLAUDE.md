@@ -37,12 +37,12 @@ Judging is four equally weighted criteria: **WebMCP Leverage**, **Execution**, *
 | [docs/hackathonspecs/](docs/hackathonspecs/) | Captured hackathon rules and WebMCP reference. Read-only source material. | Complete |
 | [packages/](packages/) | Code shared by client, worker, archive and bench. Pure, no I/O. | `seed`, `protocol` built |
 | `packages/seed/` | Deterministic xorshift128+ PRNG. Same seed, same puzzle, always. | Built |
-| `packages/protocol/` | Channel tags, error codes, wire types. One definition each. | Built |
+| `packages/protocol/` | Channel tags, error codes, wire types, and the two document-tool specs the game and the archive origin share. One definition each. | Built |
 | [apps/game/](apps/game/) | Phaser client. Renders PILOT's view, hosts the WebMCP tool director. | Complete through plan 1.4, plus the declarative notepad and first art. A full session has been played end to end in Chrome 151. |
 | [apps/worker/](apps/worker/) | Cloudflare Worker plus the Session Durable Object. Authoritative state. | Complete: four chambers, the reducer, the Archive beat, the timer, the read-only tool surface, the manual, PILOT's view socket, the CONCORD route and the shared notepad |
-| [apps/archive/](apps/archive/) | Cross-origin tool provider: the manual and the ghost logs. | To write. Archive beat lives in `apps/worker` until this exists (D-017) |
+| [apps/archive/](apps/archive/) | Cross-origin tool provider: `read_manual` and `read_station_log`, registered on a second origin and exposed back to the game. | Built (D-033). Holds no content: both tools fetch the worker. |
 | [fixtures/ghosts/](fixtures/ghosts/) | Authored ghost session logs, generated from real play. | One ghost built |
-| [tests/](tests/) | Cross-cutting proofs: possible-worlds, asymmetry smoke, solvability. | Possible-worlds proof covers all four chambers |
+| [tests/](tests/) | Cross-cutting proofs: possible-worlds, asymmetry smoke, solvability, and the browser proof of cross-origin delegation. | Possible-worlds proof covers all four chambers; delegation proved on Chrome 151 |
 | [bench/](bench/) | Ablation harness, scripted partners, the Cooperative Benchmark. | To write |
 
 Root tooling: pnpm workspaces, strict TypeScript, ESLint, Prettier, Vitest, GitHub Actions.
@@ -148,3 +148,4 @@ Rules that follow from this:
 | 2026-08-28 | Ahmed Saad | Repository map: PILOT's view socket landed (D-025). apps/game consumes it; Phaser is still the gap. |
 | 2026-08-28 | Ahmed Saad | Repository map: Phaser and the scenes landed (D-026), and the worker gained the CONCORD route (D-027). |
 | 2026-08-28 | Ahmed Saad | Repository map: the declarative notepad, the first art, and a full session played end to end (D-028 to D-030). |
+| 2026-08-29 | Ahmed Saad | Repository map: `apps/archive` is built and the document tools are delegated across origins (D-033). `tests/` gained the browser proof. |

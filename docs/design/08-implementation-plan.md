@@ -169,7 +169,7 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 ### 2.3 The Archive ★
 
 - [ ] Ghost session JSONL format finalised; **two ghost sessions authored** by recording real playtests
-- [ ] `read_station_log({ entry })` on the archive origin
+- [x] `read_station_log({ entry })` on the archive origin *(and `read_manual` beside it; D-033)*
 - [ ] `ArchiveScene` with the CRT monitor running the replay renderer at 1:4
 - [ ] The split: PILOT sees ghost movement, KEEPER reads ghost calls, neither half sufficient
 - [x] Required-to-progress gating; teaches the Chamber III mechanic diegetically *(gating only; the scene that teaches it is not built)*

@@ -13,7 +13,9 @@
  * moment it can take them.
  */
 
+import { DOCUMENT_TOOL_NAMES } from "@semaphore/protocol";
 import { isSupported } from "./webmcp/adapter.js";
+import { mountArchiveFrame, type ArchiveFrame } from "./webmcp/archiveFrame.js";
 import { SessionClient, sessionIdFrom } from "./net/sessionClient.js";
 import { SessionSocket } from "./net/socket.js";
 import { ToolDirector } from "./webmcp/director.js";
@@ -48,6 +50,28 @@ async function start(root: HTMLElement): Promise<void> {
     onNote: (line) => station?.note(line),
   });
 
+  // The archive origin, when there is one (doc 03 section 7).
+  //
+  // `VITE_ARCHIVE_ORIGIN` is the `ARCHIVE_ORIGIN=same|cross` flag: unset is
+  // `same`, and the game registers `read_manual` and `read_station_log`
+  // itself; an origin is `cross`, and a hidden frame on that origin registers
+  // them instead, exposed back here. Both paths ship green, and the default is
+  // `same` until cross-origin delegation is verified in ChatGPT's in-app
+  // browser as well as in Chrome (`apps/archive/CLAUDE.md`).
+  //
+  // The frame is given the worker's absolute origin rather than the empty
+  // string the game uses: a relative path on the archive origin would reach
+  // the archive's own server, not the station.
+  const archiveOrigin = (import.meta.env.VITE_ARCHIVE_ORIGIN ?? "").trim();
+  const archive: ArchiveFrame | null = archiveOrigin
+    ? mountArchiveFrame(shell.archiveHost, {
+        origin: archiveOrigin,
+        sessionId: client.sessionId,
+        workerOrigin: import.meta.env.VITE_WORKER_ORIGIN || globalThis.location.origin,
+        onRegistered: () => station?.refreshTools(),
+      })
+    : null;
+
   // The shell is built before the director because the director needs
   // somewhere to put the notepad form the moment the session tier mounts, and
   // that can happen on the very first response.
@@ -56,6 +80,10 @@ async function start(root: HTMLElement): Promise<void> {
     onCallStart: (tool) => station?.callStarted(tool),
     onCall: (call) => station?.recordCall(call),
     notepadHost: shell.notepadHost,
+    // Which tools this page registers, and which it asks the other origin
+    // for. The director still decides *when* each one exists; delegation only
+    // changes where the registration happens (D-021 is unaffected).
+    ...(archive ? { delegated: DOCUMENT_TOOL_NAMES, onDelegate: archive.delegate } : {}),
   });
 
   // PILOT's view arrives on its own channel, pushed. Opened before the front
@@ -81,7 +109,7 @@ async function start(root: HTMLElement): Promise<void> {
   // The engine, on demand. `watch` replays the latest frame to a subscriber
   // that arrives late, so re-registering here costs one call and closes the
   // window in which frames would otherwise have been dropped on the floor.
-  station = await startStation(shell.stage, client);
+  station = await startStation(shell.stage, client, archiveOrigin ? [archiveOrigin] : []);
   socket.watch((view) => station?.setView(view));
 
   await director.mountEntry();

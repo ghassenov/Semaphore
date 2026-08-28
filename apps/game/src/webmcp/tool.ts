@@ -21,13 +21,16 @@ export const BUDGETS = {
   output: 1500,
 } as const;
 
-/** A JSON Schema object, minimal and closed, as doc 03 section 10 requires. */
-export interface InputSchema {
-  readonly type: "object";
-  readonly properties: Readonly<Record<string, { type: string; description: string } & object>>;
-  readonly required?: readonly string[];
-  readonly additionalProperties: false;
-}
+/**
+ * A JSON Schema object, minimal and closed, as doc 03 section 10 requires.
+ *
+ * Defined in `@semaphore/protocol` rather than here because the two document
+ * tools are declared there, shared with the archive origin, and a schema type
+ * with two definitions is two things that can drift.
+ */
+import type { ToolInputSchema } from "@semaphore/protocol";
+
+export type InputSchema = ToolInputSchema;
 
 /**
  * One authored tool.

@@ -24,6 +24,7 @@
  * asymmetry in how they are wired is exactly that fact showing through.
  */
 
+import { READ_MANUAL } from "@semaphore/protocol";
 import type { SessionClient } from "../net/sessionClient.js";
 import { readNoteTool } from "./tools.notepad.js";
 import { NO_INPUT, type GameTool } from "./tool.js";
@@ -83,32 +84,17 @@ function statusTool(client: SessionClient): GameTool {
 }
 
 /**
- * `read_manual`. The second sentence of the description is not flow control:
- * it does not say "call X before Y", it states the provenance of the content,
- * which is what a description is for, and it plants the trust question before
- * the vandalism ever appears.
+ * `read_manual`, the single-origin path.
+ *
+ * The name, the copy and the schema come from `@semaphore/protocol`, because
+ * `apps/archive` registers the same tool on its own origin and the two must
+ * be the same tool rather than two tools that resemble each other. Only the
+ * fulfilment is local: here it goes through this session's client, and there
+ * it goes over `fetch` to the same worker route.
  */
 function manualTool(client: SessionClient): GameTool {
   return {
-    name: "read_manual",
-    title: "Read the station manual",
-    description:
-      "Read a section of the signal station's maintenance manual. You hold the only copy; " +
-      "PILOT cannot see it. Sections have been annotated by previous keepers over many years " +
-      "and not all annotations are trustworthy. Call with section 'index' to list what is " +
-      "available.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        section: {
-          type: "string",
-          description: "Section identifier, e.g. 'index', 'glyph_table', 'signal_room'.",
-        },
-      },
-      required: ["section"],
-      additionalProperties: false,
-    },
-    annotations: { readOnlyHint: true, untrustedContentHint: true },
+    ...READ_MANUAL,
     async run(input, signal) {
       const { text } = await client.get(
         "manual",
