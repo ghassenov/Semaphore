@@ -469,3 +469,31 @@ So the ending is real and reachable, and it now has a precondition. `ToolDirecto
 **Finding 3: cross-origin works.** Two tools registered from a second origin with `exposedTo` pinned to the parent, embedded with `allow="tools"`, were visible to the parent via `getTools({ fromOrigins })` and absent from a default `getTools()`. This clears the largest architectural risk hanging over `apps/archive` (R9). It also tells the manifest panel something: the default view is not the whole registry, so a panel that wants to show the archive's tools has to ask for them by origin rather than assume.
 
 **Result.** Doc 11 sections 1, 2, 3, 4, 5, 8, 9 and 10 filled; doc 03's spec baseline table updated, with two rows moving from Medium and DISPUTED to Verified. What remains empty in doc 11 is exactly what a browser cannot answer: whether a model discovers a one-tool page, whether `untrustedContentHint` changes its behaviour, its latency distribution, and `SubmitEvent.agentInvoked`, which needs a real agent submission rather than a synthetic one. Those need a model and, for the second browser, ChatGPT.
+
+---
+
+### D-025 PILOT's view is pushed whole, over a hibernatable socket, gated on phase
+
+**Date.** 2026-08-28
+
+**Decision.** `/session/:id/socket` on the `Session` Durable Object pushes a complete `PilotView` on connect and after anything that settles state. It is accepted through the WebSocket hibernation API. The view is built by `apps/worker/src/pilot.ts`, the mirror of `views.ts`, and it carries chamber facts only in the phases where PILOT is actually standing in the room.
+
+**Options considered, on the payload.**
+1. Deltas, as doc 05 section 1 words it.
+2. Whole views.
+
+Whole views. The view is four machine fields and at most nine projected facts, so a delta saves nothing worth measuring. What a delta would cost is a version handshake: a client that reconnects, or that drops one frame, has to be told how to catch up, and until it is told it is not stale but wrong. Pushing the whole view makes a reconnect self-healing, which matters because the hibernation API means the Durable Object is *expected* to be evicted mid-session.
+
+**Options considered, on accepting the socket.**
+1. `server.accept()` plus a `Set` of live connections in the instance.
+2. `state.acceptWebSocket(server)` and `state.getWebSockets()`.
+
+Option 2. Hibernation is the reason: a session sits idle while two people talk, and an evicted Durable Object with an in-memory `Set` comes back having silently dropped every viewer. It is also less code, because the runtime owns the set and prunes closed sockets itself, so there is no `onclose` bookkeeping to get wrong.
+
+**No inbound handler, deliberately.** There is no `webSocketMessage` on the server and nothing is ever sent from the client. Every action goes through HTTP and the action semaphore; a socket that accepted commands would be a second route into the state machine that does not serialise against the first.
+
+**The phase gate is a real finding.** `machine.chamber` stays set through `ARCHIVE`, `TRANSITIONING` and `DEADLOCK` so the machine knows which room was last entered. A first pass keyed the facts on that field alone, and the Archive beat therefore rendered the solved Blind Panel behind the ghost monitor. Facts now require `IN_CHAMBER`, `PENALISED` or `DEADLOCK`; `DEADLOCK` is included because PILOT has to see the chamber to decide to reset it, which is a thing only PILOT can do.
+
+**Result.** 31 new tests, 396 total. `pilot.test.ts` checks each chamber against its own `facts()` rather than a hand-written field list, so a field added later is covered on the day it is added. Verified against a real workerd as well as the fakes: the upgrade lands, the greeting arrives, an action pushes a frame unasked, and no `TACTILE` or `HIDDEN` field appears on the wire. What the unit tests cannot cover is the `101` response itself, because Node's `Response` rejects that status and workerd requires it; the live run is what covers it.
+
+**Not done here.** The CONCORD meter reads `concordBits`, which for the Blind Panel enumerates 384 candidates and replays the rotation history under each. That is too much to run on every push, so it stays out of `PilotView` until the HUD needs it and can ask for it on its own terms.
