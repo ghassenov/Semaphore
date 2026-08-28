@@ -3,6 +3,7 @@ import { GameError } from "@semaphore/protocol";
 import * as airlock from "./chambers/airlock.js";
 import * as signalRoom from "./chambers/signal_room.js";
 import * as blindPanel from "./chambers/blind_panel.js";
+import * as concordLock from "./chambers/concord_lock.js";
 import { newSession, reduce, type PersistedSession } from "./reducer.js";
 
 const NOW = 1_000_000;
@@ -597,5 +598,220 @@ describe("rotate_dial", () => {
       lastEvents = result.events;
     }
     expect(lastEvents.map((e) => e.type)).toContain("chamber_solved");
+  });
+});
+
+/**
+ * Drive a BRIEF-mode session into the Concord Lock.
+ *
+ * BRIEF mode (doc 02 section 7) plays airlock, signal_room, concord_lock and
+ * skips blind_panel, which is also the only route to the finale that exists
+ * today: in full mode, solving blind_panel enters the ARCHIVE phase, and
+ * nothing completes the Archive beat yet (see NEXT-STEPS).
+ */
+function concordLockSession(atMs = NOW): { session: PersistedSession; nowMs: number } {
+  let s = newSession(SESSION_ID, "brief-seed", atMs);
+  let t = atMs;
+  s = reduce(s, { type: "begin_shift", designation: "KEEPER" }, t).session;
+  s = reduce(s, { type: "start", difficulty: "standard", mode: "brief" }, t).session;
+  s = reduce(
+    s,
+    { type: "pull_lever", leverId: airlock.correctLever(s.airlock!.params) },
+    (t += 2000),
+  ).session;
+  for (const key of signalRoom.correctSequence(s.signalRoom!.params)) {
+    s = reduce(s, { type: "press_key", keyId: key }, (t += 2000)).session;
+  }
+  return { session: s, nowMs: t };
+}
+
+describe("the Concord Lock", () => {
+  it("is reachable in BRIEF mode, with a stamina window derived from observed latency", () => {
+    const { session } = concordLockSession();
+    expect(session.machine.chamber).toBe("concord_lock");
+    expect(session.concordLock).not.toBeNull();
+    // D-010's payoff: 2000ms gaps were fed in above, so 6 x 2000 = 12000,
+    // which is also the clamp floor. Never a hardcoded constant.
+    expect(session.concordLock!.staminaWindowMs).toBe(12_000);
+  });
+
+  it("refuses finale actions before the chamber is reached", () => {
+    const early = begunSession();
+    expect(() => reduce(early, { type: "grip_bar" }, NOW)).toThrow(GameError);
+    expect(() => reduce(early, { type: "align_bolt", boltId: 1 }, NOW)).toThrow(GameError);
+    expect(() => reduce(early, { type: "speak_passphrase", phrase: "X" }, NOW)).toThrow(GameError);
+  });
+
+  it("refuses to align a bolt while the lock is not armed", () => {
+    const { session, nowMs } = concordLockSession();
+    expect(() => reduce(session, { type: "align_bolt", boltId: 1 }, nowMs + 100)).toThrow(
+      GameError,
+    );
+  });
+
+  it("refuses the passphrase while the lock is not armed", () => {
+    const { session, nowMs } = concordLockSession();
+    const phrase = session.concordLock!.params.passphrase;
+    expect(() => reduce(session, { type: "speak_passphrase", phrase }, nowMs + 100)).toThrow(
+      GameError,
+    );
+  });
+
+  it("arms on grip, logs a pilot_action, and does not pollute the latency sample", () => {
+    // grip_bar is PILOT's, so it must not enter observedLatencyMs: that
+    // sample measures the agent's rhythm (D-010), and a human's reaction
+    // time would corrupt the very window this chamber derives from it.
+    const { session, nowMs } = concordLockSession();
+    const before = session.observedLatencyMs.length;
+    const { session: after, events } = reduce(session, { type: "grip_bar" }, nowMs + 1000);
+    expect(concordLock.isArmed(after.concordLock!, nowMs + 1000)).toBe(true);
+    expect(events.map((e) => e.type)).toEqual(["pilot_action"]);
+    expect(after.observedLatencyMs).toHaveLength(before);
+  });
+
+  it("seats bolts in order and refuses them out of order", () => {
+    const { session, nowMs } = concordLockSession();
+    let t = nowMs + 1000;
+    let s = reduce(session, { type: "grip_bar" }, t).session;
+
+    // Bolt 2 before bolt 1 does not advance, and says which one is next.
+    const outOfOrder = reduce(s, { type: "align_bolt", boltId: 2 }, (t += 500));
+    expect(outOfOrder.session.concordLock!.boltsAligned).toBe(0);
+    expect(outOfOrder.toolText).toContain("Bolt 1 is the next");
+    expect(outOfOrder.events[0]).toMatchObject({ wasted: true });
+
+    s = outOfOrder.session;
+    for (const bolt of concordLock.BOLTS) {
+      const r = reduce(s, { type: "align_bolt", boltId: bolt }, (t += 500));
+      s = r.session;
+      expect(r.events[0]).toMatchObject({ wasted: false });
+    }
+    expect(s.concordLock!.boltsAligned).toBe(concordLock.BOLT_COUNT);
+  });
+
+  it("drops the grip and resets the bolts when stamina runs out", () => {
+    const { session, nowMs } = concordLockSession();
+    let t = nowMs + 1000;
+    let s = reduce(session, { type: "grip_bar" }, t).session;
+    s = reduce(s, { type: "align_bolt", boltId: 1 }, (t += 500)).session;
+    expect(s.concordLock!.boltsAligned).toBe(1);
+
+    // Past the window: settle() drops the grip, so the next call sees zero.
+    const past = t + s.concordLock!.staminaWindowMs + 1;
+    expect(() => reduce(s, { type: "align_bolt", boltId: 2 }, past)).toThrow(GameError);
+    const settled = concordLock.settle(s.concordLock!, past);
+    expect(settled.boltsAligned).toBe(0);
+    expect(settled.armedAtMs).toBeNull();
+  });
+
+  it("resets the bolts when PILOT releases the bar deliberately", () => {
+    const { session, nowMs } = concordLockSession();
+    let t = nowMs + 1000;
+    let s = reduce(session, { type: "grip_bar" }, t).session;
+    s = reduce(s, { type: "align_bolt", boltId: 1 }, (t += 500)).session;
+    const { session: released, events } = reduce(s, { type: "release_bar" }, (t += 500));
+    expect(released.concordLock!.boltsAligned).toBe(0);
+    expect(concordLock.isArmed(released.concordLock!, t)).toBe(false);
+    expect(events.map((e) => e.type)).toEqual(["pilot_action"]);
+  });
+
+  it("opens the door on the correct passphrase with every bolt aligned", () => {
+    const { session, nowMs } = concordLockSession();
+    let t = nowMs + 1000;
+    let s = reduce(session, { type: "grip_bar" }, t).session;
+    const phrase = s.concordLock!.params.passphrase;
+    for (const bolt of concordLock.BOLTS) {
+      s = reduce(s, { type: "align_bolt", boltId: bolt }, (t += 500)).session;
+    }
+    const r = reduce(s, { type: "speak_passphrase", phrase }, t + 500);
+    expect(r.session.concordLock!.solved).toBe(true);
+    expect(r.session.machine.phase).toBe("FINALE");
+    expect(r.events.map((e) => e.type)).toContain("chamber_solved");
+  });
+
+  it("accepts the passphrase regardless of spacing and case", () => {
+    const { session, nowMs } = concordLockSession();
+    let t = nowMs + 1000;
+    let s = reduce(session, { type: "grip_bar" }, t).session;
+    const phrase = s.concordLock!.params.passphrase;
+    for (const bolt of concordLock.BOLTS) {
+      s = reduce(s, { type: "align_bolt", boltId: bolt }, (t += 500)).session;
+    }
+    const scrambled = phrase.toLowerCase().replace(/\s+/g, "");
+    expect(
+      reduce(s, { type: "speak_passphrase", phrase: scrambled }, t + 500).session.concordLock!
+        .solved,
+    ).toBe(true);
+  });
+
+  it("locks out, re-enciphers at a new offset, and drops the bolts on a wrong phrase", () => {
+    const { session, nowMs } = concordLockSession();
+    let t = nowMs + 1000;
+    let s = reduce(session, { type: "grip_bar" }, t).session;
+    const originalOffset = s.concordLock!.cipherOffset;
+    for (const bolt of concordLock.BOLTS) {
+      s = reduce(s, { type: "align_bolt", boltId: bolt }, (t += 500)).session;
+    }
+    const r = reduce(s, { type: "speak_passphrase", phrase: "ZZZZ ZZZZ" }, (t += 500));
+
+    expect(r.session.concordLock!.solved).toBe(false);
+    expect(r.session.concordLock!.cipherOffset).not.toBe(originalOffset);
+    expect(r.session.concordLock!.boltsAligned).toBe(0);
+    expect(r.session.concordLock!.lockedOutUntilMs).toBe(t + concordLock.LOCKOUT_MS);
+    expect(r.events.map((e) => e.type)).toContain("failure");
+    expect(r.events.find((e) => e.type === "failure")).toMatchObject({ failure: "LOCKOUT" });
+  });
+
+  it("refuses to re-arm while sealed, and allows it once the lockout expires", () => {
+    const { session, nowMs } = concordLockSession();
+    let t = nowMs + 1000;
+    let s = reduce(session, { type: "grip_bar" }, t).session;
+    for (const bolt of concordLock.BOLTS) {
+      s = reduce(s, { type: "align_bolt", boltId: bolt }, (t += 500)).session;
+    }
+    s = reduce(s, { type: "speak_passphrase", phrase: "ZZZZ ZZZZ" }, (t += 500)).session;
+
+    expect(() => reduce(s, { type: "grip_bar" }, t + 1000)).toThrow(GameError);
+    const after = reduce(s, { type: "grip_bar" }, t + concordLock.LOCKOUT_MS + 1).session;
+    expect(concordLock.isArmed(after.concordLock!, t + concordLock.LOCKOUT_MS + 1)).toBe(true);
+  });
+
+  it("marks a phrase that is not a possible decryption as wasted", () => {
+    // The sharpest wasted-call definition in the game: KEEPER can enumerate
+    // the 26 decryptions of the ciphertext it holds, so a phrase outside
+    // that set could not have been the passphrase and it knew that.
+    const { session, nowMs } = concordLockSession();
+    let t = nowMs + 1000;
+    let s = reduce(session, { type: "grip_bar" }, t).session;
+    for (const bolt of concordLock.BOLTS) {
+      s = reduce(s, { type: "align_bolt", boltId: bolt }, (t += 500)).session;
+    }
+    const impossible = reduce(s, { type: "speak_passphrase", phrase: "ZZZZ ZZZZ" }, t + 500);
+    expect(impossible.events[0]).toMatchObject({ wasted: true });
+  });
+
+  it("does not mark a plausible decryption as wasted, even when wrong", () => {
+    const { session, nowMs } = concordLockSession();
+    let t = nowMs + 1000;
+    let s = reduce(session, { type: "grip_bar" }, t).session;
+    const lock = s.concordLock!;
+    // Some other offset's decryption: a legitimate guess, just not the one.
+    const wrongButPossible = concordLock
+      .candidates(lock)
+      .map((w) => w.params.passphrase)
+      .find((p) => concordLock.normalise(p) !== concordLock.normalise(lock.params.passphrase))!;
+    for (const bolt of concordLock.BOLTS) {
+      s = reduce(s, { type: "align_bolt", boltId: bolt }, (t += 500)).session;
+    }
+    const r = reduce(s, { type: "speak_passphrase", phrase: wrongButPossible }, t + 500);
+    expect(r.events[0]).toMatchObject({ wasted: false });
+  });
+
+  it("never leaks the passphrase or the cipher offset into KEEPER's chamber description", () => {
+    const { session } = concordLockSession();
+    const lock = session.concordLock!;
+    const { toolText } = reduce(session, { type: "grip_bar" }, NOW + 99_000);
+    expect(toolText).not.toContain(concordLock.normalise(lock.params.passphrase));
+    expect(toolText).not.toContain(String(lock.cipherOffset));
   });
 });

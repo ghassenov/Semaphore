@@ -27,6 +27,7 @@ import { percentile, staminaWindowMs } from "./latency.js";
 import type { LeverId } from "./chambers/airlock.js";
 import type { KeyId } from "./chambers/signal_room.js";
 import type { DialId, Direction } from "./chambers/blind_panel.js";
+import type { BoltId } from "./chambers/concord_lock.js";
 
 export interface Env {
   SESSIONS: DurableObjectNamespace;
@@ -48,6 +49,14 @@ function labelFor(action: Action): string {
       return "resetting the sequence";
     case "rotate_dial":
       return "turning a dial";
+    case "grip_bar":
+      return "gripping the release bar";
+    case "release_bar":
+      return "releasing the bar";
+    case "align_bolt":
+      return "aligning a bolt";
+    case "speak_passphrase":
+      return "speaking the passphrase";
   }
 }
 
@@ -114,6 +123,17 @@ export class Session {
         direction: (body.direction as Direction | undefined) ?? "clockwise",
         clicks: Number(body.clicks ?? 0),
       });
+    }
+
+    if (pathname.endsWith("/grip_bar")) return this.#act({ type: "grip_bar" });
+    if (pathname.endsWith("/release_bar")) return this.#act({ type: "release_bar" });
+    if (pathname.endsWith("/align_bolt")) {
+      const body = (await request.json()) as { bolt_id?: unknown };
+      return this.#act({ type: "align_bolt", boltId: Number(body.bolt_id ?? 0) as BoltId });
+    }
+    if (pathname.endsWith("/speak_passphrase")) {
+      const body = (await request.json()) as { phrase?: unknown };
+      return this.#act({ type: "speak_passphrase", phrase: String(body.phrase ?? "") });
     }
 
     return new Response("Not found", { status: 404 });
