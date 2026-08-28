@@ -12,10 +12,10 @@ It answers three questions and only three: where the repo is right now, what to 
 |---|---|
 | **Last updated** | 2026-08-28, Ahmed Saad |
 | **Spike** | **Run** against Chrome 151, 2026-08-28. Doc 11 filled. Three findings, D-024. ChatGPT's in-app browser still untested. |
-| **Branch** | `feat/webmcp-tool-layer`, off `main` at `0f65aad`, **not pushed** |
-| **Pipeline** | Green: 365 tests, typecheck, lint, format, `vite build`, real `wrangler deploy --dry-run` |
+| **Branch** | `feat/pilot-view-socket`, off `main` at `ba22e01`, **not pushed** |
+| **Pipeline** | Green: 396 tests, typecheck, lint, format, `vite build`, real `wrangler deploy --dry-run` |
 | **Verify with** | `pnpm install && pnpm typecheck && pnpm lint && pnpm test && pnpm build` |
-| **Run it** | `cd apps/worker && npx wrangler dev` in one shell, `cd apps/game && pnpm dev` in another. Vite proxies `/session` to `127.0.0.1:8787`. |
+| **Run it** | `cd apps/worker && npx wrangler dev` in one shell, `cd apps/game && pnpm dev` in another. Vite proxies `/session` to `127.0.0.1:8787`, WebSocket included. |
 | **Cloudflare** | Logged in. D1 database `semaphore-sessions` provisioned and migrated, local and remote. |
 
 ### What exists
@@ -23,18 +23,20 @@ It answers three questions and only three: where the repo is right now, what to 
 | Path | State |
 |---|---|
 | `docs/design/` | Numbered set 00-12, complete. |
-| `docs/` | Decision log at D-024, lessons journal live. |
+| `docs/` | Decision log at D-025, lessons journal live. |
 | `packages/seed`, `packages/protocol` | Done. |
 | `apps/worker/src/chambers/*.ts` | Done. All four chambers: generation, state, facts, world enumeration. |
 | `apps/worker/src/reducer.ts` | Done end to end. A full-mode session now runs ENTRY through **ESCAPED**: `open_the_door` was the missing terminal action, so `session_end` is written for the first time. |
 | `apps/worker/src/views.ts` | Done. `describe_chamber`, `inspect`, `read_ciphertext`, `get_lock_state` as pure `projectForKeeper` projections (D-019). |
+| `apps/worker/src/pilot.ts` | Done. The mirror of `views.ts`: `PilotView` from `projectForPilot`, gated on phase as well as chamber (D-025). |
 | `apps/worker/src/manual.ts` | Done. The station manual, all seven sections, including the seeded vandalised page. **Temporarily placed** (D-020), like `archive/` (D-017). |
-| `apps/worker/src/{projection,worlds,latency,semaphore,machine,log,Session,index}.ts` | Done. `chamberSeed` moved to `machine.ts`; `Session` gained the read routes and puts machine state on every response. |
+| `apps/worker/src/{projection,worlds,latency,semaphore,machine,log,Session,index}.ts` | Done. `chamberSeed` moved to `machine.ts`; `Session` gained the read routes, machine state on every response, and `/socket` (D-025). |
 | `apps/game/src/webmcp/adapter.ts` | Done. The only file touching the spec. Degrades to nulls, never throws. |
 | `apps/game/src/webmcp/director.ts` | Done. The three-tier `AbortController` lifecycle, ending in an empty registry. **The file a judge reads first.** |
 | `apps/game/src/webmcp/tools.*.ts` | Done. All 12 tools: `begin_shift`, four persistent, the chamber sets, the Archive's, `open_the_door`. |
 | `apps/game/src/net/sessionClient.ts` | Done. Never rejects except on abort; announces machine state to the director (D-021). |
-| `apps/game/src/ui.ts` | Gate screen done. Operator console is deliberate greybox scaffolding, replaced by Phase 1.4. |
+| `apps/game/src/net/socket.ts` | Done. The view feed: reconnects with capped backoff, holds the latest frame, sends nothing. |
+| `apps/game/src/ui.ts` | Gate screen done. Operator console is deliberate greybox scaffolding, replaced by Phase 1.4. It prints the view feed's fact **names**, never their values. |
 | `tests/possible-worlds.test.ts` | Done and passing for all four chambers. The headline proof, honestly scoped. |
 | `apps/spike/` | Built and **run** (Chrome 151, headless, 2026-08-28): 24 checks, 1 failing, 3 awaiting a model. Re-run it in ChatGPT's in-app browser. |
 | `apps/archive/`, `bench/` | Rules files only, no code. |
@@ -55,11 +57,16 @@ Chrome is done (D-024). What is left needs the second browser and, separately, a
 
 Then play an actual session. Everything needed for one now exists.
 
-### 2. The client foundation (plan §1.4)
+### 2. Phaser and the scenes (the rest of plan §1.4)
 
-Phaser boot at 320x180 with integer snap, `LandingScene` with the starter prompt card, greybox `ChamberScene`, the PILOT avatar, and the two `toolchange` renderings the console currently fakes with a `<ul>`: `ManifestPanel` and `KeeperBody`, both from one listener reading `getTools()`.
+The view feed is done (D-025): `SessionSocket` holds a live `PilotView` and hands it to any watcher. What is missing is something that draws it.
 
-This also needs the WebSocket the client does not have yet: a `/session/:id/socket` endpoint on the Durable Object pushing `projectForPilot` deltas. Nothing renders a puzzle until it exists, which is why the console shows only machine state today.
+Phaser boot at 320x180 with integer snap, `LandingScene` with the starter prompt card, greybox `ChamberScene` reading `socket.watch(...)`, the PILOT avatar, KEEPER behind the grate, and the HUD (timer, chamber name, action log, channel legend, CONCORD meter). Plus the two `toolchange` renderings the console currently fakes with a `<ul>`: `ManifestPanel` and `KeeperBody`, both from one listener reading `getTools()`.
+
+Two things to know before starting:
+
+- **Measure the Phaser bundle** against the 400KB budget as soon as it is installed (plan §0.4). The client is 20KB today.
+- **The CONCORD meter has no server-side feed yet**, deliberately (D-025). `concordBits` for the Blind Panel enumerates 384 candidates and replays the rotation history under each, which is too much to run on every socket push. Decide how the HUD asks for it: a separate throttled route is the obvious shape.
 
 The declarative notepad (`write_note`/`read_note`, doc 03 §8) belongs here rather than in the tool layer, because it is a real form in the room and needs one.
 
@@ -77,6 +84,8 @@ Once the client exists to embed it. D-017 and D-020 record exactly what moves. O
 - **`describe_chamber` must answer every phase, not just the chambers.** It threw `E_NO_SESSION` for `FINALE` on the first pass, which the reducer's idempotent `start` path would have surfaced as a lie. An agent that has lost the thread needs a next action, not a diagnosis.
 - **A read-only tool must not take the semaphore** (D-019). Blocking a look behind a turning dial returns `E_BUSY` for a call that was always safe, and teaches an agent to stop calling `get_status` under pressure, which is exactly when the briefing tells it to.
 - **Read-only calls are not in the session log.** Deliberate (D-019), and it means "did the agent read the manual before acting" is not yet measurable. The benchmark's author should read that entry, not discover the gap.
+- **`machine.chamber` outlives the room** (D-025). It stays set through `ARCHIVE`, `TRANSITIONING` and `DEADLOCK` so the machine knows which chamber was last entered. Anything that decides what to draw from it alone renders the Blind Panel behind the Archive's ghost monitor. `pilot.ts` gates on phase too; so must a scene.
+- **Node's `Response` rejects status `101`, workerd requires it** (D-025). The socket upgrade cannot be unit-tested end to end; `Session.test.ts` swallows the `RangeError` and asserts on what the socket received instead. Anything else that returns a `101` needs a live run to be believed.
 - **The registry follows the server, never a guess** (D-021). Chambers auto-advance inside one `reduce()` call and PILOT moves the session without any tool call at all, so anything inferring a tier from what it just called will be wrong within one chamber.
 - **A log event cannot honestly carry a field that is not yet chosen at the point it fires** (D-016). Check what is actually known at the moment an event fires, not at the moment it feels natural to emit it.
 - **Generate fixtures from the real code path, not by hand** (the lesson behind D-016). `apps/worker/scripts/generate-ghost.ts` is the pattern to reuse for a second ghost.
@@ -104,6 +113,7 @@ Once the client exists to embed it. D-017 and D-020 record exactly what moves. O
 | Item | Owner | Note |
 |---|---|---|
 | Spike in ChatGPT's in-app browser | Human | The only thing keeping `ARCHIVE_ORIGIN` at `same`. Chrome already passes cross-origin delegation. |
+| Socket behaviour through Cloudflare's edge | Human | Verified against local `workerd` only. A deployed session should be watched through one full chamber before the demo is rehearsed on it. |
 | A real agent session | Human | Everything needed for one exists. Doc 11 sections 6 and 7 stay empty until a model meets the page. |
 | Playtesters | Human | Doc 08 section 0.1 wants six. The only task that does not parallelise. |
 | Repo made public | Human | Deliberately deferred to just before the deadline. |
