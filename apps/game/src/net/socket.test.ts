@@ -19,6 +19,7 @@ const VIEW: PilotView = {
   retries: 0,
   facts: { glyphByLever: { lever_a: "spiral" }, doorOpen: false },
   notes: [],
+  mode: "full",
 };
 
 /** A `WebSocket` the test drives by hand. */

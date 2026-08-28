@@ -17,18 +17,26 @@
 import Phaser from "phaser";
 import { CHANNEL_COLOUR, CHANNEL_DIM, CHANNEL_MARKER, PALETTE } from "./palette.js";
 import {
-  FLOOR_Y,
-  GRATE_X,
-  NATIVE_HEIGHT,
-  NATIVE_WIDTH,
-  ROOM_BOTTOM,
-  ROOM_TOP,
+  SILHOUETTE,
+  floorLine,
   interlude,
   roomLayout,
   roomTitle,
   type Piece,
   type RoomLayout,
 } from "./rooms.js";
+import {
+  CANVAS,
+  DECK_WIDTH,
+  DECK_X,
+  FRAME,
+  ROOM_LEFT,
+  ROOM_WIDTH,
+  SECTION_BOTTOM,
+  SECTION_TOP,
+  cutaway,
+  type Floor,
+} from "./cutaway.js";
 import {
   AUDIBLE_HEIGHT,
   AUDIBLE_Y,
@@ -78,9 +86,6 @@ function installSprites(scene: Phaser.Scene): void {
 
 /** Below this width a piece cannot legibly carry its channel marker. */
 const MARKER_MIN_WIDTH = 12;
-
-/** Native pixels per second. Slow, because the room is 320 wide. */
-const WALK_SPEED = 60;
 
 /**
  * A reused pool of text objects.
@@ -153,11 +158,14 @@ export class LandingScene extends Phaser.Scene {
 
     // The station from outside, built from the same hull the rooms are made
     // of, with one lit window and the two of them already in it.
-    this.add.tileSprite(40, 84, 240, 76, TEXTURE.wall).setOrigin(0, 0);
-    this.add.rectangle(160, 78, 128, 14, PALETTE.hullLight).setOrigin(0.5, 0.5);
-    this.#glow = this.add.rectangle(160, 78, 22, 8, PALETTE.amber).setOrigin(0.5, 0.5);
-    this.add.image(120, 156, TEXTURE.pilot).setOrigin(0.5, 1);
-    this.add.image(200, 156, TEXTURE.keeper).setOrigin(0.5, 1).setTint(PALETTE.bone);
+    // The station from outside, as a section with its floors dark: the same
+    // building the shift is about to open up, seen before anybody is in it.
+    this.add.tileSprite(48, 96, 224, 150, TEXTURE.wall).setOrigin(0, 0);
+    this.#paintFloors();
+    this.add.rectangle(160, 88, 128, 14, PALETTE.hullLight).setOrigin(0.5, 0.5);
+    this.#glow = this.add.rectangle(160, 88, 22, 8, PALETTE.amber).setOrigin(0.5, 0.5);
+    this.add.image(112, 242, TEXTURE.pilot).setOrigin(0.5, 1);
+    this.add.image(208, 242, TEXTURE.keeper).setOrigin(0.5, 1).setTint(PALETTE.bone);
 
     // The lamp breathes so a page waiting for a first frame does not look
     // frozen. Twelve frames per second on game motion (doc 06 section 3).
@@ -170,21 +178,28 @@ export class LandingScene extends Phaser.Scene {
     });
   }
 
+  /** The floor slabs, so the closed station already reads as a building. */
+  #paintFloors(): void {
+    const slabs = this.add.graphics();
+    slabs.fillStyle(PALETTE.rust, 1);
+    for (let i = 1; i < 5; i += 1) slabs.fillRect(48, 96 + i * 30, 224, 3);
+  }
+
   override update(): void {
     this.#pool.begin();
-    this.#pool.write(160, 18, "SEMAPHORE", PALETTE.bone, 0.5);
-    this.#pool.write(160, 30, "A DERELICT SIGNAL STATION", PALETTE.boneDim, 0.5);
+    this.#pool.write(160, 30, "SEMAPHORE", PALETTE.bone, 0.5);
+    this.#pool.write(160, 44, "A DERELICT SIGNAL STATION", PALETTE.boneDim, 0.5);
     const tools = this.#model.tools.length;
     this.#pool.write(
       160,
-      162,
+      272,
       tools > 0
         ? `KEEPER IS HERE. ${String(tools)} TOOL${tools === 1 ? "" : "S"} ON THE PLATE.`
         : "WAITING FOR KEEPER TO READ ITS TOOLS",
       tools > 0 ? PALETTE.cyan : PALETTE.boneDim,
       0.5,
     );
-    this.#pool.write(160, 172, "PASTE THE PROMPT BELOW TO YOUR AGENT", PALETTE.amber, 0.5);
+    this.#pool.write(160, 288, "PASTE THE PROMPT BELOW TO YOUR AGENT", PALETTE.amber, 0.5);
     this.#pool.end();
   }
 }
@@ -196,6 +211,14 @@ export class LandingScene extends Phaser.Scene {
  * including the phases with no room in them. In those it draws the HUD and an
  * empty floor rather than going blank, because a blank canvas during the
  * Archive reads as a crash rather than as an interlude.
+/**
+ * The station interior, drawn as a section: every floor at once.
+ *
+ * This scene runs from the moment the shift begins until the session ends. It
+ * draws the whole building, the floor the pair is standing in at working size
+ * and the rest as silhouette strips, with KEEPER's machine deck as a column
+ * down the right of all of them. Where a floor sits is `cutaway.ts`'s answer
+ * and what is in it is `rooms.ts`'s; this class only paints.
  */
 export class ChamberScene extends Phaser.Scene {
   readonly #model: StationModel;
@@ -203,27 +226,17 @@ export class ChamberScene extends Phaser.Scene {
   #paint!: Phaser.GameObjects.Graphics;
   #avatar!: Phaser.GameObjects.Image;
   #keeperBody!: Phaser.GameObjects.Image;
-  #wall!: Phaser.GameObjects.TileSprite;
-  #floor!: Phaser.GameObjects.TileSprite;
   /** Reused glyph faces, one per piece that wants one. Never re-created. */
   readonly #faces: Phaser.GameObjects.Image[] = [];
   #facesUsed = 0;
-  #keys!: {
-    left: Phaser.Input.Keyboard.Key;
-    right: Phaser.Input.Keyboard.Key;
-  };
   /** The most ambiguity seen in the current room, for the meter's scale. */
   #peakBits = 0;
   #peakChamber: string | null = null;
-  /**
-   * This frame's layout, computed by `#drawRoom` and read by `#drawHud`.
-   *
-   * The audible strip sits below the room, in a band the HUD paints its
-   * background over, so it has to be drawn after the HUD background and it
-   * needs the room's answer to do it. Stashing beats calling `roomLayout`
-   * twice, and makes it obvious the two are looking at the same frame.
-   */
+  /** This frame's active floor and its contents, shared between passes. */
+  #floor: Floor | null = null;
   #layout: RoomLayout | null = null;
+  /** Where PILOT is standing, as a fraction across the active floor. */
+  #walk = 0.1;
 
   constructor(model: StationModel) {
     super("chamber");
@@ -233,144 +246,190 @@ export class ChamberScene extends Phaser.Scene {
   create(): void {
     this.cameras.main.setBackgroundColor(PALETTE.void);
     installSprites(this);
-    // The room's surfaces, under everything. Tile sprites rather than a
-    // repeated draw call: the GPU repeats the texture and the scene owns two
-    // objects instead of a hundred.
-    this.#wall = this.add
-      .tileSprite(0, ROOM_TOP, NATIVE_WIDTH, ROOM_BOTTOM - ROOM_TOP, TEXTURE.wall)
-      .setOrigin(0, 0)
-      .setDepth(0);
-    this.#floor = this.add
-      .tileSprite(0, FLOOR_Y, NATIVE_WIDTH, ROOM_BOTTOM - FLOOR_Y, TEXTURE.floor)
+
+    // The hull behind every floor. One tile sprite for the whole section
+    // rather than one per floor: the building is continuous and the slabs are
+    // drawn over it.
+    this.add
+      .tileSprite(
+        FRAME,
+        SECTION_TOP,
+        CANVAS - FRAME * 2,
+        SECTION_BOTTOM - SECTION_TOP,
+        TEXTURE.wall,
+      )
       .setOrigin(0, 0)
       .setDepth(0);
 
     this.#paint = this.add.graphics().setDepth(1);
     this.#pool = new TextPool(this);
 
-    this.#avatar = this.add.image(60, FLOOR_Y, TEXTURE.pilot).setOrigin(0.5, 1).setDepth(5);
-    // Behind the grate, which is drawn over it every frame.
+    this.#avatar = this.add.image(60, 100, TEXTURE.pilot).setOrigin(0.5, 1).setDepth(5);
     this.#keeperBody = this.add
-      .image(GRATE_X + 30, FLOOR_Y, TEXTURE.keeper)
+      .image(DECK_X + 24, 120, TEXTURE.keeper)
       .setOrigin(0.5, 1)
       .setDepth(2);
 
-    // Arrow keys and WASD, because a player whose hands are on the keyboard
-    // to talk to their agent should not have to find a different set to move.
     const keyboard = this.input.keyboard;
-    if (!keyboard) throw new Error("The chamber needs a keyboard to move PILOT");
-    this.#keys = {
-      left: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT),
-      right: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT),
-    };
-    keyboard.addKeys("A,D");
+    if (!keyboard) throw new Error("The station needs a keyboard to move PILOT");
+    keyboard.addKeys("A,D,LEFT,RIGHT");
   }
 
   override update(_time: number, deltaMs: number): void {
+    const view = this.#model.view;
+    const section = view ? cutaway(view) : null;
+    this.#floor = section?.active ?? null;
+    this.#layout = view && this.#floor ? roomLayout(view, this.#floor.height) : null;
+
     this.#movePilot(deltaMs);
     this.#paint.clear();
     this.#pool.begin();
     this.#facesUsed = 0;
-    this.#drawRoom();
-    this.#drawKeeper();
+
+    this.#drawFrame();
+    if (section) for (const floor of section.floors) this.#drawFloor(floor);
+    else this.#pool.write(CANVAS / 2, 120, "CONNECTING", PALETTE.boneDim, 0.5);
+    this.#drawDeck();
     this.#drawHud();
+
     this.#pool.end();
     for (let i = this.#facesUsed; i < this.#faces.length; i += 1) this.#faces[i]?.setVisible(false);
   }
 
-  /**
-   * PILOT walks. This is the whole of the human's physical agency in the
-   * greybox: they can cross the room and look, and that is the point. Every
-   * mechanism in the station is reachable only by KEEPER, through a tool.
-   */
-  #movePilot(deltaMs: number): void {
-    const keyboard = this.input.keyboard;
-    const left = this.#keys.left.isDown || keyboard?.keys[Phaser.Input.Keyboard.KeyCodes.A]?.isDown;
-    const right =
-      this.#keys.right.isDown || keyboard?.keys[Phaser.Input.Keyboard.KeyCodes.D]?.isDown;
-    const direction = (right ? 1 : 0) - (left ? 1 : 0);
-    if (direction === 0) return;
-    const next = this.#avatar.x + direction * WALK_SPEED * (deltaMs / 1000);
-    // Stops at the grate. KEEPER is on the other side of it and stays there.
-    this.#avatar.x = Math.max(12, Math.min(GRATE_X - 12, next));
-  }
-
-  /** The floor, then whatever `rooms.ts` says is standing on it. */
-  #drawRoom(): void {
-    const view = this.#model.view;
-    // Tiled hull rather than a flat fill: the station should look built, and
-    // the tiles carry the rust marks that stop 96 pixels of wall reading as a
-    // rectangle. Created once in `create()` and only positioned here.
-    this.#wall.setVisible(true);
-    this.#floor.setVisible(true);
-
-    this.#layout = view ? roomLayout(view) : null;
-    const layout = this.#layout;
-    if (!layout) {
-      if (!view) return;
-      // Not dead air: the Archive is a designed beat and `ESCAPED` is the last
-      // frame anybody sees. Both deserve better than a diagnostic.
-      const [headline, instruction] = interlude(view);
-      this.#pool.write(160, 58, headline, PALETTE.bone, 0.5);
-      if (instruction) this.#pool.write(160, 72, instruction, PALETTE.boneDim, 0.5);
-      return;
-    }
-
-    for (const piece of layout.pieces) this.#drawPiece(piece);
-
-    // Success is a bone-white flash and a shape change, never green. There is
-    // no green in the palette to reach for.
-    if (layout.solved) {
-      this.#paint.fillStyle(PALETTE.bone, 0.12);
-      this.#paint.fillRect(0, ROOM_TOP, NATIVE_WIDTH, ROOM_BOTTOM - ROOM_TOP);
-    }
-  }
-
-  /**
-   * The `AUDIBLE` channel: the one fact PILOT never has to describe.
-   *
-   * Bone-white with the double ring the legend teaches, in a band of its own
-   * below the room rather than inside it. It was inside it, and the captions
-   * of anything standing on the floor landed on top of the sentence.
-   */
-  #drawSound(): void {
-    const sound = this.#layout?.sound;
-    if (!sound) return;
-    this.#paint.lineStyle(1, PALETTE.bone, 1);
-    this.#paint.strokeRect(6.5, AUDIBLE_Y + 1.5, NATIVE_WIDTH - 13, AUDIBLE_HEIGHT - 3);
-    this.#paint.strokeRect(4.5, AUDIBLE_Y - 0.5, NATIVE_WIDTH - 9, AUDIBLE_HEIGHT + 1);
-    this.#pool.write(
-      160,
-      AUDIBLE_Y + 1,
-      truncate(sound.toUpperCase(), NATIVE_WIDTH - 20),
-      PALETTE.bone,
-      0.5,
+  /** The border, in the manner of a cutaway drawing. */
+  #drawFrame(): void {
+    this.#paint.fillStyle(PALETTE.void, 1);
+    this.#paint.fillRect(0, 0, CANVAS, SECTION_TOP);
+    this.#paint.fillRect(0, SECTION_BOTTOM, CANVAS, CANVAS - SECTION_BOTTOM);
+    this.#paint.fillRect(0, 0, FRAME, CANVAS);
+    this.#paint.fillRect(CANVAS - FRAME, 0, FRAME, CANVAS);
+    this.#paint.lineStyle(1, PALETTE.rust, 1);
+    this.#paint.strokeRect(1.5, 1.5, CANVAS - 3, CANVAS - 3);
+    this.#paint.lineStyle(1, PALETTE.hullLight, 1);
+    this.#paint.strokeRect(
+      FRAME - 0.5,
+      SECTION_TOP - 0.5,
+      CANVAS - FRAME * 2 + 1,
+      SECTION_BOTTOM - SECTION_TOP + 1,
     );
   }
 
-  /** One piece: body, channel outline, glyph face, marker and caption. */
-  #drawPiece(piece: Piece): void {
+  /**
+   * One floor: its slab, its contents, and its name.
+   *
+   * The floor the pair is in gets the room proper. Every other floor gets a
+   * silhouette, dimmed, which is enough to say "a room, not this one" without
+   * competing with the one that matters. In a game where finding the
+   * channel-coded object is the whole task, decoration that competes is not
+   * decoration.
+   */
+  #drawFloor(floor: Floor): void {
+    const bottom = floor.y + floor.height;
+    // The slab under every floor, which is what makes it a building.
+    this.#paint.fillStyle(PALETTE.rust, 1);
+    this.#paint.fillRect(FRAME, bottom, CANVAS - FRAME * 2, 3);
+    // The floor's own deck, lighter than the wall behind it.
+    this.#paint.fillStyle(PALETTE.hullLight, floor.active ? 1 : 0.5);
+    const deckY = floor.active ? floor.y + floorLine(floor.height) : bottom - 6;
+    this.#paint.fillRect(FRAME, deckY, ROOM_RIGHT_EDGE - FRAME, bottom - deckY);
+
+    if (floor.active) this.#drawActiveFloor(floor);
+    else this.#drawStrip(floor);
+  }
+
+  /** The room the pair is standing in, at working size. */
+  #drawActiveFloor(floor: Floor): void {
+    this.#pool.write(ROOM_LEFT + 16, floor.y + 1, floor.name, PALETTE.bone);
+    const layout = this.#layout;
+    if (!layout) {
+      const view = this.#model.view;
+      if (!view) return;
+      const [headline, instruction] = interlude(view);
+      const mid = floor.y + floor.height / 2;
+      this.#pool.write(CANVAS / 2 - 20, mid - 8, headline, PALETTE.bone, 0.5);
+      if (instruction)
+        this.#pool.write(CANVAS / 2 - 20, mid + 4, instruction, PALETTE.boneDim, 0.5);
+      return;
+    }
+    for (const piece of layout.pieces) this.#drawPiece(piece, floor);
+    if (layout.solved) {
+      this.#paint.fillStyle(PALETTE.bone, 0.12);
+      this.#paint.fillRect(FRAME, floor.y, ROOM_RIGHT_EDGE - FRAME, floor.height);
+    }
+    this.#drawWallPad(floor);
+    this.#drawPilot(floor);
+  }
+
+  /** A floor the pair is not in: a shape, a name, and nothing readable. */
+  #drawStrip(floor: Floor): void {
+    const bottom = floor.y + floor.height;
+    // Cleared floors are lit; floors not reached yet are barely there. Both
+    // need to separate from the hull behind them, which a first pass drawing
+    // them in `hullLight` did not: the building read as one dark box.
+    const shapes = floor.cleared ? PALETTE.boneDim : PALETTE.rust;
+    this.#paint.fillStyle(shapes, floor.cleared ? 0.7 : 0.9);
+    for (const [x, w, h] of SILHOUETTE[floor.id] ?? []) {
+      this.#paint.fillRect(ROOM_LEFT + x, bottom - 6 - h, w, h);
+    }
+    // The name is always legible. A floor the pair has not reached is still a
+    // floor they can see from the stairwell, and knowing the station has a
+    // Concord Lock in it from the first minute is the point of a section.
+    this.#pool.write(
+      ROOM_LEFT + 2,
+      floor.y + 2,
+      floor.name,
+      floor.cleared ? PALETTE.bone : PALETTE.boneDim,
+    );
+    if (floor.cleared)
+      this.#pool.write(ROOM_RIGHT_EDGE - 4, floor.y + 2, "CLEARED", PALETTE.brass, 1);
+  }
+
+  /**
+   * PILOT walks the floor they are standing on.
+   *
+   * The whole of the human's physical agency: they can cross the room and
+   * look. Every mechanism in the station is reachable only by KEEPER, through
+   * a tool, and that is the game rather than an unfinished control scheme.
+   */
+  #movePilot(deltaMs: number): void {
+    const keys = this.input.keyboard?.keys;
+    const down = (code: number) => keys?.[code]?.isDown === true;
+    const left =
+      down(Phaser.Input.Keyboard.KeyCodes.LEFT) || down(Phaser.Input.Keyboard.KeyCodes.A);
+    const right =
+      down(Phaser.Input.Keyboard.KeyCodes.RIGHT) || down(Phaser.Input.Keyboard.KeyCodes.D);
+    const direction = (right ? 1 : 0) - (left ? 1 : 0);
+    if (direction === 0) return;
+    // Stored as a fraction so PILOT keeps their place across a floor change.
+    this.#walk = Math.max(0.02, Math.min(0.96, this.#walk + direction * (deltaMs / 1000) * 0.35));
+  }
+
+  #drawPilot(floor: Floor): void {
+    this.#avatar
+      .setPosition(
+        Math.round(ROOM_LEFT + 12 + this.#walk * (ROOM_WIDTH - 24)),
+        Math.round(floor.y + floorLine(floor.height)),
+      )
+      .setVisible(true);
+  }
+
+  /** One piece of the active floor's mechanism, offset into place. */
+  #drawPiece(piece: Piece, floor: Floor): void {
+    const x = ROOM_LEFT + piece.x;
+    const y = floor.y + piece.y;
     const colour =
       PALETTE[piece.active ? CHANNEL_COLOUR[piece.channel] : CHANNEL_DIM[piece.channel]];
-    // A piece wearing a glyph gets a dark plate to carry it; a bare piece is
-    // filled in its channel colour as before. Filling under a glyph would
-    // leave the shape fighting the field it sits on at eight pixels.
     this.#paint.fillStyle(piece.glyph ? PALETTE.void : colour, piece.active ? 1 : 0.55);
-    this.#paint.fillRect(piece.x, piece.y, piece.w, piece.h);
+    this.#paint.fillRect(x, y, piece.w, piece.h);
     this.#paint.lineStyle(1, colour, 1);
-    this.#paint.strokeRect(piece.x + 0.5, piece.y + 0.5, piece.w - 1, piece.h - 1);
+    this.#paint.strokeRect(x + 0.5, y + 0.5, piece.w - 1, piece.h - 1);
 
-    if (piece.glyph) this.#drawGlyph(piece, colour);
-
-    // The marker rides on every channel-coded piece big enough to carry it, so
-    // the colour is never the only thing saying who can perceive it. On a 6px
-    // strike pip it is illegible noise, and those pips are captioned in the
-    // channel colour anyway, so the shape cue is not lost.
+    if (piece.glyph) this.#drawGlyph(piece, x, y, colour);
     if (piece.w >= MARKER_MIN_WIDTH) {
-      this.#pool.write(piece.x + 1, piece.y + 1, CHANNEL_MARKER[piece.channel], colour);
+      this.#pool.write(x + 1, y + 1, CHANNEL_MARKER[piece.channel], colour);
     }
     if (piece.label !== undefined) {
-      this.#pool.write(piece.x + piece.w / 2, piece.y + piece.h + 1, piece.label, colour, 0.5);
+      this.#pool.write(x + piece.w / 2, y + piece.h + 1, piece.label, colour, 0.5);
     }
   }
 
@@ -379,10 +438,9 @@ export class ChamberScene extends Phaser.Scene {
    *
    * The sprite is monochrome and the tint is applied here, so the same mark
    * that says "this is a spiral" also says "only PILOT can see this" and the
-   * two cannot disagree. Faces come from a pool for the same reason the text
-   * does: this runs sixty times a second.
+   * two cannot disagree.
    */
-  #drawGlyph(piece: Piece, colour: number): void {
+  #drawGlyph(piece: Piece, x: number, y: number, colour: number): void {
     const key = TEXTURE.glyph(piece.glyph ?? "");
     if (!this.textures.exists(key)) return;
     let face = this.#faces[this.#facesUsed];
@@ -390,98 +448,133 @@ export class ChamberScene extends Phaser.Scene {
       face = this.add.image(0, 0, key).setDepth(3);
       this.#faces.push(face);
     }
-    // Scaled down to fit inside the piece, integer-snapped so the pixel art
-    // never lands on a half pixel.
-    const scale = Math.max(1, Math.floor(Math.min(piece.w - 4, piece.h - 4) / SPRITE_SIZE)) || 1;
     const fit = Math.min(piece.w - 2, piece.h - 2) / SPRITE_SIZE;
+    const scale = fit >= 1 ? Math.floor(fit) : fit;
     face
       .setTexture(key)
-      .setPosition(Math.round(piece.x + piece.w / 2), Math.round(piece.y + piece.h / 2))
-      .setScale(fit >= 1 ? scale : fit)
+      .setPosition(Math.round(x + piece.w / 2), Math.round(y + piece.h / 2))
+      .setScale(scale)
       .setTint(colour)
       .setAlpha(piece.active ? 1 : 0.5)
       .setVisible(true);
     this.#facesUsed += 1;
   }
 
+  /** The shared notepad, on the wall of the floor the pair is standing in. */
+  #drawWallPad(floor: Floor): void {
+    const notes = this.#model.view?.notes ?? [];
+    const x = ROOM_LEFT + WALL_PAD_X;
+    const top = floor.y + 10;
+    this.#paint.fillStyle(PALETTE.brass, 1);
+    this.#paint.fillRect(x - 1, top - 3, WALL_PAD_WIDTH + 2, 3);
+    this.#paint.fillStyle(PALETTE.bone, notes.length > 0 ? 0.9 : 0.35);
+    this.#paint.fillRect(x, top, WALL_PAD_WIDTH, 30);
+    notes.slice(-6).forEach((note, index) => {
+      this.#paint.fillStyle(PALETTE[note.author === "KEEPER" ? "cyanDeep" : "amberDeep"], 1);
+      this.#paint.fillRect(x + 2, top + 3 + index * 4, WALL_PAD_WIDTH - 4, 2);
+    });
+  }
+
   /**
-   * KEEPER, behind the grate, with a body made of its own registry.
+   * The machine deck: KEEPER's column, down the whole building.
    *
-   * The limb count is `getTools().length` as the page actually reports it, not
-   * a guess about what was just registered. That is the same rule the manifest
-   * plate follows and for the same reason: if a registration silently fails,
-   * KEEPER visibly loses a limb and the bug is found. The visor pulses while a
-   * call is in flight, which is the only moment the agent is doing something
-   * the human can see.
+   * A column rather than an alcove, because KEEPER is not in a room. It is
+   * behind the station, reaching into every chamber's cavities at once, and
+   * the section is the first drawing that could say so. The grate runs the
+   * full height for the same reason: they can see each other on every floor
+   * and reach each other on none of them.
    */
-  #drawKeeper(): void {
+  #drawDeck(): void {
     const busy = performance.now() < this.#model.busyUntilMs;
     this.#paint.fillStyle(PALETTE.void, 1);
-    this.#paint.fillRect(GRATE_X, ROOM_TOP, NATIVE_WIDTH - GRATE_X, FLOOR_Y - ROOM_TOP);
+    this.#paint.fillRect(DECK_X, SECTION_TOP, DECK_WIDTH, SECTION_BOTTOM - SECTION_TOP);
 
-    // The visor brightens while a call is in flight. It is the human's only
-    // cue that their partner is doing something right now.
-    this.#keeperBody.setTint(busy ? PALETTE.cyanBright : PALETTE.bone).setVisible(true);
+    // KEEPER stands beside the floor the pair is on, so the pair can see each
+    // other through the grate wherever they are in the building.
+    const y = this.#floor
+      ? this.#floor.y + Math.min(this.#floor.height, floorLine(this.#floor.height))
+      : SECTION_BOTTOM - 20;
+    this.#keeperBody
+      .setPosition(DECK_X + Math.round(DECK_WIDTH / 2), Math.round(y))
+      .setTint(busy ? PALETTE.cyanBright : PALETTE.bone)
+      .setVisible(true);
 
-    // One limb segment per registered tool, brass, stacked down each side.
-    // Read from `getTools()` rather than from a record of what was registered,
-    // so a registration that silently failed costs KEEPER a visible limb.
-    const torsoX = GRATE_X + 22;
+    // One brass segment per registered tool, read from `getTools()` rather
+    // than from a record of what was registered, so a registration that
+    // silently failed costs KEEPER a visible limb.
     this.#paint.fillStyle(PALETTE.brass, 1);
     this.#model.tools.forEach((_tool, index) => {
-      const y = FLOOR_Y - 22 + (index % 6) * 3;
-      const x = index < 6 ? torsoX - 12 : torsoX + 14;
-      this.#paint.fillRect(x, y, 6, 2);
+      this.#paint.fillRect(DECK_X + 2, SECTION_TOP + 6 + index * 4, 8, 2);
     });
 
-    // The grate itself, drawn over KEEPER: the pair can see each other and
-    // cannot reach each other, which is the entire relationship.
     this.#paint.lineStyle(1, PALETTE.rust, 1);
-    for (let x = GRATE_X; x < NATIVE_WIDTH; x += 6) {
-      this.#paint.lineBetween(x + 0.5, ROOM_TOP, x + 0.5, FLOOR_Y);
+    for (let x = DECK_X; x < CANVAS - FRAME; x += 5) {
+      this.#paint.lineBetween(x + 0.5, SECTION_TOP, x + 0.5, SECTION_BOTTOM);
     }
-    // Right-aligned against the canvas edge rather than centred on the alcove:
-    // centred, "KEEPER WORKING" ran off the right of the screen and the state
-    // that matters most was the one that could not be read.
     this.#pool.write(
-      NATIVE_WIDTH - 2,
-      FLOOR_Y + 2,
-      busy ? "KEEPER WORKING" : "KEEPER",
+      DECK_X + 1,
+      SECTION_BOTTOM - 9,
+      busy ? "WORK" : "DECK",
       busy ? PALETTE.cyanBright : PALETTE.cyan,
-      1,
     );
   }
 
-  /** The top bar, the meter, the log, the manifest plate and the legend. */
+  /** The top bar, the meter, the audible strip, the three panels, the legend. */
   #drawHud(): void {
     const view = this.#model.view;
     const state = this.#model.state;
     const remaining = view?.remainingMs ?? state?.remainingMs ?? null;
 
-    this.#paint.fillStyle(PALETTE.void, 1);
-    this.#paint.fillRect(0, 0, NATIVE_WIDTH, ROOM_TOP);
-    this.#paint.fillRect(0, ROOM_BOTTOM, NATIVE_WIDTH, NATIVE_HEIGHT - ROOM_BOTTOM);
-
-    this.#pool.write(4, 1, view ? roomTitle(view) : (state?.phase ?? "CONNECTING"), PALETTE.bone);
+    this.#pool.write(
+      FRAME + 4,
+      FRAME,
+      view ? roomTitle(view) : (state?.phase ?? "CONNECTING"),
+      PALETTE.bone,
+    );
     const total = this.#model.chamberTimerMs;
     const urgent = total > 0 && remaining !== null && remaining / total < TIMER_URGENT_FRACTION;
     this.#pool.write(
-      NATIVE_WIDTH - 4,
-      1,
+      CANVAS - FRAME - 4,
+      FRAME,
       formatTimer(remaining),
       urgent ? PALETTE.alarm : PALETTE.bone,
       1,
     );
     if (view && view.retries > 0) {
-      this.#pool.write(160, 1, `RESETS ${String(view.retries)}`, PALETTE.alarm, 0.5);
+      this.#pool.write(CANVAS / 2, FRAME, `RESETS ${String(view.retries)}`, PALETTE.alarm, 0.5);
     }
-
-    this.#drawSound();
     this.#drawMeter();
+    this.#drawSound();
     this.#drawLog();
     this.#drawPad();
     this.#drawManifest();
     this.#drawLegend();
+  }
+
+  /** The `AUDIBLE` channel: the one fact PILOT never has to describe. */
+  #drawSound(): void {
+    const sound = this.#layout?.sound;
+    if (!sound) return;
+    this.#paint.lineStyle(1, PALETTE.bone, 1);
+    this.#paint.strokeRect(
+      FRAME + 2.5,
+      AUDIBLE_Y + 1.5,
+      CANVAS - FRAME * 2 - 5,
+      AUDIBLE_HEIGHT - 3,
+    );
+    this.#paint.strokeRect(
+      FRAME + 0.5,
+      AUDIBLE_Y - 0.5,
+      CANVAS - FRAME * 2 - 1,
+      AUDIBLE_HEIGHT + 1,
+    );
+    this.#pool.write(
+      CANVAS / 2,
+      AUDIBLE_Y + 1,
+      truncate(sound.toUpperCase(), CANVAS - 24),
+      PALETTE.bone,
+      0.5,
+    );
   }
 
   /**
@@ -489,9 +582,7 @@ export class ChamberScene extends Phaser.Scene {
    *
    * Labelled REMAINING AMBIGUITY rather than anything warmer, because the
    * server cannot hear the pair talk and the meter therefore does not move
-   * when PILOT merely explains something. Doc 02 section 5 requires that
-   * limitation to be stated rather than papered over, and the label is where
-   * it is stated.
+   * when PILOT merely explains something (doc 02 section 5).
    */
   #drawMeter(): void {
     const report = this.#model.concord;
@@ -500,24 +591,21 @@ export class ChamberScene extends Phaser.Scene {
       this.#peakChamber = chamber;
       this.#peakBits = 0;
     }
-    // The route is polled, so for a couple of seconds after a chamber change
-    // the last answer is about the room the pair has already left. Reporting
-    // the Airlock's 1.58 bits in the Signal Room is not a stale number, it is
-    // a wrong one, so a reading from another room is discarded rather than
-    // drawn.
+    // A reading from a room the pair has already left is not stale, it is
+    // wrong, so it is discarded rather than drawn.
     const current = report?.chamber === chamber ? report : null;
     if (current?.bits != null) this.#peakBits = Math.max(this.#peakBits, current.bits);
 
-    const track = NATIVE_WIDTH - 8;
+    const track = CANVAS - FRAME * 2 - 8;
     this.#paint.fillStyle(PALETTE.hull, 1);
-    this.#paint.fillRect(4, METER_Y, track, METER_HEIGHT);
+    this.#paint.fillRect(FRAME + 4, METER_Y, track, METER_HEIGHT);
     const fill = meterFill(current?.bits ?? null, this.#peakBits);
     if (fill > 0) {
       this.#paint.fillStyle(PALETTE.brass, 1);
-      this.#paint.fillRect(4, METER_Y, Math.max(1, Math.round(track * fill)), METER_HEIGHT);
+      this.#paint.fillRect(FRAME + 4, METER_Y, Math.max(1, Math.round(track * fill)), METER_HEIGHT);
     }
     this.#pool.write(
-      4,
+      FRAME + 4,
       METER_Y + METER_HEIGHT + 1,
       current?.bits == null
         ? "REMAINING AMBIGUITY -"
@@ -526,7 +614,7 @@ export class ChamberScene extends Phaser.Scene {
     );
   }
 
-  /** What KEEPER has done, newest first. Tool names only, never arguments. */
+  /** What KEEPER did, newest first. Tool names only, never arguments. */
   #drawLog(): void {
     this.#pool.write(LOG_X, PANEL_Y, "ACTIVITY", PALETTE.boneDim);
     this.#model.log.slice(0, LOG_LINES).forEach((line, index) => {
@@ -539,37 +627,9 @@ export class ChamberScene extends Phaser.Scene {
     });
   }
 
-  /**
-   * The shared notepad, in both places it exists.
-   *
-   * On the wall, as a physical pad in the room's left margin, because it is an
-   * object in the station and not an interface element: doc 03 section 8 puts
-   * it there and the whole exhibit is that the two parties act on the same
-   * physical thing. In the panel below, as readable lines, because 14 pixels
-   * of wall cannot hold a sentence.
-   *
-   * Each line is drawn in its writer's channel colour. That is the only reason
-   * `SubmitEvent.agentInvoked` is tracked at all, and it is the one surface in
-   * the game where amber and cyan appear side by side rather than opposed.
-   */
+  /** The pad's readable copy, each line in its writer's channel colour. */
   #drawPad(): void {
     const notes = this.#model.view?.notes ?? [];
-
-    // The pad on the wall. Brass corner, bone paper, one ruled line per note
-    // it is holding, so a full pad reads as full from across the room.
-    this.#paint.fillStyle(PALETTE.brass, 1);
-    this.#paint.fillRect(WALL_PAD_X - 1, ROOM_TOP + 5, WALL_PAD_WIDTH + 2, 3);
-    this.#paint.fillStyle(PALETTE.bone, notes.length > 0 ? 0.9 : 0.35);
-    this.#paint.fillRect(WALL_PAD_X, ROOM_TOP + 8, WALL_PAD_WIDTH, 34);
-    this.#paint.fillStyle(PALETTE.void, 1);
-    notes.slice(-6).forEach((note, index) => {
-      // The ruled lines are colour-coded too, so the wall pad shows at a
-      // glance whether the last thing written was yours or your partner's.
-      this.#paint.fillStyle(PALETTE[note.author === "KEEPER" ? "cyanDeep" : "amberDeep"], 1);
-      this.#paint.fillRect(WALL_PAD_X + 2, ROOM_TOP + 12 + index * 5, WALL_PAD_WIDTH - 4, 2);
-    });
-
-    // The readable copy.
     this.#pool.write(PAD_X, PANEL_Y, `NOTEPAD ${String(notes.length)}`, PALETTE.bone);
     if (notes.length === 0) {
       this.#pool.write(PAD_X, PANEL_Y + LINE_HEIGHT + 2, "BLANK", PALETTE.boneDim);
@@ -588,15 +648,12 @@ export class ChamberScene extends Phaser.Scene {
   /**
    * The manifest plate: the registry, as `getTools()` reports it right now.
    *
-   * This is the visible half of the `toolchange` beat. It is drawn from the
-   * page's own answer rather than from a record of what was registered, so
-   * the animation cannot lie about a registration that did not take.
+   * Drawn from the page's own answer rather than from a record of what was
+   * registered, so the animation cannot lie about a registration that did not
+   * take. That is the whole reason the plate exists.
    */
   #drawManifest(): void {
     const tools = this.#model.tools;
-    // The header carries the count, so the plate can show the most recently
-    // registered few without needing a "+N more" line it has no room for. The
-    // newest are the interesting ones: they are the ones that just changed.
     this.#pool.write(MANIFEST_X, PANEL_Y, `MANIFEST ${String(tools.length)}`, PALETTE.brass);
     if (tools.length === 0) {
       this.#pool.write(MANIFEST_X, PANEL_Y + LINE_HEIGHT + 2, "EMPTY", PALETTE.boneDim);
@@ -615,7 +672,7 @@ export class ChamberScene extends Phaser.Scene {
   /** The colour law, permanently on screen. */
   #drawLegend(): void {
     LEGEND.forEach((row, index) => {
-      const x = 4 + index * 104;
+      const x = FRAME + 4 + index * 104;
       const colour = PALETTE[CHANNEL_COLOUR[row.channel]];
       this.#paint.fillStyle(colour, 1);
       this.#paint.fillRect(x, LEGEND_Y + 1, 5, 5);
@@ -623,6 +680,9 @@ export class ChamberScene extends Phaser.Scene {
     });
   }
 }
+
+/** The right edge of a floor's interior, where the machine deck begins. */
+const ROOM_RIGHT_EDGE = DECK_X - 2;
 
 /** The scene keys, so `station.ts` does not repeat the strings. */
 export const SCENE_LANDING = "landing";

@@ -25,7 +25,7 @@ import type { PilotView } from "@semaphore/protocol";
 import type { ConcordReport, SessionClient, StateSummary } from "../net/sessionClient.js";
 import type { CallRecord } from "../webmcp/director.js";
 import { listToolNames, onToolChange } from "../webmcp/adapter.js";
-import { NATIVE_HEIGHT, NATIVE_WIDTH } from "./rooms.js";
+import { CANVAS } from "./cutaway.js";
 import { formatCall, pushLine } from "./hud.js";
 
 /** How long KEEPER's visor stays lit after a call returns, in milliseconds. */
@@ -102,8 +102,8 @@ export async function startStation(
   const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent,
-    width: NATIVE_WIDTH,
-    height: NATIVE_HEIGHT,
+    width: CANVAS,
+    height: CANVAS,
     backgroundColor: "#0d0f14",
     // Nearest-neighbour, no sub-pixel positions. Fractional scaling produces
     // half-pixel shimmer that reads as carelessness (doc 06 section 3).
@@ -114,7 +114,7 @@ export async function startStation(
       autoCenter: Phaser.Scale.CENTER_BOTH,
       // Snapping to whole multiples of the native size is what makes the
       // scaling integer: FIT alone would happily land on x3.4.
-      snap: { width: NATIVE_WIDTH, height: NATIVE_HEIGHT },
+      snap: { width: CANVAS, height: CANVAS },
       autoRound: true,
     },
     scene: [new scenes.LandingScene(model), new scenes.ChamberScene(model)],

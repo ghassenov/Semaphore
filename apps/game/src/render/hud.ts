@@ -11,6 +11,7 @@
  */
 
 import type { RenderChannel } from "./palette.js";
+import { CANVAS, FRAME, SECTION_BOTTOM } from "./cutaway.js";
 import { CHANNEL_MARKER } from "./palette.js";
 
 /**
@@ -21,13 +22,13 @@ import { CHANNEL_MARKER } from "./palette.js";
  * look cramped, they look like one illegible band. `hud.test.ts` asserts they
  * do not overlap, which is the only way to notice before a screenshot.
  */
-export const METER_Y = 10;
+export const METER_Y = FRAME + 10;
 export const METER_HEIGHT = 5;
-/** The audible fact's strip, drawn between the room and the panels. */
-export const AUDIBLE_Y = 121;
+/** The audible fact's strip, drawn between the section and the panels. */
+export const AUDIBLE_Y = SECTION_BOTTOM + 4;
 export const AUDIBLE_HEIGHT = 10;
-export const PANEL_Y = 134;
-export const LEGEND_Y = 170;
+export const PANEL_Y = SECTION_BOTTOM + 20;
+export const LEGEND_Y = CANVAS - FRAME - 12;
 
 /** One line of 8px text, which is what every band below is measured in. */
 export const LINE_HEIGHT = 8;
@@ -39,52 +40,32 @@ export const LINE_HEIGHT = 8;
  * The middle column is the widest because it holds sentences two people wrote
  * for each other, and the other two hold identifiers. Three columns rather
  * than two because the notepad is the exhibit, not an extra: it is the only
- * surface both parties write to, and a pad the player cannot see is a pad they
- * will not use.
+ * surface both parties write to, and a pad the player cannot see is a pad
+ * they will not use.
  */
-export const LOG_X = 4;
+export const LOG_X = FRAME + 4;
 export const LOG_WIDTH = 88;
 /** How many lines fit before the oldest is dropped. */
 export const LOG_LINES = 3;
 
-/**
- * The pad on the wall, in the room band's right margin beside the grate.
- *
- * On the wall rather than in a HUD panel because it is a physical object in
- * the station that both parties act on, and doc 03 section 8 asks for it to be
- * one. The DOM form below the canvas is the part PILOT types into; this is the
- * paper it writes on.
- */
-export const PAD_X = 98;
+export const PAD_X = 102;
 export const PAD_WIDTH = 128;
 export const PAD_LINES = 3;
 
 /**
- * The pad's in-world marker: a paper pad on the wall, in the room's left
- * margin, clear of every chamber's furniture.
+ * The pad's in-world marker: a paper pad on the wall of the floor the pair is
+ * standing in, in its left margin, clear of every chamber's furniture.
  *
  * Narrow, because the readable copy is in the panel below and the point of
  * this one is that the pad is a physical thing in the station rather than an
  * interface element. `rooms.test.ts` holds every chamber's pieces clear of it.
  */
-export const WALL_PAD_X = 4;
-export const WALL_PAD_WIDTH = 14;
-
-/**
- * A note as the pad draws it: the writer's name, then their words.
- *
- * Each line is drawn in its writer's channel colour, which is the whole reason
- * authorship is tracked at all. Amber is PILOT's, cyan is KEEPER's, and the
- * pad is the one surface in the game where the two appear together. Marked
- * with the channel's shape as well, because colour alone must never carry it.
- */
-export function formatNote(author: string, text: string, widthPx: number): string {
-  return truncate(`${author === "KEEPER" ? "K" : "P"} ${text}`, widthPx);
-}
+export const WALL_PAD_X = 2;
+export const WALL_PAD_WIDTH = 12;
 
 /** The manifest plate: KEEPER's registry, as the page actually reports it. */
-export const MANIFEST_X = 232;
-export const MANIFEST_WIDTH = 84;
+export const MANIFEST_X = 236;
+export const MANIFEST_WIDTH = CANVAS - FRAME - MANIFEST_X;
 export const MANIFEST_LINES = 3;
 
 /**
@@ -111,8 +92,8 @@ export function textWidth(text: string): number {
  *
  * Every string that reaches the HUD comes from the server, and the server
  * writes for an agent: `start full` answers with a paragraph of briefing. Left
- * whole, that paragraph runs straight through the manifest plate beside it and
- * makes both unreadable. Truncating is not cosmetic here, it is the difference
+ * whole, that paragraph runs straight through the panel beside it and makes
+ * both unreadable. Truncating is not cosmetic here, it is the difference
  * between two panels and one smear.
  */
 export function truncate(line: string, widthPx: number): string {
@@ -122,6 +103,17 @@ export function truncate(line: string, widthPx: number): string {
   // ellipsis alone. Anything else returns a string longer than the box it was
   // measured against, which defeats the point of measuring.
   return limit <= 1 ? "\u2026" : `${line.slice(0, limit - 1)}\u2026`;
+}
+
+/**
+ * A note as the pad draws it: the writer's initial, then their words.
+ *
+ * Each line is drawn in its writer's channel colour, which is the whole reason
+ * authorship is tracked at all. Amber is PILOT's, cyan is KEEPER's, and the
+ * pad is the one surface in the game where the two appear together.
+ */
+export function formatNote(author: string, text: string, widthPx: number): string {
+  return truncate(`${author === "KEEPER" ? "K" : "P"} ${text}`, widthPx);
 }
 
 /**

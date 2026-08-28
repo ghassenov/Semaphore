@@ -126,9 +126,18 @@ button:focus-visible {
  */
 .stage {
   width: 100%;
-  max-width: 40rem;
+  /*
+   * 640px, which is exactly two native pixels per drawn pixel.
+   *
+   * The scale manager snaps to whole multiples of 320, so a box one pixel
+   * narrower than 640 falls back to x1 and the station renders postage-stamp
+   * sized in the middle of a large empty box. The number is the budget, not a
+   * preference.
+   */
+  max-width: 640px;
   margin: 0 auto 1.5rem;
-  aspect-ratio: 16 / 9;
+  /* Square, because the station is drawn as a section rather than a strip. */
+  aspect-ratio: 1 / 1;
   background: #0d0f14;
   border: 1px solid var(--rule);
 }
