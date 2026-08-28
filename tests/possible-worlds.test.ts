@@ -26,6 +26,7 @@ import { describe, expect, it } from "vitest";
 import { Rng } from "@semaphore/seed";
 import * as airlock from "@semaphore/worker/chambers/airlock";
 import * as signalRoom from "@semaphore/worker/chambers/signal_room";
+import * as blindPanel from "@semaphore/worker/chambers/blind_panel";
 import { canonicalise, projectForKeeper, projectForPilot } from "@semaphore/worker/projection";
 import {
   consistentWorlds,
@@ -492,5 +493,158 @@ describe("Chamber I: the channel contract", () => {
     const f = signalRoom.facts(afterOne);
     expect(projectForPilot(f).lastSound).toBe(projectForKeeper(f).lastSound);
     expect(projectForKeeper(f).lastSound).toContain("chime");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CHAMBER II -- THE BLIND PANEL
+// ---------------------------------------------------------------------------
+
+const BLIND_PANEL: ChamberWorlds<blindPanel.BlindPanelState> = {
+  id: "blind_panel",
+  facts: blindPanel.facts,
+  candidates: blindPanel.candidates,
+  correctAction: blindPanel.correctAction,
+};
+
+describe("the possible-worlds proof: Chamber II", () => {
+  it("holds both clauses at entry, for every seed", () => {
+    // Unlike Chambers 0 and I, there is no natural "cooperative path" to walk
+    // generically here: which rotations are informative depends on the
+    // hidden wiring itself, and a rotation that saturates one seed's dial
+    // might partially register on another's because of the cross-link
+    // (module docstring). Entry is seed-independent and always fully
+    // ambiguous, so it is asserted across the whole corpus; a worked example
+    // of narrowing through play follows below for one specific seed.
+    for (const seed of SEEDS) {
+      const start = blindPanel.initial(blindPanel.generate(new Rng(seed)));
+      expect(isUnderdetermined(BLIND_PANEL, start, "KEEPER")).toBe(true);
+    }
+  });
+
+  it("always contains a witness whose wiring matches the true wiring", () => {
+    for (const seed of SEEDS) {
+      const start = blindPanel.initial(blindPanel.generate(new Rng(seed)));
+      const worlds = consistentWorlds(BLIND_PANEL, start, "KEEPER");
+      const truth = blindPanel.correctAction(start);
+      expect(worlds.map((w) => blindPanel.correctAction(w))).toContain(truth);
+    }
+  });
+});
+
+describe("what the proof measures, in bits: Chamber II", () => {
+  it("reports 384 consistent wirings and 8.58 bits at entry", () => {
+    // 24 permutations times 16 inversion combinations, doc 02 section 3.2.
+    for (const seed of SEEDS) {
+      const start = blindPanel.initial(blindPanel.generate(new Rng(seed)));
+      const { worlds, actions, bits } = measure(BLIND_PANEL, start, "KEEPER");
+      expect(worlds).toBe(384);
+      expect(actions).toBe(384);
+      expect(bits).toBeCloseTo(8.58, 2);
+    }
+  });
+
+  it("narrows by exactly half on a rotation that fully saturates a fresh dial", () => {
+    // A worked example on one fixed seed, not a universal law: whether a
+    // dial saturates cleanly to 0 or 8 clicks registered depends on the
+    // cross-link possibly having nudged its gauge earlier (module
+    // docstring), so this specific "rotate each dial cw x8 once" sequence
+    // is verified for this seed rather than asserted for all twenty.
+    // Querying each of the four dials in turn identifies that dial's
+    // inversion bit exactly (registered 8 means not inverted, registered 0
+    // means inverted, from a gauge starting at rest), halving the
+    // consistent set every time: 384 -> 192 -> 96 -> 48 -> 24.
+    const seed = "proof-seed-0";
+    let state = blindPanel.initial(blindPanel.generate(new Rng(seed)));
+    const expectedWorlds = [192, 96, 48, 24];
+    for (const [i, dial] of blindPanel.DIALS.entries()) {
+      state = blindPanel.rotate(state, dial, "clockwise", 8);
+      const registered = blindPanel.lastRegisteredClicks(state);
+      expect(registered === 0 || registered === 8).toBe(true);
+      expect(measure(BLIND_PANEL, state, "KEEPER").worlds).toBe(expectedWorlds[i]);
+    }
+    // Down to 24: every inversion is now known; only the permutation is not.
+    expect(measure(BLIND_PANEL, state, "KEEPER").bits).toBeCloseTo(Math.log2(24), 6);
+  });
+
+  it("does not move the bar on an uninformative repeat", () => {
+    // Doc 02 section 5: "a pull that eliminates nothing must not move it."
+    // Re-querying an already-saturated dial teaches nothing new.
+    const seed = "proof-seed-0";
+    let state = blindPanel.initial(blindPanel.generate(new Rng(seed)));
+    for (const dial of blindPanel.DIALS) state = blindPanel.rotate(state, dial, "clockwise", 8);
+    const before = measure(BLIND_PANEL, state, "KEEPER");
+
+    state = blindPanel.rotate(state, 1, "clockwise", 8); // dial 1 is already saturated
+    const registered = blindPanel.lastRegisteredClicks(state);
+    const after = measure(BLIND_PANEL, state, "KEEPER");
+
+    expect(registered).toBe(0); // no further clicks can register past the bound
+    expect(after.worlds).toBe(before.worlds);
+    expect(after.bits).toBeCloseTo(before.bits, 6);
+  });
+
+  it("never lets the consistent set grow as history accumulates", () => {
+    // Structurally guaranteed by candidates() replaying the full history
+    // under every hypothesis (D-012's fix, applied here from the start): a
+    // longer history is a strictly harder match, so this holds for any
+    // rotation sequence, not just a hand-picked one.
+    const seed = "monotone-blind-panel";
+    let state = blindPanel.initial(blindPanel.generate(new Rng(seed)));
+    let lastBits = measure(BLIND_PANEL, state, "KEEPER").bits;
+    const script: readonly [blindPanel.DialId, blindPanel.Direction, number][] = [
+      [1, "clockwise", 3],
+      [2, "counterclockwise", 5],
+      [3, "clockwise", 8],
+      [4, "counterclockwise", 2],
+      [1, "clockwise", 4],
+      [2, "clockwise", 1],
+    ];
+    for (const [dial, direction, clicks] of script) {
+      state = blindPanel.rotate(state, dial, direction, clicks);
+      const bits = measure(BLIND_PANEL, state, "KEEPER").bits;
+      expect(bits).toBeLessThanOrEqual(lastBits);
+      lastBits = bits;
+    }
+  });
+});
+
+describe("Chamber II: the channel contract", () => {
+  it("never lets a gauge reading reach KEEPER's view", () => {
+    for (const seed of SEEDS) {
+      const start = blindPanel.initial(blindPanel.generate(new Rng(seed)));
+      const view = projectForKeeper(blindPanel.facts(start));
+      expect("gaugeValues" in view).toBe(false);
+      expect("targets" in view).toBe(false);
+    }
+  });
+
+  it("never lets the wiring reach either projection", () => {
+    for (const seed of SEEDS) {
+      const start = blindPanel.initial(blindPanel.generate(new Rng(seed)));
+      const f = blindPanel.facts(start);
+      for (const field of ["dialToGauge", "inversions", "crossLink"] as const) {
+        expect(field in projectForKeeper(f)).toBe(false);
+        expect(field in projectForPilot(f)).toBe(false);
+      }
+    }
+  });
+
+  it("renders lastClicks identically to both parties, and it is null before any rotation", () => {
+    const seed = "audible-blind-panel";
+    const start = blindPanel.initial(blindPanel.generate(new Rng(seed)));
+    expect(projectForKeeper(blindPanel.facts(start)).lastClicks).toBeNull();
+
+    const rotated = blindPanel.rotate(start, 1, "clockwise", 4);
+    const f = blindPanel.facts(rotated);
+    expect(projectForPilot(f).lastClicks).toBe(projectForKeeper(f).lastClicks);
+  });
+
+  it("gives KEEPER identical, uninformative feel for every dial", () => {
+    // Mirrors chamber 0's lever-feel guard: if dial feel varied with the
+    // wiring it would be a TACTILE back channel, defeating clause (a).
+    const start = blindPanel.initial(blindPanel.generate(new Rng("dial-feel")));
+    const feel = Object.values(projectForKeeper(blindPanel.facts(start)).dialFeel ?? {});
+    expect(new Set(feel).size).toBe(1);
   });
 });
