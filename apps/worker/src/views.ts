@@ -258,6 +258,34 @@ function describePositions(positions: Readonly<Record<string, string>> | undefin
     .join(", ");
 }
 
+/**
+ * The shared notepad, as `read_note` returns it.
+ *
+ * The one view in this file that needs no projection. Every other function
+ * here derives from `projectForKeeper` because it is reading world state that
+ * carries channels; a note carries none, because it was written by one of the
+ * two parties for the other to read. There is nothing to strip and nothing an
+ * agent could learn here that PILOT did not choose to tell it.
+ *
+ * Authorship is on every line, from `SubmitEvent.agentInvoked` at the point of
+ * writing. An agent re-reading the pad after a long session needs to know
+ * which lines are its own conclusions and which are its partner's
+ * observations, because those two have very different standing: one it can
+ * re-derive and one it cannot.
+ */
+export function readNotes(session: PersistedSession): string {
+  if (session.notes.length === 0) {
+    return (
+      "The notepad is blank. Write to it with write_note - it is the one surface " +
+      "you and PILOT both write to, and either of you can read every line."
+    );
+  }
+  const lines = session.notes.map(
+    (note) => `[${String(Math.round(note.atMs / 1000))}s] ${note.author}: ${note.text}`,
+  );
+  return [`The notepad, oldest first (${String(lines.length)} lines):`, ...lines].join("\n");
+}
+
 /** A comma list, or the word an agent can act on when there is nothing yet. */
 function listOrNone(items: readonly unknown[] | undefined): string {
   return items && items.length > 0 ? items.map(String).join(", ") : "nothing yet";

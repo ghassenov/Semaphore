@@ -497,3 +497,162 @@ Option 2. Hibernation is the reason: a session sits idle while two people talk, 
 **Result.** 31 new tests, 396 total. `pilot.test.ts` checks each chamber against its own `facts()` rather than a hand-written field list, so a field added later is covered on the day it is added. Verified against a real workerd as well as the fakes: the upgrade lands, the greeting arrives, an action pushes a frame unasked, and no `TACTILE` or `HIDDEN` field appears on the wire. What the unit tests cannot cover is the `101` response itself, because Node's `Response` rejects that status and workerd requires it; the live run is what covers it.
 
 **Not done here.** The CONCORD meter reads `concordBits`, which for the Blind Panel enumerates 384 candidates and replays the rotation history under each. That is too much to run on every push, so it stays out of `PilotView` until the HUD needs it and can ask for it on its own terms.
+
+---
+
+### D-026 Phaser is fetched on demand, not bundled
+
+**Date.** 2026-08-28
+
+**Decision.** `apps/game` depends on Phaser 4.2.1, and imports it through a dynamic `import()` inside `render/station.ts` rather than statically. A build-time script, `apps/game/scripts/check-bundle.mjs`, fails `pnpm build` if the eager entry chunk exceeds 400KB gzipped.
+
+**The measurement, first.** Plan section 0.4 said measure before writing four chambers of scene code against the API, and that turned out to be the whole decision. Phaser 4.2.1 with four bare imports and no scene code is **365KB gzipped** against doc 07's 400KB budget: 91% of the budget spent before a single rectangle is drawn. The rest of the client was 7.3KB at the time.
+
+**Options considered.**
+1. Bundle it eagerly, as one chunk.
+2. Bundle it eagerly and raise the budget.
+3. Load it on demand, when a session actually begins.
+4. Drop Phaser and render with the Canvas 2D API directly.
+
+Option 3. Option 1 leaves 28KB for four chambers, a HUD and the two `toolchange` renderings, which is not a budget so much as a countdown. Option 2 gives up the only number that would have told us the client had got heavy. Option 4 is genuinely tempting - the greybox is flat rectangles and 8px text, which Canvas 2D does in a fraction of the code - but it contradicts docs 05, 06 and 10, and gives up scene lifecycle, tweens and asset loading that later phases assume.
+
+What makes option 3 more than a trick is that it is *correct* independently of the budget: a browser without WebMCP gets the gate screen and never reaches a canvas at all. Downloading a game engine in order to tell somebody they cannot play is 365KB spent on nothing, and for some judges that screen is the entire submission.
+
+**Result.** The eager entry is **10.3KB gzipped**, 2.6% of budget. Phaser lands in a 358KB chunk fetched when `startStation` runs, alongside a 2.2KB chunk holding the scenes. Verified in Chrome 151 against a live `wrangler dev`: the canvas comes up at 320x180, the registry moves from `begin_shift` through the airlock's tier to the Signal Room's, and the console is clean.
+
+The budget script exists because this arrangement is one careless top-level `import Phaser from "phaser"` away from being undone, and nothing about the resulting page would look wrong.
+
+---
+
+### D-027 The CONCORD meter gets a route, not a field on the frame
+
+**Date.** 2026-08-28
+
+**Decision.** `GET /session/:id/concord` answers `{ chamber, bits, worlds, actions }`, computed on demand from the same `measure()` the possible-worlds proof uses. The HUD polls it every 2.5 seconds. It is not on `PilotView` and not on `/status`.
+
+**Why not the socket.** D-025 left this open with the reason: `concordBits` enumerates every world consistent with what KEEPER knows and replays the rotation history under each. For the Blind Panel that is 384 candidates. Running it inside every socket push would put that work behind every lever pull, every timer tick and every gauge drift, on the path that has to stay cheap enough to be pushed unasked.
+
+**Why not `/status`.** `get_status` is the agent's re-orientation call, designed to stay cheap under a long session because a confused agent needs to be able to afford it. Hanging a 384-world enumeration off it would make the one tool an agent reaches for under pressure the most expensive one on the surface.
+
+**Options considered.**
+1. A route of its own, polled.
+2. On `PilotView`, pushed.
+3. Computed client-side from a rotation history sent over the socket.
+
+Option 1. Option 3 was rejected outright: it puts a solution-adjacent derivation in the browser, which this app's rules forbid, and the enumeration needs the chamber parameters that are `HIDDEN` by construction.
+
+**Two things the route inherits rather than reinvents.** It is gated by `pilot.inTheRoom`, exported for this and shared with the frame, so the meter cannot report a room the pair has already left - `machine.chamber` outlives the room. And it takes no semaphore permit, appends no event and writes no storage, following D-019: a meter that could return `E_BUSY` would punish the pair for looking at it.
+
+**The scale is per-room, deliberately.** `meterFill` normalises against the largest reading seen in the current chamber rather than a fixed maximum. The Airlock opens at log2(3) = 1.58 bits and the Signal Room at 10.93; on a fixed scale the Airlock would read as permanently near-empty and teach the player nothing. The label stays REMAINING AMBIGUITY, because the server cannot hear the pair talk and the meter therefore does not move when PILOT merely explains something (doc 02 section 5).
+
+**Result.** Verified live: 1.58 bits and 3 courses of action on entering the Airlock, dropping to 1.00 bits and 2 after a wrong lever eliminates a world, and 10.93 bits on arrival in the Signal Room.
+
+---
+
+### D-028 The notepad is declarative, and the ending needs two mechanisms
+
+**Date.** 2026-08-28
+
+**Decision.** `write_note` is a real `<form>` carrying `toolname`, created and owned by `ToolDirector`. `read_note` is imperative and rides the session tier. Notes live in the Durable Object's session state and ride every pushed frame. `endSession()` and `#enterFinale()` both remove the form element as well as aborting controllers.
+
+**The rule the pair of them demonstrates**, which is doc 03 section 8's and is the project's own contribution rather than something the spec says:
+
+> Declarative for a tool that is a form the human can also submit, where agent and human do the same thing through the same affordance. Imperative for a tool that is pure agent capability, where the agent does something the human structurally cannot.
+
+`write_note` is on the first side: PILOT types into the textarea and presses the button, KEEPER invokes the tool and the host submits the same form, and `SubmitEvent.agentInvoked` is the only thing that tells them apart. `read_note` is on the second, and that is the rule being applied rather than an inconsistency: reading the pad is not a submission. PILOT reads it by looking at the wall, which is not an affordance an agent can share.
+
+**Where the state lives.** Server-side, which was not obvious. Three reasons that are the same reason: the pad is the only in-game record of what the pair actually said to each other, which makes it the most valuable thing the session log carries for the benchmark; the replay viewer needs it or the pad reads empty on playback; and a client-side pad is lost on a reload, which happens to a pair fifteen minutes into a session.
+
+**Two things it deliberately does not do.** It does not update `lastRespondedAtMs`, so notes never enter the gap sample Chamber III's stamina window derives from (D-010): a note is the pair talking rather than the agent acting, and folding notes in would deflate the median every time they communicated well. And the server does not verify the author, because it cannot: the client asserts it from `agentInvoked`. The pad is a shared scratchpad rather than a puzzle surface, so the worst a forged author buys is a line in the wrong colour, and an unrecognised value is attributed to PILOT because a human hand is the safer default to show.
+
+**The ending, which is the part that mattered.** D-024 found that aborting a signal does not remove a declaratively registered tool: its lifetime is its element's. `endSession()` aborted three controllers and nothing else, so the moment the notepad existed the game's last beat would have landed on a registry holding exactly one tool - the worse failure, because it looks almost right. The director now owns the element and removes it, and the two halves are both load-bearing: without the abort the registry keeps eleven tools, without the removal it keeps one.
+
+`fake-registry.ts` now models this, unioning imperative tools with every `form[toolname]` in the document and firing `toolchange` on a `MutationObserver`, so the claim is a CI test rather than a docstring. That needed a DOM, so `happy-dom` joins the dev dependencies for the one test file that uses it.
+
+**Result.** Verified live in Chrome 151 across a full session: `getTools()` returns zero after `open_the_door` and no form remains in the document. A staleness bug surfaced on the way and is fixed here too: the view socket now drives `applyState`, because a chamber deadlocked by the Durable Object's alarm produces a pushed frame and no response at all, and without it the registry keeps `press_key` on a room that cannot answer.
+
+---
+
+### D-029 The art is authored as pixels in source, and the glyphs are load-bearing
+
+**Date.** 2026-08-28
+
+**Decision.** Sprites are arrays of strings in `apps/game/src/render/sprites.ts`, one character per pixel, mapped to the locked palette and turned into textures at boot with `putImageData`. No asset files, no loader, no third-party art.
+
+**Options considered.**
+1. Source a free pixel-art pack and adapt it.
+2. Author PNGs and load them through Phaser's loader.
+3. Author the pixels in TypeScript.
+
+Option 3, on three grounds. **The palette cannot drift**: a character maps to a `PALETTE` key, so a fifteenth colour cannot arrive through an image editor without passing this log first, and an imported PNG can hold any colour it likes with nothing to notice. **It costs nothing**: no requests, no atlas, a few kilobytes of source against a budget Phaser has already spent 358KB of. **The provenance is clean**: the submission is MIT-licensed and every pixel was authored in one file, so there is no third-party licence to track, attribute, or get wrong.
+
+**The glyphs are not decoration.** This is the part worth recording. The greybox drew each glyph as its *name* - a lever captioned "spiral" - and that quietly deleted the Airlock and most of the Signal Room, because reading a label aloud is not describing a shape. The whole chamber is PILOT getting a shape across a gap to a partner holding a table of names. So the twelve glyphs are drawn, the name appears nowhere on PILOT's side, and the pieces carry the lever's *position* and the key's *number* instead, which is what KEEPER can actually be told to act on.
+
+`wave` and `knot` are deliberately alike at a glance, honouring `confusableWith` in the chamber's glyph table: a good agent asks a clarifying question there and a bad one guesses, and the benchmark measures the difference. `sprites.test.ts` asserts they overlap substantially without being the same drawing, so the pair cannot drift apart and quietly make the chamber easier.
+
+**Result.** 503 tests. The bodies are 16x24, which reads as a person rather than a mascot (doc 06 section 3); PILOT is bone rather than amber, because the human is not a fact only the human can perceive and painting them in the channel colour would make the legend lie.
+
+---
+
+### D-030 The greybox playtest, run as a scripted full session
+
+**Date.** 2026-08-28
+
+**What was done.** A driver plays a complete session against the live client in Chrome 151: KEEPER acts only through registered tools, PILOT reads only the pushed view feed, and the Blind Panel's wiring is discovered by experiment rather than read from the parameters. It finishes in about seventeen seconds and screenshots every beat.
+
+This is the solvability proof as well as the playtest. If it cannot finish, the chambers are not solvable from the information the two parties actually hold, which is a claim the possible-worlds proof does not make: that one shows each chamber is *underdetermined* for KEEPER alone, not that a pair can get out.
+
+**What it found.**
+
+The last frame of the game read **"NO ROOM HERE"**. Accurate, and it reads as a rendering fault at exactly the moment the game should be landing. Every roomless phase now says what is happening; `ESCAPED` says "THE DOOR IS OPEN".
+
+The Blind Panel announced **"1 CLICKS REGISTERED"**. The count is puzzle-critical in that room - it is how KEEPER learns a linkage hit its bound - so the line carrying it should not read like a placeholder.
+
+The CONCORD meter showed **the previous room's ambiguity** for the couple of seconds after a chamber change, because the route is polled. 1.58 bits in the Signal Room is not a stale number, it is a wrong one; a reading whose `chamber` does not match the current room is now discarded rather than drawn.
+
+Three layout collisions, all one cause and all invisible to the tests that existed: a caption is centred under its piece and is routinely wider than it, so the caption is what collides with the next piece, runs past the grate, or falls out of the room band. The tests now measure caption extents.
+
+**What it cannot do.** It cannot tell us whether the game is *fun*, whether the glyph vocabulary survives a cold player's description, or whether the Signal Room's vandalised page actually fools anybody. Doc 08 section 0.1 wants six human playtesters and still does. What this buys is that they will not spend their session finding "1 CLICKS".
+
+---
+
+### D-031 The station is drawn as a cutaway section, at 320x320
+
+**Date.** 2026-08-28
+
+**Decision.** The native canvas becomes **320x320** and the client draws the whole station as a section: every floor stacked, the floor the pair is standing in at working size, the rest as silhouette strips, and KEEPER's machine deck as a column down the right of all of them. **This amends doc 06 section 3**, which locked 320x180.
+
+**What was wrong with one room at a time.** Three things, and a section fixes all three. The station never read as a *building*, so "which room are we in" was a caption rather than a place. The phases between chambers had nothing to draw and said so, which meant the Archive - a designed beat - and the finale both rendered as two lines of text. And progress was invisible: a pair four rooms in saw exactly what a pair one room in saw.
+
+**The floors are deliberately unequal.** The Signal Room needs six glyph keys in two rows with captions, which is about seventy pixels. Five equal floors on a 320-tall canvas give it forty-six. So the active floor takes whatever the strips leave, and the strips are twenty-six each. That is not a flourish to save space: it is the only arrangement in which the tallest chamber fits at all, and it happens to put the eye exactly where the game wants it.
+
+**Room layouts became floor-local.** `roomLayout` now takes the band's height and emits coordinates from its top-left. The same four chambers therefore draw at working size in one frame and inside a strip in the next, and no chamber knows where it sits in the building. That is a better shape than the absolute constants it replaced regardless of the section, because it is what makes the layout tests measure a room rather than a canvas.
+
+**The palette is untouched, and that was the important call.** The reference that prompted this is warm: salmon walls, orange floors, purple lower storey. Adopting those hues would kill the amber channel, because amber reads as "only PILOT perceives this" only against a cold neutral ground. Colour is this game's information architecture (doc 06 section 2), so the composition and the flat-shape technique are taken and the fourteen locked colours are not. Rust and brass already carry warmth where it is safe.
+
+**Prop density is held back for the same reason.** The reference is beautiful because it is full of things. Here every visible object is either a channel-coded fact or noise that makes the facts harder to find, and finding them is the whole task. Silhouettes on inactive floors carry a shape and nothing readable, which is enough to say "a room, and not the one you are in".
+
+**Options considered.**
+1. Keep 320x180 and one room, take only the flat-shape treatment and a border.
+2. Square 256x256, still one room, drawn floor to ceiling.
+3. The section.
+
+Option 3. Option 1 is much the cheapest and leaves the station illegible as a place; option 2 buys the framing without the progress display or the fix for the empty transitions.
+
+**Cost.** Every chamber relaid out, a new HUD budget, a new pure module (`cutaway.ts`) with its own tests, and this amendment. `PilotView` gained `mode`, because BRIEF drops Chamber II and a station drawn with a floor nobody will enter is a station promising a room that does not exist.
+
+**Result.** 518 tests. Verified by a full scripted session in Chrome 151: all four chambers, the Archive, the finale, and a registry that ends empty. Integer scaling holds at x2 = 640 and x3 = 960; the stage's CSS max-width is pinned to 640 because the scale manager snaps to whole multiples of 320 and a box one pixel narrower falls back to x1.
+
+---
+
+### D-032 Every POST drains its body before answering
+
+**Date.** 2026-08-28
+
+**Decision.** `Session.fetch` reads the request body once, at the top of the POST branch, and hands the parsed object to every route.
+
+**The bug.** Several actions take no parameters - `grip_bar`, `release_bar`, `leave_archive`, `retry_chamber`, `reset_sequence`, `open_the_door` - and answered without ever reading the body. The client posts `{}` to all of them regardless. A response sent while the request stream is still open is a real fault: workerd raises `Can't read from request stream after response has been sent`, and in local development that takes down wrangler's proxy and with it the whole dev session.
+
+**How it was found, which is the part worth recording.** Not by a test. The scripted playthrough started killing the dev worker every run, once it was exercising PILOT's own actions end to end. Every unit test in `reducer.test.ts` calls `reduce()` directly and never builds a `Request` with a body, and `Session.test.ts` builds requests only for the routes that already read one. The whole class of defect was invisible to the suite and obvious the moment a real client talked to a real runtime.
+
+**Result.** Six near-identical parse lines removed and no route able to forget. `readBody` never throws: every route already defaults every field it reads, so a malformed body produces the game's own validation message rather than a 500.

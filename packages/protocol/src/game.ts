@@ -153,9 +153,57 @@ export function timerFor(chamber: ChamberId, difficulty: Difficulty): number | n
  * responses carry it that way: a client with a skewed clock must not be able
  * to turn its own skew into the game's problem.
  */
+/**
+ * Who wrote a line on the shared notepad.
+ *
+ * The distinction comes from `SubmitEvent.agentInvoked`, which is how the
+ * declarative API tells a form submitted by an agent from one submitted by a
+ * hand (doc 03 section 8). It is what lets the pad show each line in its
+ * writer's channel colour, and it is the only place in the game where the two
+ * parties write into the same object.
+ */
+export type NoteAuthor = "PILOT" | "KEEPER";
+
+/**
+ * One line on the shared notepad.
+ *
+ * Notes are `SHARED` by construction rather than by projection: each one was
+ * written by one of the two parties for the other to read, so there is no
+ * channel to enforce and nothing for `projectForPilot` to strip. That is why
+ * they sit beside `designation` on the view rather than inside `facts`.
+ */
+export interface Note {
+  readonly text: string;
+  readonly author: NoteAuthor;
+  /** Milliseconds since session start, matching the log's own clock. */
+  readonly atMs: number;
+}
+
+/** The longest line the pad accepts. Doc 03 section 8: one or two sentences. */
+export const NOTE_MAX_LENGTH = 240;
+
+/**
+ * How many lines the pad holds before the oldest scrolls off.
+ *
+ * A cap rather than unbounded growth, because every note rides on `PilotView`
+ * and `PilotView` is pushed on every state change. An uncapped pad would make
+ * a chatty session's frames grow without limit for the whole of it.
+ */
+export const NOTE_CAPACITY = 20;
+
 export interface PilotView {
   readonly phase: Phase;
   readonly chamber: ChamberId | null;
+  /**
+   * Which chambers this session is playing, so the cutaway knows how many
+   * floors the station has.
+   *
+   * `SHARED` by construction: both parties are told the session length when it
+   * starts, and BRIEF drops Chamber II. Without it the client would have to
+   * guess, and a station drawn with a floor nobody will ever enter is a
+   * station promising a room that does not exist.
+   */
+  readonly mode: SessionMode;
   readonly designation: string | null;
   /** Milliseconds left on this chamber's deadline, or null when untimed. */
   readonly remainingMs: number | null;
@@ -163,4 +211,6 @@ export interface PilotView {
   readonly retries: number;
   /** `projectForPilot` of the active chamber's facts. Empty outside a chamber. */
   readonly facts: Readonly<Record<string, unknown>>;
+  /** The shared notepad, oldest first. Empty until somebody writes. */
+  readonly notes: readonly Note[];
 }

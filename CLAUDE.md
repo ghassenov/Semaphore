@@ -38,8 +38,8 @@ Judging is four equally weighted criteria: **WebMCP Leverage**, **Execution**, *
 | [packages/](packages/) | Code shared by client, worker, archive and bench. Pure, no I/O. | `seed`, `protocol` built |
 | `packages/seed/` | Deterministic xorshift128+ PRNG. Same seed, same puzzle, always. | Built |
 | `packages/protocol/` | Channel tags, error codes, wire types. One definition each. | Built |
-| [apps/game/](apps/game/) | Phaser client. Renders PILOT's view, hosts the WebMCP tool director. | WebMCP tool layer complete: adapter, three-tier director, every tool. The view feed is live; Phaser and the scenes are not started. |
-| [apps/worker/](apps/worker/) | Cloudflare Worker plus the Session Durable Object. Authoritative state. | Complete: four chambers, the reducer, the Archive beat, the server-authoritative timer, the read-only tool surface, the manual and PILOT's view socket |
+| [apps/game/](apps/game/) | Phaser client. Renders PILOT's view, hosts the WebMCP tool director. | Complete through plan 1.4, plus the declarative notepad and first art. A full session has been played end to end in Chrome 151. |
+| [apps/worker/](apps/worker/) | Cloudflare Worker plus the Session Durable Object. Authoritative state. | Complete: four chambers, the reducer, the Archive beat, the timer, the read-only tool surface, the manual, PILOT's view socket, the CONCORD route and the shared notepad |
 | [apps/archive/](apps/archive/) | Cross-origin tool provider: the manual and the ghost logs. | To write. Archive beat lives in `apps/worker` until this exists (D-017) |
 | [fixtures/ghosts/](fixtures/ghosts/) | Authored ghost session logs, generated from real play. | One ghost built |
 | [tests/](tests/) | Cross-cutting proofs: possible-worlds, asymmetry smoke, solvability. | Possible-worlds proof covers all four chambers |
@@ -146,3 +146,5 @@ Rules that follow from this:
 | 2026-08-28 | Ahmed Saad | Repository map: apps/worker marked complete now the server-authoritative timer has landed (D-018). |
 | 2026-08-28 | Ahmed Saad | Repository map: apps/game's WebMCP tool layer landed (D-019 to D-023); apps/worker gained the read-only tool surface and the manual. |
 | 2026-08-28 | Ahmed Saad | Repository map: PILOT's view socket landed (D-025). apps/game consumes it; Phaser is still the gap. |
+| 2026-08-28 | Ahmed Saad | Repository map: Phaser and the scenes landed (D-026), and the worker gained the CONCORD route (D-027). |
+| 2026-08-28 | Ahmed Saad | Repository map: the declarative notepad, the first art, and a full session played end to end (D-028 to D-030). |

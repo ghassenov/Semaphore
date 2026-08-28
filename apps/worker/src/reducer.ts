@@ -30,9 +30,13 @@ import {
   DIFFICULTIES,
   errors,
   MODE_CHAMBERS,
+  NOTE_CAPACITY,
+  NOTE_MAX_LENGTH,
   timerFor,
   type ChamberId,
   type Difficulty,
+  type Note,
+  type NoteAuthor,
   type SessionEvent,
   type SessionMode,
 } from "@semaphore/protocol";
@@ -78,6 +82,17 @@ export interface PersistedSession {
   /** Distinct ghost-log entries KEEPER has read so far. Doc 02 section 4: not a puzzle, just required at least once. */
   readonly archiveEntriesRead: readonly number[];
   /**
+   * The shared notepad, oldest first, capped at `NOTE_CAPACITY`.
+   *
+   * Server-side rather than in the browser, for three reasons that are all the
+   * same reason. It is the only in-game record of what the pair actually said
+   * to each other, which makes it the most valuable thing the session log
+   * carries for the benchmark. The replay viewer needs it or the pad reads
+   * empty on playback. And a client-side pad is lost on a reload, which is a
+   * thing that happens to a pair fifteen minutes into a session.
+   */
+  readonly notes: readonly Note[];
+  /**
    * Inter-call gaps observed for chamber actions, in call order. Feeds
    * `staminaWindowMs` (doc 05 section 6). See D-010 for why this is the gap
    * between calls rather than any single call's own processing time.
@@ -110,6 +125,7 @@ export function newSession(sessionId: string, seed: string, nowMs: number): Pers
     blindPanel: null,
     concordLock: null,
     archiveEntriesRead: [],
+    notes: [],
     observedLatencyMs: [],
     seq: 0,
     startedAtMs: nowMs,
@@ -143,7 +159,10 @@ export type Action =
   | { readonly type: "open_the_door" }
   // The only way out of DEADLOCK (doc 02 section 5). PILOT's decision, not
   // KEEPER's: an agent cannot restart a chamber it cannot see.
-  | { readonly type: "retry_chamber" };
+  | { readonly type: "retry_chamber" }
+  // The shared notepad (doc 03 section 8). The one action either party can
+  // take, which is why it carries who took it.
+  | { readonly type: "write_note"; readonly text: string; readonly author: NoteAuthor };
 
 export interface ReduceResult {
   readonly session: PersistedSession;
@@ -191,7 +210,19 @@ const CONCORD_LOCK_CHAMBER: ChamberWorlds<concordLock.ConcordLockState> = {
  * none is. This is what the DEADLOCK failure card reads back, so the run's
  * last line is "you were this many bits short" rather than "you lost".
  */
-function ambiguityFor(session: PersistedSession): Ambiguity | null {
+/**
+ * The ambiguity remaining in the session's active chamber, from KEEPER's side.
+ *
+ * Exported for the CONCORD route, which is the only other caller. It is kept
+ * here rather than moved to `worlds.ts` because the four `ChamberWorlds`
+ * bindings live here, and splitting them from the reducer that maintains the
+ * state they enumerate is how the meter and the log start disagreeing.
+ *
+ * Note this answers for `machine.chamber` without regard to phase. The caller
+ * decides whether the pair is actually in that room; `pilot.inTheRoom` is that
+ * decision, and the route applies it.
+ */
+export function ambiguityFor(session: PersistedSession): Ambiguity | null {
   switch (session.machine.chamber) {
     case "airlock":
       return session.airlock ? measure(AIRLOCK_CHAMBER, session.airlock) : null;
@@ -370,6 +401,8 @@ function apply(session: PersistedSession, action: Action, nowMs: number): Reduce
       return openTheDoor(session, nowMs);
     case "retry_chamber":
       return retryChamber(session, nowMs);
+    case "write_note":
+      return writeNote(session, action.text, action.author, nowMs);
   }
 }
 
@@ -968,6 +1001,72 @@ function gripBar(session: PersistedSession, nowMs: number): ReduceResult {
     session: next,
     events: [event],
     toolText: `The lock arms under tension. PILOT can hold roughly ${window} seconds.`,
+  };
+}
+
+/**
+ * A line on the shared notepad, from either party.
+ *
+ * The one action both KEEPER and PILOT can take, through the same affordance:
+ * KEEPER by invoking the declarative form tool, PILOT by typing into the same
+ * form and pressing the button. `author` comes from `SubmitEvent.agentInvoked`
+ * on the client and is the only thing that distinguishes them, which is
+ * precisely the property doc 03 section 8 builds the pad on.
+ *
+ * Deliberately does **not** update `lastRespondedAtMs`. That field feeds the
+ * gap measurement Chamber III's stamina window derives from (D-010), and a
+ * note is not a mechanism: writing one is the pair talking, not the agent
+ * acting. Folding notes into the sample would deflate the median every time
+ * they communicated well, which is the opposite of what the window should
+ * reward.
+ *
+ * Allowed in every phase after the shift begins, because the pad is where the
+ * pair coordinates and the moments they most need it are the transitions and
+ * the Archive, not the rooms. `reduce` still short-circuits `DEADLOCK` ahead
+ * of this, which is correct: nothing moves in a dead chamber until PILOT
+ * resets it.
+ */
+function writeNote(
+  session: PersistedSession,
+  text: string,
+  author: NoteAuthor,
+  nowMs: number,
+): ReduceResult {
+  if (session.machine.phase === "ENTRY") {
+    throw errors.staleTool();
+  }
+  const trimmed = text.trim();
+  if (trimmed.length === 0) {
+    throw errors.invalidInput("text", "a line with something in it", text);
+  }
+  if (trimmed.length > NOTE_MAX_LENGTH) {
+    throw errors.invalidInput(
+      "text",
+      `at most ${String(NOTE_MAX_LENGTH)} characters`,
+      trimmed.length,
+    );
+  }
+
+  const note: Note = { text: trimmed, author, atMs: elapsed(session, nowMs) };
+  // Oldest off the front once the pad is full: every note rides on every
+  // pushed frame, so an uncapped pad grows the wire for the whole session.
+  const notes = [...session.notes, note].slice(-NOTE_CAPACITY);
+  const event: SessionEvent = {
+    t: elapsed(session, nowMs),
+    seq: session.seq,
+    type: "pilot_action",
+    action: "write_note",
+    // The author, not the text. The text is in `notes` on the session and
+    // reaches the log's replay through the state it produced; putting it here
+    // too would give the same sentence two homes that could disagree.
+    target: author,
+  };
+  return {
+    session: { ...session, notes, seq: session.seq + 1 },
+    events: [event],
+    toolText:
+      `Written to the notepad as ${author}. The pad holds ` +
+      `${String(notes.length)} line${notes.length === 1 ? "" : "s"}; both of you can read all of them.`,
   };
 }
 
