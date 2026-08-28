@@ -125,6 +125,19 @@ Corollary that saved us anyway: `packages/seed` survived untouched because it ha
 
 ## Proofs and tests
 
+### 2026-08-28 - The alarm we were told we needed turned out to be worth about one field
+
+NEXT-STEPS had the chamber timer down as "needs a Durable Object alarm", and it had the reason right: a client timer is one `debugger` from infinite. What it had wrong was where the alarm sits in the design.
+
+Writing it as an alarm-first mechanism means the rule lives somewhere no pure test can reach, and it means a missed alarm is a correctness bug that hands the pair free time. Writing it as a stored deadline that a pure function compares against the clock on every read makes the whole thing testable with no runtime at all, and makes tampering impossible for the same reason it was impossible before: the server holds the number.
+
+Once that was written, the alarm shrank to about twenty lines whose only job is to call the same pure function when nobody else will, so the `failure` event carries the instant time actually ran out rather than the instant somebody next asked. That is a real requirement (the replay timeline and the benchmark both read that timestamp) and it is the *only* one the derivation could not meet.
+
+**The generalisation: when a requirement arrives named after a mechanism, separate the requirement from the mechanism before building it.** "The timer must be tamper-proof" and "the timer must fire on its own" are different requirements with different costs, and only one of them needed the runtime. The same reframing had already happened once in this repo without being noticed as a pattern: Chamber III's grip window and lockout are both time-based and both pure, which is why the entire finale is testable without a Durable Object.
+
+The cost of getting this backwards is not a rewrite, it is a permanent tax: every future test of anything downstream of the timer would have needed a workerd instance.
+
+
 ### 2026-08-28 - The proof failed on first run, and it was right
 
 `tests/possible-worlds.test.ts` was written to assert that for every reachable unsolved state, KEEPER's view is consistent with several worlds that disagree about the correct action. It failed immediately, on the state where an agent has pulled two of three wrong levers.
