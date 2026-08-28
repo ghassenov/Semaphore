@@ -39,7 +39,7 @@ Judging is four equally weighted criteria: **WebMCP Leverage**, **Execution**, *
 | `packages/seed/` | Deterministic xorshift128+ PRNG. Same seed, same puzzle, always. | Built |
 | `packages/protocol/` | Channel tags, error codes, wire types. One definition each. | Built |
 | [apps/game/](apps/game/) | Phaser client. Renders PILOT's view, hosts the WebMCP tool director. | To write |
-| [apps/worker/](apps/worker/) | Cloudflare Worker plus the Session Durable Object. Authoritative state. | All four chambers, the reducer and the Archive beat built; timer alarm outstanding |
+| [apps/worker/](apps/worker/) | Cloudflare Worker plus the Session Durable Object. Authoritative state. | Complete: four chambers, the reducer, the Archive beat, the server-authoritative timer |
 | [apps/archive/](apps/archive/) | Cross-origin tool provider: the manual and the ghost logs. | To write. Archive beat lives in `apps/worker` until this exists (D-017) |
 | [fixtures/ghosts/](fixtures/ghosts/) | Authored ghost session logs, generated from real play. | One ghost built |
 | [tests/](tests/) | Cross-cutting proofs: possible-worlds, asymmetry smoke, solvability. | Possible-worlds proof covers all four chambers |
@@ -143,3 +143,4 @@ Rules that follow from this:
 | 2026-08-28 | Ahmed Saad | Added NEXT-STEPS.md as the handoff file, and the rule that it is updated at the end of every session. |
 | 2026-08-28 | Ahmed Saad | Repository map updated for the docs/design/ move. |
 | 2026-08-28 | Ahmed Saad | Repository map brought up to date: protocol, worker, archive beat, fixtures/ghosts/, and the proof's coverage of all four chambers. |
+| 2026-08-28 | Ahmed Saad | Repository map: apps/worker marked complete now the server-authoritative timer has landed (D-018). |

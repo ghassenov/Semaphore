@@ -25,3 +25,4 @@ The Cloudflare Worker and the `Session` Durable Object. One DO per session, hold
 | 2026-08-28 | Ahmed Saad | Chamber II (Blind Panel) implemented: history-replay world model, rotate_dial wiring. |
 | 2026-08-28 | Ahmed Saad | Chamber III (Concord Lock) implemented, including the D-014 passphrase fix. All four chambers now covered by the possible-worlds proof. |
 | 2026-08-28 | Ahmed Saad | Archive beat implemented (temporary worker-side placement, D-017); session_start timing bug fixed (D-016). Full mode now completes end to end. |
+| 2026-08-28 | Ahmed Saad | Server-authoritative timer implemented (D-018): stored chamber deadline settled on read, DO alarm as a second caller, time penalties, retry_chamber, Chamber II gauge drift. |
