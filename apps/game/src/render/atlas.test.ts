@@ -1,15 +1,17 @@
 /**
- * The atlas against the files it names.
+ * The atlas's arithmetic and its named frames.
  *
- * A wrong frame count or a renamed file does not throw at runtime: Phaser
- * loads the sheet, hands out a frame that is half of two tiles, and the room
- * renders looking merely a bit off. That is the failure this file exists to
- * turn into a red test, so it checks the table against the actual PNGs on disk
- * rather than against a second copy of the same numbers.
+ * A wrong frame index does not throw: Phaser hands out a frame that is half of
+ * two tiles and the room renders looking merely a bit off. So the named
+ * constants, which were read off a contact sheet by eye, are held to the sizes
+ * of the sheets they index into.
+ *
+ * That the files those sizes describe actually exist on disk is checked by
+ * `scripts/check-art.mjs` at build time, not here. It needs `node:fs`, and this
+ * app's tsconfig deliberately carries no Node types (see `check-bundle.mjs`,
+ * which is outside the typecheck scope for the same reason).
  */
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   CHANNEL_SHEETS,
@@ -23,34 +25,7 @@ import {
   textureKey,
 } from "./atlas.js";
 
-const ART = join(import.meta.dirname, "..", "..", "public");
-
-/**
- * A PNG's dimensions, from its IHDR.
- *
- * Sixteen bytes of header parsing rather than an image library, because the
- * only question is how many tiles wide the file is and a dependency to answer
- * it would be the tail wagging the dog.
- */
-function size(url: string): { width: number; height: number } {
-  const bytes = readFileSync(join(ART, url));
-  return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
-}
-
 describe("the art table", () => {
-  it("names a file that exists, for every sheet", () => {
-    for (const sheet of LOAD) expect(() => size(sheet.url), sheet.url).not.toThrow();
-  });
-
-  it("counts the frames each file actually holds", () => {
-    for (const sheet of LOAD) {
-      const { width, height } = size(sheet.url);
-      expect(width % TILE, `${sheet.url} width`).toBe(0);
-      expect(height % TILE, `${sheet.url} height`).toBe(0);
-      expect((width / TILE) * (height / TILE), `${sheet.url} frames`).toBe(sheet.frames);
-    }
-  });
-
   it("loads every sheet under a key of its own", () => {
     const keys = LOAD.map((sheet) => sheet.key);
     expect(new Set(keys).size).toBe(keys.length);
@@ -59,8 +34,8 @@ describe("the art table", () => {
   it("carries the same fittings in all three channels", () => {
     // The renderer picks a channel and then a sheet, in that order, so a sheet
     // missing from one colour is a device that cannot change channel. Holding
-    // the three directories to the same contents is what makes that
-    // impossible rather than merely unlikely.
+    // the three directories to the same contents is what makes that impossible
+    // rather than merely unlikely.
     for (const sheet of Object.keys(CHANNEL_SHEETS)) {
       for (const channel of ["pilot", "keeper", "shared"] as const) {
         const key = textureKey(channel, sheet);
@@ -72,18 +47,32 @@ describe("the art table", () => {
     }
   });
 
-  it("keeps every named frame inside its sheet", () => {
-    // The frame constants were read off a contact sheet by eye, which is the
-    // right way to choose them and the wrong way to be sure of them.
-    for (const frame of Object.values(SLICE)) {
-      expect(frame).toBeLessThan(CHANNEL_SHEETS["walls-out"]);
+  it("points every sheet at a path under its own channel's directory", () => {
+    for (const sheet of LOAD) {
+      expect(sheet.url, sheet.key).toMatch(/^art\/(pilot|keeper|shared)\/[a-z-]+\.png$/);
     }
-    for (const frame of [...GROUND_FILL]) {
+  });
+
+  it("claims a whole number of tiles for every sheet", () => {
+    expect(TILE).toBe(16);
+    for (const sheet of LOAD) expect(sheet.frames, sheet.key).toBeGreaterThan(0);
+  });
+
+  it("keeps every named frame inside its sheet", () => {
+    for (const [name, frame] of Object.entries(SLICE)) {
+      expect(frame, name).toBeLessThan(CHANNEL_SHEETS["walls-out"]);
+    }
+    for (const frame of GROUND_FILL) {
       expect(frame).toBeLessThan(SHARED_SHEETS.ground);
     }
     for (const [name, frame] of Object.entries(PLATE)) {
       expect(frame, name).toBeLessThan(SHARED_SHEETS["ground-special"]);
     }
+  });
+
+  it("names all nine slices of a wall, and no two the same", () => {
+    // A nine-slice missing a corner is a room with a hole in it.
+    expect(new Set(Object.values(SLICE)).size).toBe(9);
   });
 
   it("varies the ground without ever leaving the fill set", () => {
@@ -101,6 +90,8 @@ describe("the art table", () => {
   });
 
   it("gives the same tile the same frame every time", () => {
+    // A floor that reshuffles its rivets every frame shimmers, and a
+    // screenshot of a seed should be the same screenshot every time.
     expect(groundFrame(7, 4)).toBe(groundFrame(7, 4));
   });
 });

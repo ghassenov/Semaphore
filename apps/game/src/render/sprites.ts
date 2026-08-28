@@ -329,133 +329,78 @@ export const GLYPH_SPRITES: Readonly<Record<string, Sprite>> = {
 };
 
 /**
- * The two bodies, 16 wide and 24 tall.
+ * The two bodies, seen from above.
  *
- * The proportion is doc 06 section 3's and it is doing work: at 16x16 a figure
- * reads as a mascot, and at 16x24 it reads as a person. The pair are the only
- * two people in the station and the game is about what passes between them, so
- * they should not look like game pieces.
+ * They were 16x24 side elevations until D-035, when the station became a floor
+ * plan. A figure drawn from the side standing on a floor drawn from above is
+ * the single tell that gives a reskin away, so both were redrawn rather than
+ * reused: one tile each, on the same grid as everything else in the room.
+ *
+ * They stay authored as pixels in this file, which is now the exception rather
+ * than the rule (D-034). The art pack has no characters in it, and these two
+ * are the only sprites in the game that carry meaning the pack could not know:
+ * PILOT must not be amber and KEEPER must not have eyes.
  */
-export const BODY_HEIGHT = 24;
+export const BODY_HEIGHT = SPRITE_SIZE;
 
 /**
- * PILOT: a person in a suit, with a lamp on the chest.
+ * PILOT: a person in a suit, from above.
  *
  * Bone and hull, not amber. Amber means "only PILOT can perceive this", and
  * PILOT is not a fact only PILOT can perceive: the human is looking at
- * themselves. Using the channel colour for the body would make the legend
- * lie the first time somebody checked it against the screen.
+ * themselves. Using the channel colour for the body would make the legend lie
+ * the first time somebody checked it against the screen. The lamp on the
+ * helmet is the one amber thing, and it is a lamp.
  */
 export const PILOT_SPRITE: Sprite = {
-  ink: { "#": "bone", "-": "boneDim", "=": "hullLight", "*": "amberBright", o: "amber" },
+  ink: { "#": "bone", "=": "hullLight", o: "amber", "*": "amberBright" },
   rows: [
-    ".....######.....",
+    "................",
     "....########....",
-    "...##======##...",
-    "...#=======-#...",
-    "...#==oooo==#...",
-    "...#==oooo==#...",
-    "...##======##...",
+    "..############..",
+    ".####======####.",
+    ".###========###.",
+    "####========####",
+    "####==oooo==####",
+    "####==oooo==####",
+    "####========####",
+    "####========####",
+    ".###========###.",
+    ".####======####.",
+    "..############..",
+    "..###**##**###..",
+    "...##########...",
     "....########....",
-    ".....######.....",
-    "...##########...",
-    "..############..",
-    "..###......###..",
-    "..##...**...##..",
-    "..##...**...##..",
-    "..###......###..",
-    "..############..",
-    "..############..",
-    "...##########...",
-    "...###....###...",
-    "...###....###...",
-    "...###....###...",
-    "...###....###...",
-    "..####....####..",
-    "..####....####..",
   ],
 };
 
 /**
- * KEEPER: a maintenance frame, not a face.
+ * KEEPER: a maintenance frame in its alcove, from above.
  *
- * Cyan and brass, and deliberately not humanoid above the shoulders: it has a
- * visor band rather than eyes, because it cannot see and a pair of eyes would
- * be the sprite contradicting the premise. The brass segments down the sides
- * are where the limb count is drawn from the live registry.
+ * Cyan and brass, and deliberately not a head: it has a visor band rather than
+ * eyes, because it cannot see and a pair of eyes would be the sprite
+ * contradicting the premise. The brass segments down the sides are where the
+ * limb count is drawn from the live registry.
  */
 export const KEEPER_SPRITE: Sprite = {
   ink: { "#": "cyanDeep", "=": "cyan", "*": "cyanBright", b: "brass", "-": "rust" },
   rows: [
-    "....########....",
-    "...##########...",
-    "..############..",
-    "..#**********#..",
-    "..#**********#..",
-    "..############..",
-    "...##########...",
-    "....########....",
-    "..b##########b..",
-    "..b############.",
-    "..b##========##.",
-    "..b##========##.",
-    "..b##===bb===##.",
-    "..b##===bb===##.",
-    "..b##========##.",
-    "...##========##.",
-    "...############.",
-    "...####----####.",
-    "...###......###.",
-    "...###......###.",
-    "...###......###.",
-    "..####......####",
-    "..####......####",
-    "..-###......###-",
-  ],
-};
-
-/** The station's wall and floor, as 16x16 tiles that repeat. */
-export const WALL_TILE: Sprite = {
-  ink: { "#": "hull", "=": "hullLight", "-": "rust", ".": "hull" },
-  rows: [
-    "================",
-    "=##############=",
-    "=##############=",
-    "=####-#########=",
-    "=##############=",
-    "=##############=",
-    "=##############=",
-    "================",
-    "=######=#######=",
-    "=######=#######=",
-    "=######=#######=",
-    "=######=####-##=",
-    "=######=#######=",
-    "=######=#######=",
-    "=######=#######=",
-    "================",
-  ],
-};
-
-export const FLOOR_TILE: Sprite = {
-  ink: { "#": "hullLight", "=": "hull", "-": "rust" },
-  rows: [
-    "================",
-    "=##############=",
-    "=##############=",
-    "=###-##########=",
-    "=##############=",
-    "=##############=",
-    "=##############=",
-    "=##############=",
-    "=##############=",
-    "=##########-###=",
-    "=##############=",
-    "=##############=",
-    "=##############=",
-    "=##############=",
-    "=##############=",
-    "================",
+    "................",
+    ".b############b.",
+    ".b############b.",
+    ".##==========##.",
+    ".##==========##.",
+    ".##==bbbbbb==##.",
+    ".##==bbbbbb==##.",
+    ".##==========##.",
+    ".##==========##.",
+    ".b############b.",
+    ".b############b.",
+    ".##**********##.",
+    ".##**********##.",
+    ".##############.",
+    ".-############-.",
+    "................",
   ],
 };
 
@@ -507,8 +452,6 @@ export const TEXTURE = {
   glyph: (id: string) => `glyph-${id}`,
   pilot: "body-pilot",
   keeper: "body-keeper",
-  wall: "tile-wall",
-  floor: "tile-floor",
 } as const;
 
 /**
@@ -523,7 +466,5 @@ export function allSprites(): ReadonlyMap<string, Sprite> {
   for (const [id, sprite] of Object.entries(GLYPH_SPRITES)) sprites.set(TEXTURE.glyph(id), sprite);
   sprites.set(TEXTURE.pilot, PILOT_SPRITE);
   sprites.set(TEXTURE.keeper, KEEPER_SPRITE);
-  sprites.set(TEXTURE.wall, WALL_TILE);
-  sprites.set(TEXTURE.floor, FLOOR_TILE);
   return sprites;
 }
