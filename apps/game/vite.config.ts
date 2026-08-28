@@ -20,6 +20,9 @@ export default defineConfig({
       "/session": {
         target: process.env.WORKER_DEV_ORIGIN ?? "http://127.0.0.1:8787",
         changeOrigin: true,
+        // PILOT's view arrives over a WebSocket on the same path prefix, so
+        // the proxy has to forward the upgrade as well as the fetches.
+        ws: true,
       },
     },
   },
