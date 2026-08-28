@@ -613,3 +613,46 @@ The CONCORD meter showed **the previous room's ambiguity** for the couple of sec
 Three layout collisions, all one cause and all invisible to the tests that existed: a caption is centred under its piece and is routinely wider than it, so the caption is what collides with the next piece, runs past the grate, or falls out of the room band. The tests now measure caption extents.
 
 **What it cannot do.** It cannot tell us whether the game is *fun*, whether the glyph vocabulary survives a cold player's description, or whether the Signal Room's vandalised page actually fools anybody. Doc 08 section 0.1 wants six human playtesters and still does. What this buys is that they will not spend their session finding "1 CLICKS".
+
+---
+
+### D-031 The station is drawn as a cutaway section, at 320x320
+
+**Date.** 2026-08-28
+
+**Decision.** The native canvas becomes **320x320** and the client draws the whole station as a section: every floor stacked, the floor the pair is standing in at working size, the rest as silhouette strips, and KEEPER's machine deck as a column down the right of all of them. **This amends doc 06 section 3**, which locked 320x180.
+
+**What was wrong with one room at a time.** Three things, and a section fixes all three. The station never read as a *building*, so "which room are we in" was a caption rather than a place. The phases between chambers had nothing to draw and said so, which meant the Archive - a designed beat - and the finale both rendered as two lines of text. And progress was invisible: a pair four rooms in saw exactly what a pair one room in saw.
+
+**The floors are deliberately unequal.** The Signal Room needs six glyph keys in two rows with captions, which is about seventy pixels. Five equal floors on a 320-tall canvas give it forty-six. So the active floor takes whatever the strips leave, and the strips are twenty-six each. That is not a flourish to save space: it is the only arrangement in which the tallest chamber fits at all, and it happens to put the eye exactly where the game wants it.
+
+**Room layouts became floor-local.** `roomLayout` now takes the band's height and emits coordinates from its top-left. The same four chambers therefore draw at working size in one frame and inside a strip in the next, and no chamber knows where it sits in the building. That is a better shape than the absolute constants it replaced regardless of the section, because it is what makes the layout tests measure a room rather than a canvas.
+
+**The palette is untouched, and that was the important call.** The reference that prompted this is warm: salmon walls, orange floors, purple lower storey. Adopting those hues would kill the amber channel, because amber reads as "only PILOT perceives this" only against a cold neutral ground. Colour is this game's information architecture (doc 06 section 2), so the composition and the flat-shape technique are taken and the fourteen locked colours are not. Rust and brass already carry warmth where it is safe.
+
+**Prop density is held back for the same reason.** The reference is beautiful because it is full of things. Here every visible object is either a channel-coded fact or noise that makes the facts harder to find, and finding them is the whole task. Silhouettes on inactive floors carry a shape and nothing readable, which is enough to say "a room, and not the one you are in".
+
+**Options considered.**
+1. Keep 320x180 and one room, take only the flat-shape treatment and a border.
+2. Square 256x256, still one room, drawn floor to ceiling.
+3. The section.
+
+Option 3. Option 1 is much the cheapest and leaves the station illegible as a place; option 2 buys the framing without the progress display or the fix for the empty transitions.
+
+**Cost.** Every chamber relaid out, a new HUD budget, a new pure module (`cutaway.ts`) with its own tests, and this amendment. `PilotView` gained `mode`, because BRIEF drops Chamber II and a station drawn with a floor nobody will enter is a station promising a room that does not exist.
+
+**Result.** 518 tests. Verified by a full scripted session in Chrome 151: all four chambers, the Archive, the finale, and a registry that ends empty. Integer scaling holds at x2 = 640 and x3 = 960; the stage's CSS max-width is pinned to 640 because the scale manager snaps to whole multiples of 320 and a box one pixel narrower falls back to x1.
+
+---
+
+### D-032 Every POST drains its body before answering
+
+**Date.** 2026-08-28
+
+**Decision.** `Session.fetch` reads the request body once, at the top of the POST branch, and hands the parsed object to every route.
+
+**The bug.** Several actions take no parameters - `grip_bar`, `release_bar`, `leave_archive`, `retry_chamber`, `reset_sequence`, `open_the_door` - and answered without ever reading the body. The client posts `{}` to all of them regardless. A response sent while the request stream is still open is a real fault: workerd raises `Can't read from request stream after response has been sent`, and in local development that takes down wrangler's proxy and with it the whole dev session.
+
+**How it was found, which is the part worth recording.** Not by a test. The scripted playthrough started killing the dev worker every run, once it was exercising PILOT's own actions end to end. Every unit test in `reducer.test.ts` calls `reduce()` directly and never builds a `Request` with a body, and `Session.test.ts` builds requests only for the routes that already read one. The whole class of defect was invisible to the suite and obvious the moment a real client talked to a real runtime.
+
+**Result.** Six near-identical parse lines removed and no route able to forget. `readBody` never throws: every route already defaults every field it reads, so a malformed body produces the game's own validation message rather than a 500.
