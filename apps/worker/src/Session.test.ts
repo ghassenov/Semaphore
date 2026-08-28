@@ -14,10 +14,11 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { timerFor, type SessionEvent } from "@semaphore/protocol";
+import { timerFor, type PilotView, type SessionEvent } from "@semaphore/protocol";
 import { Session, type Env } from "./Session.js";
 import { newSession, reduce, type PersistedSession } from "./reducer.js";
 import { readAllEvents } from "./log.js";
+import { correctLever } from "./chambers/airlock.js";
 
 const SESSION_ID = "s_alarm";
 
@@ -53,6 +54,27 @@ function fakeStorage() {
 type FakeStorage = ReturnType<typeof fakeStorage>;
 
 /**
+ * A socket that records what was pushed to it.
+ *
+ * `throws` covers the one case the broadcast has to survive: a connection that
+ * died between the runtime handing it back and the send landing.
+ */
+class FakeSocket {
+  readonly sent: string[] = [];
+  constructor(readonly throws = false) {}
+  send(frame: string): void {
+    if (this.throws) throw new Error("socket is closed");
+    this.sent.push(frame);
+  }
+  close(): void {}
+}
+
+/** The last frame a socket received, parsed. */
+function lastFrame(socket: FakeSocket): PilotView {
+  return JSON.parse(socket.sent.at(-1)!) as PilotView;
+}
+
+/**
  * A `Session` over the fake, pre-seeded with a persisted session record.
  *
  * Awaits the constructor's `blockConcurrencyWhile` load before handing the
@@ -63,6 +85,7 @@ type FakeStorage = ReturnType<typeof fakeStorage>;
 async function sessionOver(
   storage: FakeStorage,
   persisted: PersistedSession | null,
+  sockets: FakeSocket[] = [],
 ): Promise<Session> {
   if (persisted) storage.raw.set("meta", persisted);
   let loaded: Promise<void> = Promise.resolve();
@@ -73,6 +96,10 @@ async function sessionOver(
       loaded = fn();
       return loaded;
     },
+    // The hibernation API, which is the only socket bookkeeping `Session`
+    // has: it accepts, and later asks the runtime who is still connected.
+    acceptWebSocket: (socket: FakeSocket) => sockets.push(socket),
+    getWebSockets: () => sockets,
   } as unknown as DurableObjectState;
   const env = { SESSIONS_DB: null } as unknown as Env;
   const session = new Session(state, env);
@@ -178,5 +205,145 @@ describe("the alarm the request path arms", () => {
     );
 
     expect(storage.alarmAt).toBeNull();
+  });
+});
+
+/**
+ * PILOT's view feed.
+ *
+ * The upgrade itself is exercised against a stub `WebSocketPair`, because the
+ * question here is "does `Session` accept, greet and push", not "does workerd
+ * implement WebSockets". Everything below that is real: the frames asserted on
+ * are the actual `pilotView` output of the actual reduced session.
+ */
+describe("the view socket", () => {
+  /**
+   * Run the upgrade under a stub `WebSocketPair`, which workerd provides as a
+   * global constructor and Node does not.
+   *
+   * The `101` response itself is swallowed: `new Response(null, { status: 101 })`
+   * is the required workerd idiom and Node's `Response` rejects the status
+   * outright. That is a limitation of the harness, not of the code, and it is
+   * not what any of these tests assert on - the greeting is sent before the
+   * response is built, so every assertion below is still against real
+   * behaviour. The status is covered by `wrangler deploy --dry-run` and by
+   * opening the page.
+   */
+  async function connect(session: Session): Promise<void> {
+    const pair = [new FakeSocket(), new FakeSocket()];
+    const previous = (globalThis as Record<string, unknown>).WebSocketPair;
+    (globalThis as Record<string, unknown>).WebSocketPair = function () {
+      return pair;
+    };
+    try {
+      await session.fetch(
+        new Request("https://x/session/s/socket", { headers: { upgrade: "websocket" } }),
+      );
+    } catch (err) {
+      if (!(err instanceof RangeError)) throw err;
+    } finally {
+      (globalThis as Record<string, unknown>).WebSocketPair = previous;
+    }
+  }
+
+  it("refuses a plain request to the socket route", async () => {
+    const session = await sessionOver(fakeStorage(), inAirlock(Date.now()));
+    const response = await session.fetch(new Request("https://x/session/s/socket"));
+    expect(response.status).toBe(426);
+  });
+
+  it("greets a new connection with the current view, so a late joiner renders", async () => {
+    const sockets: FakeSocket[] = [];
+    const session = await sessionOver(fakeStorage(), inAirlock(Date.now()), sockets);
+
+    await connect(session);
+
+    expect(sockets).toHaveLength(1);
+    const view = lastFrame(sockets[0]!);
+    expect(view.phase).toBe("IN_CHAMBER");
+    expect(view.chamber).toBe("airlock");
+    expect(view.facts).toHaveProperty("glyphByLever");
+  });
+
+  it("never puts a KEEPER-only fact on the wire", async () => {
+    const sockets: FakeSocket[] = [];
+    const session = await sessionOver(fakeStorage(), inAirlock(Date.now()), sockets);
+    await connect(session);
+
+    const frame = sockets[0]!.sent.at(-1)!;
+    expect(frame).not.toContain("leverFeel");
+    expect(frame).not.toContain("correctLever");
+  });
+
+  it("pushes the new view after an action, without the client asking", async () => {
+    const sockets: FakeSocket[] = [];
+    const storage = fakeStorage();
+    const session = await sessionOver(storage, inAirlock(Date.now()), sockets);
+    await connect(session);
+    const before = sockets[0]!.sent.length;
+
+    const state = storage.raw.get("meta") as PersistedSession;
+    await session.fetch(
+      new Request("https://x/session/s/pull_lever", {
+        method: "POST",
+        body: JSON.stringify({ lever_id: correctLever(state.airlock!.params) }),
+      }),
+    );
+
+    // Solving the airlock auto-advances into the Signal Room inside one
+    // `reduce()`, so the pushed frame is the next room rather than the solved
+    // one. That is the point of pushing whole views: the client cannot infer
+    // where it is from what it just did.
+    expect(sockets[0]!.sent.length).toBe(before + 1);
+    const view = lastFrame(sockets[0]!);
+    expect(view.chamber).toBe("signal_room");
+    expect(view.facts).toHaveProperty("glyphByKey");
+  });
+
+  it("pushes the deadlock the alarm found, which is the frame nobody asked for", async () => {
+    const sockets: FakeSocket[] = [];
+    const started = Date.now() - timerFor("airlock", "standard")! - 1;
+    const session = await sessionOver(fakeStorage(), inAirlock(started), sockets);
+    await connect(session);
+
+    await session.alarm();
+
+    expect(lastFrame(sockets[0]!).phase).toBe("DEADLOCK");
+  });
+
+  it("reaches every connected client", async () => {
+    const sockets: FakeSocket[] = [new FakeSocket(), new FakeSocket()];
+    const storage = fakeStorage();
+    const session = await sessionOver(storage, inAirlock(Date.now()), sockets);
+
+    const state = storage.raw.get("meta") as PersistedSession;
+    await session.fetch(
+      new Request("https://x/session/s/pull_lever", {
+        method: "POST",
+        body: JSON.stringify({ lever_id: correctLever(state.airlock!.params) }),
+      }),
+    );
+
+    for (const socket of sockets) expect(socket.sent).toHaveLength(1);
+  });
+
+  it("does not let a dead socket break the call that triggered the push", async () => {
+    const alive = new FakeSocket();
+    const storage = fakeStorage();
+    const session = await sessionOver(storage, inAirlock(Date.now()), [
+      new FakeSocket(true),
+      alive,
+    ]);
+
+    const state = storage.raw.get("meta") as PersistedSession;
+    const response = await session.fetch(
+      new Request("https://x/session/s/pull_lever", {
+        method: "POST",
+        body: JSON.stringify({ lever_id: correctLever(state.airlock!.params) }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(alive.sent).toHaveLength(1);
   });
 });
