@@ -166,3 +166,18 @@ Chamber I reused Chamber 0's shape (`generate` / `initial` / `facts` / `candidat
 Both bugs share a lineage: they happened while extending working code by analogy rather than by re-deriving it, and both were invisible until a test exercised the SEQUENCE of states a real session actually visits, not just its first one. The general habit worth keeping: whenever a chamber's answer is more than one action long, write the "does this converge as play progresses" test before trusting the entry-state number, because the entry state is exactly the case where a missing filter or a truncated action can't yet show itself.
 
 Full reasoning: D-011 (the action-scope fix) and D-012 (the candidate-filtering fix).
+
+### 2026-08-28 - Finding the narrowing signal meant re-reading a throwaway line in the design doc
+
+Chamber II's design doc says KEEPER cannot see the gauges at all, full stop. So what does "an informative rotation drops the CONCORD bar" (doc 02 section 5) actually mean, mechanically, if the one fact that changes when you rotate a dial (the gauge's value) is a channel KEEPER structurally cannot reach?
+
+The answer was sitting in a sentence that reads like flavour text on a first pass: "PILOT can report 'I heard three clicks but nothing moved.'" That line is doing real mechanical work: it says the number of clicks that *actually register* can be less than the number commanded, because the gauge hit a physical limit. That is not a fact about sound for its own sake, it is the one thing KEEPER *can* perceive that depends on the hidden wiring, because whether a gauge is near its bound depends on which gauge a dial drives, whether the linkage is inverted, and everything that has happened to that gauge already.
+
+Two things worth keeping from this:
+
+1. **A design doc's illustrative example can be its load-bearing mechanic in disguise.** The sentence was written to make the room feel real, not to specify an algorithm, but it was the only sentence in the whole section that actually answered "what can the server compute." Read every concrete example in a spec for what it implies is *possible to observe*, not just for its color.
+2. **The moment a narrowing signal depends on "what happened so far" rather than "what is true right now," the candidate-checking code has to replay history, not compare current state.** This is the same shape of bug D-012 caught in Chamber I, but here it was avoided from the first draft, because D-012 had already taught the shape of the mistake to watch for. That is the actual value of writing these lessons down: not that this exact bug recurs, but that the *pattern* ("does this depend on the whole sequence, or just the latest step") becomes a question asked before code is written, not after a test fails.
+
+Verified with a probe before trusting it, same as every other bits figure this session: entry gives exactly 384 worlds and 8.585 bits, and rotating a resting gauge 8 clicks halves the consistent set on every fresh dial, in that order, for all twenty canonical seeds.
+
+Full reasoning: D-013.
