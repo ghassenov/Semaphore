@@ -11,6 +11,7 @@ It answers three questions and only three: where the repo is right now, what to 
 | | |
 |---|---|
 | **Last updated** | 2026-08-28, Ahmed Saad |
+| **Spike** | **Run** against Chrome 151, 2026-08-28. Doc 11 filled. Three findings, D-024. ChatGPT's in-app browser still untested. |
 | **Branch** | `feat/webmcp-tool-layer`, off `main` at `0f65aad`, **not pushed** |
 | **Pipeline** | Green: 365 tests, typecheck, lint, format, `vite build`, real `wrangler deploy --dry-run` |
 | **Verify with** | `pnpm install && pnpm typecheck && pnpm lint && pnpm test && pnpm build` |
@@ -35,7 +36,7 @@ It answers three questions and only three: where the repo is right now, what to 
 | `apps/game/src/net/sessionClient.ts` | Done. Never rejects except on abort; announces machine state to the director (D-021). |
 | `apps/game/src/ui.ts` | Gate screen done. Operator console is deliberate greybox scaffolding, replaced by Phase 1.4. |
 | `tests/possible-worlds.test.ts` | Done and passing for all four chambers. The headline proof, honestly scoped. |
-| `apps/spike/` | Built, **never run**. Needs a WebMCP browser. |
+| `apps/spike/` | Built and **run** (Chrome 151, headless, 2026-08-28): 24 checks, 1 failing, 3 awaiting a model. Re-run it in ChatGPT's in-app browser. |
 | `apps/archive/`, `bench/` | Rules files only, no code. |
 
 ---
@@ -44,13 +45,15 @@ It answers three questions and only three: where the repo is right now, what to 
 
 In order. Each item ends somewhere the pipeline is green and the repo is committable.
 
-### 1. Run the spike [needs a human with a browser]
+### 1. Run the spike in ChatGPT's in-app browser, and play a session [needs a human]
 
-Unchanged and now overdue: it is the only task nobody can automate, and the tool layer is built on three behaviours it has not yet confirmed. See `apps/spike/CLAUDE.md`.
+Chrome is done (D-024). What is left needs the second browser and, separately, a model.
 
-**The row that matters is `toolchange.empty`.** `director.ts` ends the session by aborting into an empty registry, and that is the game's last beat. Second: `crossorigin.delegation`, which decides whether `apps/archive` is a real deployment or `ARCHIVE_ORIGIN=same`.
+**In ChatGPT's in-app browser**, on GPT-5.6 Sol or Terra (Luna has site tools disabled), re-run the spike. Two rows decide things: `crossorigin.delegation`, which flips `ARCHIVE_ORIGIN` from `same` to `cross`, and `declarative.agentinvoked`, which the notepad's per-line authorship depends on and which no synthetic submission can answer.
 
-Then play a session in ChatGPT's in-app browser. Everything needed for one now exists.
+**With a model, in either browser**, fill doc 11 sections 6 and 7: whether a one-tool page gets discovered unprompted, whether `untrustedContentHint` changes behaviour (the spike registers `spike_read_flagged` and `spike_read_plain` with identical adversarial payloads for exactly that comparison), and the latency distribution that sizes Chamber III's window.
+
+Then play an actual session. Everything needed for one now exists.
 
 ### 2. The client foundation (plan §1.4)
 
@@ -68,7 +71,9 @@ Once the client exists to embed it. D-017 and D-020 record exactly what moves. O
 
 ## Things that will bite you
 
-- **The spike has still not been run, and more now rests on it.** `fake-registry.ts` implements the three behaviours the whole tool layer assumes. If a browser disagrees with any of them, that file is wrong and every director test is measuring the wrong thing. Its docstring says so; do not let that stay theoretical.
+- **The registry is not empty at the ending once the notepad exists** (D-024). Aborting a signal does not remove a *declaratively* registered tool; its lifetime is its form element's. `endSession()` must remove the notepad form from the DOM as well, or the game's last beat lands on a registry holding one tool. Verified, and invisible until the demo.
+- **`execute` takes one argument and no `AbortSignal`** in Chrome 151, reversing D-007. The plumbing is kept, typed optional and documented as unimplemented (D-024). Do not write anything that depends on a signal arriving.
+- **A host invocation delivers input as an object; the page-side `executeTool` helper wants a JSON string** (D-024). The game is only ever host-invoked, so reading `input.foo` is correct. The benchmark harness, when it drives tools directly, will have to serialise.
 - **`describe_chamber` must answer every phase, not just the chambers.** It threw `E_NO_SESSION` for `FINALE` on the first pass, which the reducer's idempotent `start` path would have surfaced as a lie. An agent that has lost the thread needs a next action, not a diagnosis.
 - **A read-only tool must not take the semaphore** (D-019). Blocking a look behind a turning dial returns `E_BUSY` for a call that was always safe, and teaches an agent to stop calling `get_status` under pressure, which is exactly when the briefing tells it to.
 - **Read-only calls are not in the session log.** Deliberate (D-019), and it means "did the agent read the manual before acting" is not yet measurable. The benchmark's author should read that entry, not discover the gap.
@@ -81,7 +86,6 @@ Once the client exists to embed it. D-017 and D-020 record exactly what moves. O
 - **Latency is the gap between calls, not a call's own duration** (D-010). The director's own timing is the client's view for the action log; the number the game derives from is server-side.
 - **The possible-worlds proof is scoped, deliberately** (D-009). If a chamber fails it, the chamber is wrong, not the test.
 - **`PERCEIVED_BY` must never be forked.** One definition, three consumers.
-- **`execute` takes two arguments**, `(input, { signal })` (D-007). The `AbortSignal` is now genuinely used: it reaches `fetch`, and an abort is the one thing `sessionClient` re-throws.
 - **A `GameError` thrown out of `reduce()` discards everything that call settled.** A refusal that has state to persist has to come back as a normal `ReduceResult`, not a throw.
 - **A Durable Object alarm must never be the only place a rule lives** (D-018). Derive from a stored timestamp first.
 - **The failure card quotes courses of action, not consistent worlds** (D-018). Chamber 0: six worlds, three actions, 1.58 bits.
@@ -99,8 +103,8 @@ Once the client exists to embed it. D-017 and D-020 record exactly what moves. O
 
 | Item | Owner | Note |
 |---|---|---|
-| Spike results | Human with a WebMCP browser | Now blocking verification of a layer that is already built, not just its design. |
-| A real agent session | Human | Everything needed for one exists. This is the first time that has been true. |
+| Spike in ChatGPT's in-app browser | Human | The only thing keeping `ARCHIVE_ORIGIN` at `same`. Chrome already passes cross-origin delegation. |
+| A real agent session | Human | Everything needed for one exists. Doc 11 sections 6 and 7 stay empty until a model meets the page. |
 | Playtesters | Human | Doc 08 section 0.1 wants six. The only task that does not parallelise. |
 | Repo made public | Human | Deliberately deferred to just before the deadline. |
 | Doc 03 §10 wording fix | Whoever writes submission copy | It claims "server-generated ID"; the real guarantee is zero PII (D-023). Say what is true. |

@@ -7,12 +7,18 @@
  * `apps/game` may reference `modelContext`, and a grep for it that returns
  * more than this file is a defect.
  *
- * The three behaviours everything downstream assumes, and where they are
- * verified: `AbortSignal` teardown really removes a tool, `toolchange` really
- * fires when the registry drains to empty, and `execute` takes two arguments
- * with the second carrying an `AbortSignal` (D-007). All three are exercised
- * live by `apps/spike`, and the results belong in doc 11 with a browser
- * version beside them.
+ * Three behaviours everything downstream assumes were exercised live by
+ * `apps/spike` on 2026-08-28 against Chrome 151 (doc 11 sections 1 and 2).
+ * Two hold: `AbortSignal` teardown really removes a tool, and `toolchange`
+ * really fires when the registry drains to zero. The third does not.
+ * `execute` receives **one** argument, an input object, and no
+ * `ToolExecuteCallbackOptions` and therefore no `AbortSignal`, which reverses
+ * what D-007 read out of the IDL. See D-024.
+ *
+ * One caveat that shapes the ending: a tool registered **declaratively**, by
+ * a form's `toolname` attribute, is not removed by aborting a signal. Its
+ * lifetime is the element's, so it leaves the registry when the form leaves
+ * the DOM. Anything that needs the registry genuinely empty has to do both.
  *
  * **No function here throws when WebMCP is absent.** Graceful degradation is a
  * hard requirement, not a nicety: for some judges the gate screen is the whole
@@ -25,7 +31,17 @@ export interface ToolResult {
   readonly content: readonly { readonly type: "text"; readonly text: string }[];
 }
 
-/** The second argument to `execute`, whose `AbortSignal` is real and is used. */
+/**
+ * The second argument to `execute`, per the draft IDL's
+ * `ToolExecuteCallbackOptions`.
+ *
+ * **Chrome 151 does not pass it** (doc 11 section 2, verified twice: through
+ * the page-side `executeTool` helper and through a real host invocation).
+ * Every field is therefore optional and every consumer must treat the whole
+ * argument as absent. It is declared rather than deleted because the IDL
+ * specifies it, ChatGPT's in-app browser is a second target and has not been
+ * tested, and an optional parameter nobody passes costs nothing (D-024).
+ */
 export interface ExecuteContext {
   readonly signal?: AbortSignal;
 }
@@ -54,6 +70,13 @@ export interface RegisteredTool {
     readonly readOnlyHint?: boolean;
     readonly untrustedContentHint?: boolean;
   };
+  /**
+   * Called with the input object when an agent invokes the tool. Input
+   * arrives as a plain object on the host path, which is the only path the
+   * game uses; the page-side `executeTool` testing helper instead requires a
+   * JSON string (doc 11 section 2). Anything driving tools directly, such as
+   * the benchmark harness, has to serialise.
+   */
   execute(input: Record<string, unknown>, context?: ExecuteContext): Promise<ToolResult>;
 }
 

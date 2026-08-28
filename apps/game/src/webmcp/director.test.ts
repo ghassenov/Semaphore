@@ -220,7 +220,11 @@ describe("instrumentation", () => {
     expect(text).toContain("try the call again");
   });
 
-  it("passes the host's AbortSignal through, and reports a cancellation", async () => {
+  // Chrome 151 calls `execute` with one argument and no signal (doc 11 §2,
+  // D-024), so this drives the branch by passing a signal directly rather
+  // than pretending a browser would. It guards the plumbing, not a behaviour
+  // any tested browser exhibits today.
+  it("re-throws an abort and reports it as a cancellation, when a signal is given", async () => {
     const controller = new AbortController();
     vi.spyOn(globalThis, "fetch").mockImplementation((_url, init) => {
       const signal = (init as RequestInit | undefined)?.signal;

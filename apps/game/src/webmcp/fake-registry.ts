@@ -4,12 +4,23 @@
  *
  * It implements the three behaviours the game rests on and nothing else:
  * `registerTool` honours the `AbortSignal`, aborting removes the tool, and
- * `toolchange` fires on both. Those are exactly the behaviours `apps/spike`
- * exists to verify in a real browser, and this file is what lets the *logic*
- * built on top of them be tested without one. If the spike finds the browser
- * disagrees with any of the three, this file is wrong and the tests around it
- * are measuring the wrong thing - which is the honest place for that risk to
- * sit, and it is written down here rather than assumed.
+ * `toolchange` fires on both. `apps/spike` verified all three against Chrome
+ * 151 on 2026-08-28 (doc 11 sections 1 and 2), so this fake is now known to
+ * agree with a real browser on the behaviour it models rather than merely
+ * assumed to.
+ *
+ * Two things it deliberately does **not** model, both found by that same run.
+ *
+ * A real `execute` is called with one argument. This fake passes a second
+ * only when a caller hands `call()` a signal, which no browser does today;
+ * that path exists to drive the director's cancellation branch directly. See
+ * D-024 for why the branch is kept.
+ *
+ * A declaratively registered tool - one a form's `toolname` attribute created
+ * - does not leave a real registry when a signal aborts, only when the form
+ * leaves the DOM. There are no forms here, so nothing in this file can catch
+ * a regression in that; `ToolDirector.endSession` carries the requirement in
+ * its own docstring instead.
  *
  * Shipped in `src/` rather than beside one test because both the director's
  * tests and the budget tests install it, and because a fake that drifts from
@@ -87,7 +98,10 @@ export class FakeRegistry extends EventTarget {
   ): Promise<string> {
     const tool = this.#tools.get(name);
     if (!tool) throw new Error(`No tool named ${name} is registered`);
-    const result = (await tool.execute(input, signal ? { signal } : {})) as {
+    // One argument unless a signal was explicitly asked for, which is what
+    // Chrome 151 actually does. Passing `{}` unconditionally would make a
+    // tool that reads `context.signal` look supported when it is not.
+    const result = (await (signal ? tool.execute(input, { signal }) : tool.execute(input))) as {
       content?: { text?: string }[];
     };
     return result.content?.[0]?.text ?? "";
