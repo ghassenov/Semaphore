@@ -546,3 +546,70 @@ Option 1. Option 3 was rejected outright: it puts a solution-adjacent derivation
 **The scale is per-room, deliberately.** `meterFill` normalises against the largest reading seen in the current chamber rather than a fixed maximum. The Airlock opens at log2(3) = 1.58 bits and the Signal Room at 10.93; on a fixed scale the Airlock would read as permanently near-empty and teach the player nothing. The label stays REMAINING AMBIGUITY, because the server cannot hear the pair talk and the meter therefore does not move when PILOT merely explains something (doc 02 section 5).
 
 **Result.** Verified live: 1.58 bits and 3 courses of action on entering the Airlock, dropping to 1.00 bits and 2 after a wrong lever eliminates a world, and 10.93 bits on arrival in the Signal Room.
+
+---
+
+### D-028 The notepad is declarative, and the ending needs two mechanisms
+
+**Date.** 2026-08-28
+
+**Decision.** `write_note` is a real `<form>` carrying `toolname`, created and owned by `ToolDirector`. `read_note` is imperative and rides the session tier. Notes live in the Durable Object's session state and ride every pushed frame. `endSession()` and `#enterFinale()` both remove the form element as well as aborting controllers.
+
+**The rule the pair of them demonstrates**, which is doc 03 section 8's and is the project's own contribution rather than something the spec says:
+
+> Declarative for a tool that is a form the human can also submit, where agent and human do the same thing through the same affordance. Imperative for a tool that is pure agent capability, where the agent does something the human structurally cannot.
+
+`write_note` is on the first side: PILOT types into the textarea and presses the button, KEEPER invokes the tool and the host submits the same form, and `SubmitEvent.agentInvoked` is the only thing that tells them apart. `read_note` is on the second, and that is the rule being applied rather than an inconsistency: reading the pad is not a submission. PILOT reads it by looking at the wall, which is not an affordance an agent can share.
+
+**Where the state lives.** Server-side, which was not obvious. Three reasons that are the same reason: the pad is the only in-game record of what the pair actually said to each other, which makes it the most valuable thing the session log carries for the benchmark; the replay viewer needs it or the pad reads empty on playback; and a client-side pad is lost on a reload, which happens to a pair fifteen minutes into a session.
+
+**Two things it deliberately does not do.** It does not update `lastRespondedAtMs`, so notes never enter the gap sample Chamber III's stamina window derives from (D-010): a note is the pair talking rather than the agent acting, and folding notes in would deflate the median every time they communicated well. And the server does not verify the author, because it cannot: the client asserts it from `agentInvoked`. The pad is a shared scratchpad rather than a puzzle surface, so the worst a forged author buys is a line in the wrong colour, and an unrecognised value is attributed to PILOT because a human hand is the safer default to show.
+
+**The ending, which is the part that mattered.** D-024 found that aborting a signal does not remove a declaratively registered tool: its lifetime is its element's. `endSession()` aborted three controllers and nothing else, so the moment the notepad existed the game's last beat would have landed on a registry holding exactly one tool - the worse failure, because it looks almost right. The director now owns the element and removes it, and the two halves are both load-bearing: without the abort the registry keeps eleven tools, without the removal it keeps one.
+
+`fake-registry.ts` now models this, unioning imperative tools with every `form[toolname]` in the document and firing `toolchange` on a `MutationObserver`, so the claim is a CI test rather than a docstring. That needed a DOM, so `happy-dom` joins the dev dependencies for the one test file that uses it.
+
+**Result.** Verified live in Chrome 151 across a full session: `getTools()` returns zero after `open_the_door` and no form remains in the document. A staleness bug surfaced on the way and is fixed here too: the view socket now drives `applyState`, because a chamber deadlocked by the Durable Object's alarm produces a pushed frame and no response at all, and without it the registry keeps `press_key` on a room that cannot answer.
+
+---
+
+### D-029 The art is authored as pixels in source, and the glyphs are load-bearing
+
+**Date.** 2026-08-28
+
+**Decision.** Sprites are arrays of strings in `apps/game/src/render/sprites.ts`, one character per pixel, mapped to the locked palette and turned into textures at boot with `putImageData`. No asset files, no loader, no third-party art.
+
+**Options considered.**
+1. Source a free pixel-art pack and adapt it.
+2. Author PNGs and load them through Phaser's loader.
+3. Author the pixels in TypeScript.
+
+Option 3, on three grounds. **The palette cannot drift**: a character maps to a `PALETTE` key, so a fifteenth colour cannot arrive through an image editor without passing this log first, and an imported PNG can hold any colour it likes with nothing to notice. **It costs nothing**: no requests, no atlas, a few kilobytes of source against a budget Phaser has already spent 358KB of. **The provenance is clean**: the submission is MIT-licensed and every pixel was authored in one file, so there is no third-party licence to track, attribute, or get wrong.
+
+**The glyphs are not decoration.** This is the part worth recording. The greybox drew each glyph as its *name* - a lever captioned "spiral" - and that quietly deleted the Airlock and most of the Signal Room, because reading a label aloud is not describing a shape. The whole chamber is PILOT getting a shape across a gap to a partner holding a table of names. So the twelve glyphs are drawn, the name appears nowhere on PILOT's side, and the pieces carry the lever's *position* and the key's *number* instead, which is what KEEPER can actually be told to act on.
+
+`wave` and `knot` are deliberately alike at a glance, honouring `confusableWith` in the chamber's glyph table: a good agent asks a clarifying question there and a bad one guesses, and the benchmark measures the difference. `sprites.test.ts` asserts they overlap substantially without being the same drawing, so the pair cannot drift apart and quietly make the chamber easier.
+
+**Result.** 503 tests. The bodies are 16x24, which reads as a person rather than a mascot (doc 06 section 3); PILOT is bone rather than amber, because the human is not a fact only the human can perceive and painting them in the channel colour would make the legend lie.
+
+---
+
+### D-030 The greybox playtest, run as a scripted full session
+
+**Date.** 2026-08-28
+
+**What was done.** A driver plays a complete session against the live client in Chrome 151: KEEPER acts only through registered tools, PILOT reads only the pushed view feed, and the Blind Panel's wiring is discovered by experiment rather than read from the parameters. It finishes in about seventeen seconds and screenshots every beat.
+
+This is the solvability proof as well as the playtest. If it cannot finish, the chambers are not solvable from the information the two parties actually hold, which is a claim the possible-worlds proof does not make: that one shows each chamber is *underdetermined* for KEEPER alone, not that a pair can get out.
+
+**What it found.**
+
+The last frame of the game read **"NO ROOM HERE"**. Accurate, and it reads as a rendering fault at exactly the moment the game should be landing. Every roomless phase now says what is happening; `ESCAPED` says "THE DOOR IS OPEN".
+
+The Blind Panel announced **"1 CLICKS REGISTERED"**. The count is puzzle-critical in that room - it is how KEEPER learns a linkage hit its bound - so the line carrying it should not read like a placeholder.
+
+The CONCORD meter showed **the previous room's ambiguity** for the couple of seconds after a chamber change, because the route is polled. 1.58 bits in the Signal Room is not a stale number, it is a wrong one; a reading whose `chamber` does not match the current room is now discarded rather than drawn.
+
+Three layout collisions, all one cause and all invisible to the tests that existed: a caption is centred under its piece and is routinely wider than it, so the caption is what collides with the next piece, runs past the grate, or falls out of the room band. The tests now measure caption extents.
+
+**What it cannot do.** It cannot tell us whether the game is *fun*, whether the glyph vocabulary survives a cold player's description, or whether the Signal Room's vandalised page actually fools anybody. Doc 08 section 0.1 wants six human playtesters and still does. What this buys is that they will not spend their session finding "1 CLICKS".
