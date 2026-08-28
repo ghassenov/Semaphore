@@ -179,6 +179,45 @@ export class SessionClient {
       return null;
     }
   }
+
+  /**
+   * The CONCORD meter's feed, polled by the HUD rather than pushed.
+   *
+   * Measuring it enumerates every world consistent with what KEEPER knows,
+   * which for the Blind Panel is 384 candidates each replaying the rotation
+   * history. That is fine a few times a minute on demand and absurd on every
+   * socket frame, so it is a route of its own (D-026).
+   *
+   * Null on any failure, including the pre-session 409, because a meter that
+   * cannot be measured should read as unmeasured rather than as zero. Nothing
+   * is announced from here: the route carries no machine state, deliberately,
+   * so that polling it can never move the tool registry.
+   */
+  async concord(signal?: AbortSignal): Promise<ConcordReport | null> {
+    try {
+      const response = await fetch(`${this.#base}/concord`, signal ? { signal } : {});
+      if (!response.ok) return null;
+      return (await response.json()) as ConcordReport;
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") throw err;
+      return null;
+    }
+  }
+}
+
+/**
+ * What the CONCORD route answers.
+ *
+ * Every field is null outside a chamber. `bits` is `log2(actions)` rather than
+ * `log2(worlds)`: worlds that differ only in ways that do not change the
+ * correct action are ambiguity that costs the pair nothing, and counting them
+ * would flatter the number.
+ */
+export interface ConcordReport {
+  readonly chamber: ChamberId | null;
+  readonly bits: number | null;
+  readonly worlds: number | null;
+  readonly actions: number | null;
 }
 
 /** `/status`, which carries the summary plus the numbers a re-orienting agent wants. */

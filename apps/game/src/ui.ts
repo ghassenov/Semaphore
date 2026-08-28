@@ -1,30 +1,20 @@
 /**
- * The page, in plain DOM, until the Phaser client replaces it.
+ * The DOM around the canvas: the gate screen, and the station's page shell.
  *
  * Two surfaces live here: the **gate screen**, shown to a browser with no
- * WebMCP, and the **operator console**, which is PILOT's side of the game
- * plus an honest readout of the tool registry.
+ * WebMCP, and the **station shell**, which is the element the Phaser canvas
+ * mounts into plus the handful of controls a canvas is the wrong surface for.
  *
  * **Nothing here renders a puzzle fact, and nothing here may start to.**
  * The client-side rule (see this app's CLAUDE.md) is that puzzle-critical
  * visuals go to canvas, never to DOM, because a DOM text node holding a glyph
- * is a text node an agent with page access can scrape. Everything this file
- * prints is machine state (phase, chamber, timer) or registry state (tool
- * names), both of which are `SHARED` by construction and neither of which
- * tells anyone which lever carries the spiral. When the chambers get their
- * real rendering, it goes on a canvas and not here.
- *
- * The console is scaffolding with a job, not a placeholder: PILOT genuinely
- * does act in this game (gripping the release bar arms the Concord Lock,
- * resetting a deadlocked chamber, leaving the Archive), and none of those are
- * tools, so without these controls a session cannot finish. Phase 1.4 moves
- * them into the room; the calls they make do not change.
+ * is a text node an agent with page access can scrape. What remains in the DOM
+ * is the starter prompt (public copy), and buttons whose labels name actions
+ * rather than facts. The view feed, the manifest and the activity log are all
+ * drawn by `ChamberScene`.
  */
 
-import type { PilotView } from "@semaphore/protocol";
-import type { SessionClient, StateSummary } from "./net/sessionClient.js";
-import { listToolNames, onToolChange } from "./webmcp/adapter.js";
-import type { CallRecord } from "./webmcp/director.js";
+import type { SessionClient } from "./net/sessionClient.js";
 
 const STARTER_PROMPT =
   "You are KEEPER, maintenance intelligence of a derelict signal station. You cannot " +
@@ -138,30 +128,45 @@ export function renderGate(root: HTMLElement): void {
   root.append(main);
 }
 
-/** Everything the console needs to drive PILOT's half of the session. */
-export interface ConsoleDeps {
+/** Everything the DOM shell needs to drive PILOT's half of the session. */
+export interface ShellDeps {
   readonly client: SessionClient;
-  /** Called after PILOT acts, so the caller can decide what to do with failures. */
+  /** Called after PILOT acts, so the caller can put the answer on the canvas. */
   readonly onNote: (line: string) => void;
 }
 
-/**
- * PILOT's controls and the registry readout.
- *
- * The manifest list is rendered from a real `toolchange` listener reading an
- * actual `getTools()` call, never from a parallel record of what was just
- * registered (doc 03 section 4.2). That is the whole point: if a registration
- * silently fails, this list shows the truth and the bug gets found.
- */
-export function renderConsole(root: HTMLElement, deps: ConsoleDeps): ConsoleHandle {
-  root.replaceChildren();
-  const main = el("main", { class: "console" });
+/** What `main.ts` gets back: where to mount the canvas, and how to tear down. */
+export interface ShellHandle {
+  /** The element the Phaser canvas is created inside. */
+  readonly stage: HTMLElement;
+  dispose(): void;
+}
 
-  const status = el("dl", { class: "status" });
-  const pilotFacts = el("pre", { class: "facts" }, "waiting for the view feed");
-  let frames = 0;
-  const manifest = el("ul", { class: "manifest" });
-  const log = el("ol", { class: "log" });
+/**
+ * The page around the canvas: the prompt card, the stage, and PILOT's controls.
+ *
+ * Everything that was greybox scaffolding here has moved to the canvas, which
+ * is where the client's own rules require it: the view feed, the manifest and
+ * the activity log are all drawn by `ChamberScene` now. What is left in the
+ * DOM is the two things a canvas is genuinely the wrong surface for.
+ *
+ * The **starter prompt card** has to be selectable and copyable, and a canvas
+ * is neither. It is safe in the DOM because it is public copy that holds no
+ * puzzle fact: an agent scraping it learns the same sentence the player was
+ * told to paste.
+ *
+ * **PILOT's controls** are real buttons because they are the things only the
+ * human can do (doc 03 section 5): gripping the release bar, resetting a
+ * deadlocked chamber, leaving the Archive. None is a tool, however convenient
+ * a `retry_chamber` tool would be, and that is the asymmetry seen from the
+ * human's side. They stay in the DOM for the accessibility they get free
+ * there, and they carry no information: a button label names an action, never
+ * a fact.
+ */
+export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
+  root.replaceChildren();
+  const main = el("main", { class: "station" });
+  const stage = el("div", { class: "stage" });
 
   const card = el("section", { class: "card" });
   card.append(el("h2", {}, "Paste this to your agent"));
@@ -175,18 +180,6 @@ export function renderConsole(root: HTMLElement, deps: ConsoleDeps): ConsoleHand
       "If your agent doesn't respond, ask it: what tools does this page give you?",
     ),
   );
-
-  const controls = el("section", { class: "controls" });
-  controls.append(el("h2", {}, "PILOT"));
-  for (const [label, action] of PILOT_ACTIONS) {
-    const button = el("button", { type: "button" }, label);
-    button.addEventListener("click", () => {
-      void deps.client.post(action).then((response) => {
-        deps.onNote(`${label}: ${response.text}`);
-      });
-    });
-    controls.append(button);
-  }
 
   const begin = el("section", { class: "controls" });
   begin.append(el("h2", {}, "Start the shift"));
@@ -206,89 +199,27 @@ export function renderConsole(root: HTMLElement, deps: ConsoleDeps): ConsoleHand
     begin.append(button);
   }
 
-  main.append(
-    el("p", { class: "eyebrow" }, "SEMAPHORE / OPERATOR CONSOLE"),
-    card,
-    el("h2", {}, "Session"),
-    status,
-    el("h2", {}, "PILOT's view feed"),
-    pilotFacts,
-    el("h2", {}, "KEEPER's manifest"),
-    manifest,
-    begin,
-    controls,
-    el("h2", {}, "Activity"),
-    log,
-  );
-  root.append(main);
-
-  const stopWatching = onToolChange(() => {
-    void refreshManifest();
-  });
-  void refreshManifest();
-
-  async function refreshManifest(): Promise<void> {
-    const names = await listToolNames();
-    manifest.replaceChildren(
-      ...(names.length > 0
-        ? names.map((name) => el("li", {}, name))
-        : [el("li", { class: "empty" }, "empty")]),
-    );
+  const controls = el("section", { class: "controls" });
+  controls.append(el("h2", {}, "PILOT"));
+  for (const [label, action] of PILOT_ACTIONS) {
+    const button = el("button", { type: "button" }, label);
+    button.addEventListener("click", () => {
+      void deps.client.post(action).then((response) => {
+        deps.onNote(`${label}: ${response.text}`);
+      });
+    });
+    controls.append(button);
   }
 
-  return {
-    setState(state: StateSummary) {
-      status.replaceChildren(
-        el("dt", {}, "phase"),
-        el("dd", {}, state.phase),
-        el("dt", {}, "chamber"),
-        el("dd", {}, state.chamber ?? "none"),
-        el("dt", {}, "designation"),
-        el("dd", {}, state.designation ?? "not yet given"),
-        el("dt", {}, "time left"),
-        el(
-          "dd",
-          {},
-          state.remainingMs === null
-            ? "untimed"
-            : `${String(Math.ceil(state.remainingMs / 1000))}s`,
-        ),
-      );
-    },
-    setView(view: PilotView) {
-      // Field *names* only, never values. A glyph, a needle reading or a
-      // cipher offset in a text node would put puzzle-critical information in
-      // the DOM, which this app's rules forbid outright: an agent that can
-      // read the page would then be able to read PILOT's half of the split
-      // and the whole game would collapse. The values are drawn on the canvas
-      // by `ChamberScene`. This line exists to show the feed is alive.
-      frames += 1;
-      const names = Object.keys(view.facts);
-      pilotFacts.textContent =
-        `frame ${String(frames)}: ` +
-        (names.length > 0
-          ? `${String(names.length)} facts (${names.join(", ")})`
-          : "no room to draw");
-    },
-    note(line: string) {
-      log.prepend(el("li", {}, line));
-      while (log.childElementCount > 40) log.lastElementChild?.remove();
-    },
-    recordCall(call: CallRecord) {
-      this.note(`${call.tool} ${call.outcome} in ${String(Math.round(call.durationMs))}ms`);
-    },
-    dispose: stopWatching,
-  };
-}
+  main.append(el("p", { class: "eyebrow" }, "SEMAPHORE"), stage, card, begin, controls);
+  root.append(main);
 
-/** The console's handle: what `main.ts` pushes into it as the session moves. */
-export interface ConsoleHandle {
-  setState(state: StateSummary): void;
-  /** The latest frame off the view socket. PILOT's half of the split. */
-  setView(view: PilotView): void;
-  note(line: string): void;
-  recordCall(call: CallRecord): void;
-  dispose(): void;
+  return {
+    stage,
+    dispose() {
+      root.replaceChildren();
+    },
+  };
 }
 
 /**
