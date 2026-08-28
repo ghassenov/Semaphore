@@ -43,7 +43,19 @@ export interface ChamberWorlds<TState> {
    * scoped proof is a decoration.
    */
   candidates(state: TState): TState[];
-  /** The action that solves the chamber from here, or null once solved. */
+  /**
+   * The correct action from here, or null once solved.
+   *
+   * **For a chamber whose answer is a multi-step plan, this must return the
+   * whole remaining plan, never just the next single step.** `chambers/
+   * signal_room.ts` got this wrong on its first pass: returning only the next
+   * key made every state's action space at most 6-valued (one of six key
+   * ids), so `measure()` reported `log2(6)` bits regardless of how large the
+   * chamber's real plan space was, understating by a wide margin what PILOT
+   * actually has to communicate. Returning the full remaining sequence as one
+   * stable string fixed it. For a chamber whose answer genuinely is one
+   * action (Chamber 0's lever), the two readings coincide and nothing changes.
+   */
   correctAction(state: TState): string | null;
 }
 
