@@ -20,11 +20,18 @@
  *             opens. Re-created for the next room.
  *
  * The last two transitions are the ending. `enterFinale` aborts the session
- * tier as well as the chamber tier and registers exactly one tool, so the
- * registry holds a single entry; `endSession` aborts that, and the registry is
- * empty. That final `toolchange`, with `getTools()` returning nothing, is the
- * last beat of the game, and it is why `open_the_door` exists as a tool rather
- * than as a button.
+ * tier as well as the chamber tier, takes the notepad off the wall, and
+ * registers exactly one tool, so the registry holds a single entry;
+ * `endSession` aborts that, and the registry is empty. That final
+ * `toolchange`, with `getTools()` returning nothing, is the last beat of the
+ * game, and it is why `open_the_door` exists as a tool rather than a button.
+ *
+ * The notepad is the reason the ending needs two mechanisms rather than one.
+ * It is registered declaratively, by a form's attributes, and a declarative
+ * tool does not leave the registry when a signal aborts: its lifetime is its
+ * element's (D-024). So the teardown path aborts controllers *and* removes an
+ * element, and anything that adds a second declarative tool has to do both
+ * too.
  *
  * `applyState` is the only thing that decides when any of that happens, and it
  * decides from the server's own machine state. The client never guesses which
@@ -37,6 +44,7 @@ import { registerTool, type RegisteredTool, type ToolResult } from "./adapter.js
 import { beginShiftTool } from "./tools.entry.js";
 import { persistentTools } from "./tools.persistent.js";
 import { archiveBeatTools, chamberTools, finaleTools } from "./tools.chambers.js";
+import { createNotepadForm } from "./tools.notepad.js";
 import type { GameTool } from "./tool.js";
 
 /** One completed tool execution, as the action log and the benchmark see it. */
@@ -62,6 +70,19 @@ export interface DirectorHooks {
   readonly onCall?: (record: CallRecord) => void;
   /** Fired when the server's machine state moves. Drives the HUD. */
   readonly onState?: (state: StateSummary) => void;
+  /**
+   * Where the notepad form is put when the session tier mounts.
+   *
+   * The director owns the element because a declaratively registered tool's
+   * lifetime *is* its element's lifetime (D-024): whoever owns the tool has to
+   * own the element, and the thing that owns tool lifetimes here is this
+   * class. The page only says where it goes.
+   *
+   * Omitted in the tests, and in a browser with no WebMCP, in which case no
+   * form is created and the registry has one fewer tool - which is the honest
+   * outcome, not a degraded one.
+   */
+  readonly notepadHost?: HTMLElement;
 }
 
 /**
@@ -122,6 +143,14 @@ export class ToolDirector {
   #sessionCtl: AbortController | null = null;
   #chamberCtl: AbortController | null = null;
   #tier: Tier | null = null;
+  /**
+   * Removes the notepad form from the document, or null when there is none.
+   *
+   * Held separately from the controllers because it is not a controller. This
+   * is the whole of D-024's fix: the imperative tiers come down by abort, and
+   * this one tool comes down by leaving the DOM.
+   */
+  #notepadTeardown: (() => void) | null = null;
 
   /** Serialises `applyState`, so two responses landing together cannot double-register. */
   #queue: Promise<void> = Promise.resolve();
@@ -210,8 +239,26 @@ export class ToolDirector {
     if (!this.#sessionCtl) {
       this.#sessionCtl = new AbortController();
       await this.#register(persistentTools(this.client), this.#sessionCtl.signal);
+      // `read_note` came up in that list. `write_note` cannot: it is a form,
+      // and putting the element in the document is the registration. The pad
+      // is the one tool in the game that needs both mechanisms.
+      this.#mountNotepad();
     }
     this.#tier = { kind: "session" };
+  }
+
+  /**
+   * Put the notepad form in the document, which is what registers it.
+   *
+   * Idempotent, and a no-op without a host element. The form is created once
+   * per session and lives across every chamber, because the pad is the pair's
+   * memory and a pad that emptied at each door would be worse than none.
+   */
+  #mountNotepad(): void {
+    if (this.#notepadTeardown || !this.hooks.notepadHost) return;
+    const { form, teardown } = createNotepadForm(this.client);
+    this.hooks.notepadHost.append(form);
+    this.#notepadTeardown = teardown;
   }
 
   /**
@@ -229,34 +276,57 @@ export class ToolDirector {
   /**
    * The last `toolchange` but one. Everything burns off and one tool remains,
    * so the registry an agent sees at the finale holds exactly `open_the_door`.
+   *
+   * The notepad goes here rather than at `endSession`, and that is a design
+   * choice rather than an implementation detail. The finale is the beat where
+   * KEEPER is left holding a single capability, and a pad still on the wall
+   * would make it two. There is also nothing left to write down: the door is
+   * the last thing either of them does.
    */
   async #enterFinale(): Promise<void> {
     this.#entryCtl?.abort();
     this.#chamberCtl?.abort();
     this.#sessionCtl?.abort();
     this.#sessionCtl = null;
+    this.#removeNotepad();
     this.#chamberCtl = new AbortController();
     await this.#register(finaleTools(this.client), this.#chamberCtl.signal);
     this.#tier = { kind: "finale" };
   }
 
   /**
+   * Take the notepad off the wall, which is what unregisters it.
+   *
+   * Idempotent, because the finale removes it and `endSession` removes it
+   * again for the sessions that never reach a finale: a timed-out shift ends
+   * from `FAILED`, not from `FINALE`, and that ending has to drain the
+   * registry just as completely.
+   */
+  #removeNotepad(): void {
+    this.#notepadTeardown?.();
+    this.#notepadTeardown = null;
+  }
+
+  /**
    * The last `toolchange`: the registry drains to empty. Synchronous, because
    * abort is synchronous and the ending should not be able to half-happen.
    *
-   * **Aborting is not sufficient once the notepad exists.** The spike found
-   * that a declaratively registered tool - one a form's `toolname` attribute
-   * created - does not leave the registry when a signal aborts; its lifetime
-   * is the element's (doc 11 section 2, verified 2026-08-28 on Chrome 151).
-   * Removing the form from the DOM does remove it, fires a second
-   * `toolchange`, and leaves `getTools()` genuinely empty. So when Phase 1.4
-   * lands `write_note` as a form, this method must remove that form as well,
-   * or the game's final beat ends on a registry holding one tool.
+   * **Aborting is not sufficient, and this is where that matters.** The spike
+   * found that a declaratively registered tool - one a form's `toolname`
+   * attribute created - does not leave the registry when a signal aborts; its
+   * lifetime is the element's (doc 11 section 2, verified 2026-08-28 on
+   * Chrome 151). Removing the form from the DOM does remove it, fires a
+   * second `toolchange`, and leaves `getTools()` genuinely empty. So this
+   * method aborts every controller *and* removes the notepad, and it would be
+   * wrong with either half missing. Without the abort the registry keeps
+   * eleven tools; without the removal it keeps one, which is the worse bug
+   * because it looks almost right.
    */
   endSession(): void {
     this.#entryCtl?.abort();
     this.#chamberCtl?.abort();
     this.#sessionCtl?.abort();
+    this.#removeNotepad();
     this.#chamberCtl = null;
     this.#sessionCtl = null;
     this.#tier = { kind: "ended" };

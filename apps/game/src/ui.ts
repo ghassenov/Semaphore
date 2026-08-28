@@ -139,6 +139,15 @@ export interface ShellDeps {
 export interface ShellHandle {
   /** The element the Phaser canvas is created inside. */
   readonly stage: HTMLElement;
+  /**
+   * Where the director puts the notepad form.
+   *
+   * A mount point rather than the form itself, because the form is a
+   * declaratively registered tool and its element *is* its registration
+   * (D-024). Only the thing that owns tool lifetimes may create or destroy it,
+   * and that is the director, not this file.
+   */
+  readonly notepadHost: HTMLElement;
   dispose(): void;
 }
 
@@ -211,11 +220,34 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
     controls.append(button);
   }
 
-  main.append(el("p", { class: "eyebrow" }, "SEMAPHORE"), stage, card, begin, controls);
+  // The pad is a real form because a real form is the point (doc 03 section 8),
+  // and a form needs the DOM: a canvas cannot hold a focusable, typable,
+  // screen-reader-navigable control. The canvas draws the pad on the wall with
+  // every line on it; this is the part PILOT types into.
+  const notepadHost = el("section", { class: "controls notepad-host" });
+  notepadHost.append(
+    el("h2", {}, "Notepad"),
+    el(
+      "p",
+      { class: "fallback" },
+      "The one control you and KEEPER share. It writes the same tool your agent calls, " +
+        "and the pad on the wall shows who wrote each line.",
+    ),
+  );
+
+  main.append(
+    el("p", { class: "eyebrow" }, "SEMAPHORE"),
+    stage,
+    card,
+    begin,
+    notepadHost,
+    controls,
+  );
   root.append(main);
 
   return {
     stage,
+    notepadHost,
     dispose() {
       root.replaceChildren();
     },

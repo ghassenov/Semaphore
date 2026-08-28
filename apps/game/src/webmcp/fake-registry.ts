@@ -18,9 +18,15 @@
  *
  * A declaratively registered tool - one a form's `toolname` attribute created
  * - does not leave a real registry when a signal aborts, only when the form
- * leaves the DOM. There are no forms here, so nothing in this file can catch
- * a regression in that; `ToolDirector.endSession` carries the requirement in
- * its own docstring instead.
+ * leaves the DOM. This fake **does** model that, because the game's ending
+ * depends on it: `getTools()` unions the imperatively registered tools with
+ * every `form[toolname]` currently in the document, and a `MutationObserver`
+ * fires `toolchange` when one is added or removed. Aborting a signal cannot
+ * remove a form here any more than it can in Chrome, which is the point.
+ *
+ * Modelling it needs a document, so the tests that exercise the notepad
+ * declare `@vitest-environment happy-dom`. Everything else still runs in bare
+ * Node against the replaced-global path below.
  *
  * Shipped in `src/` rather than beside one test because both the director's
  * tests and the budget tests install it, and because a fake that drifts from
@@ -40,6 +46,24 @@ export interface FakeTool {
  */
 export function installFakeRegistry(): FakeRegistry {
   const registry = new FakeRegistry();
+
+  // In a DOM environment the document is real and has to stay real: the
+  // notepad is an element in it. Attach `modelContext` to the document that is
+  // already there rather than replacing it with a stand-in, and let the
+  // registry watch that document for declaratively registered forms.
+  const existing = (globalThis as { document?: Document }).document;
+  if (existing && typeof existing.createElement === "function") {
+    const host = existing as Document & { modelContext?: unknown };
+    const had = "modelContext" in host;
+    host.modelContext = registry;
+    registry.watchDocument(existing);
+    registry.uninstall = () => {
+      registry.stopWatching();
+      if (!had) delete host.modelContext;
+    };
+    return registry;
+  }
+
   // `defineProperty` rather than assignment: Node defines `globalThis.navigator`
   // as a getter with no setter, so a plain write throws.
   const restoreDocument = define("document", registry.asModelContextHost());
@@ -66,6 +90,8 @@ export class FakeRegistry extends EventTarget {
   /** Every registration this registry ever saw, so a test can assert re-registration. */
   readonly registrations: string[] = [];
   uninstall: () => void = () => {};
+  #doc: Document | null = null;
+  #observer: MutationObserver | null = null;
 
   registerTool(tool: FakeTool, options?: { signal?: AbortSignal }): Promise<void> {
     // An already-aborted signal registers nothing, which is what a real
@@ -81,13 +107,50 @@ export class FakeRegistry extends EventTarget {
     return Promise.resolve();
   }
 
-  getTools(): Promise<readonly { name: string }[]> {
-    return Promise.resolve([...this.#tools.keys()].map((name) => ({ name })));
+  /**
+   * Watch a document for declaratively registered forms.
+   *
+   * A `form[toolname]` in the document *is* a registered tool, so the registry
+   * has to reflect the DOM rather than a list it keeps. The observer is what
+   * turns adding or removing one into a `toolchange`, which is exactly what
+   * the real browser does and what the game's last beat listens for.
+   */
+  watchDocument(doc: Document): void {
+    this.#doc = doc;
+    this.#observer = new MutationObserver(() => {
+      this.dispatchEvent(new Event("toolchange"));
+    });
+    this.#observer.observe(doc.body ?? doc, { childList: true, subtree: true });
   }
 
-  /** The tool names currently registered, in registration order. */
+  stopWatching(): void {
+    this.#observer?.disconnect();
+    this.#observer = null;
+    this.#doc = null;
+  }
+
+  /** Names of every form in the watched document that declares a tool. */
+  #formToolNames(): string[] {
+    if (!this.#doc) return [];
+    return [...this.#doc.querySelectorAll("form[toolname]")]
+      .map((form) => form.getAttribute("toolname") ?? "")
+      .filter((name) => name.length > 0);
+  }
+
+  getTools(): Promise<readonly { name: string }[]> {
+    return Promise.resolve(this.names().map((name) => ({ name })));
+  }
+
+  /**
+   * The tool names currently registered, imperative first.
+   *
+   * The union is the whole point: the two APIs land in one registry and are
+   * indistinguishable in `getTools()` apart from their annotations (doc 11
+   * section 8). A caller cannot tell which half a name came from, and should
+   * not be able to.
+   */
   names(): string[] {
-    return [...this.#tools.keys()];
+    return [...this.#tools.keys(), ...this.#formToolNames()];
   }
 
   /** Call one registered tool the way a host would. */
