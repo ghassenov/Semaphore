@@ -19,12 +19,23 @@ used, one per channel, and the other three are not in this repository:
 
 | Directory | Pack colour | Channel |
 |---|---|---|
-| `shared/` | Neutral | `SHARED`, and every surface neither party owns |
+| `shared/` | Neutral, and Purple desaturated | `SHARED`: both parties perceive it |
 | `pilot/` | Yellow | `VISUAL`: only PILOT perceives it |
 | `keeper/` | Blue | `TACTILE`: only KEEPER perceives it |
 
 Files are the pack's `Separated_Assets`, renamed to the name the game calls the
-thing. The pack's `Full_SpriteSheets` are documentation with labels drawn into
+thing.
+
+One set is modified. The pack has no neutral-coloured *devices*: levers,
+buttons, lamps and doors exist only in the five accent colours, while the
+neutral colour covers the building. Semaphore needs a third device colour,
+because a fact both parties perceive is bone-white and may not wear either
+player's colour. So `shared/`'s devices are the pack's purple ones with the hue
+removed - each converted to luminance and rescaled so its brightest pixel lands
+on the palette's bone - which keeps the artist's shading exactly and changes
+only the thing the game is not free to leave in. Modification is permitted by
+the terms below. `shared/`'s tilesets, walls, box, chest, block and stairs are
+the unmodified neutral originals. The pack's `Full_SpriteSheets` are documentation with labels drawn into
 them and are not shipped. `PuzzleSystem.aseprite`, the editable source, is not
 shipped either.
 
