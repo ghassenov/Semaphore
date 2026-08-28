@@ -20,40 +20,26 @@
  */
 
 import type { PilotView } from "@semaphore/protocol";
+import { ROOM_WIDTH } from "./cutaway.js";
 import type { RenderChannel } from "./palette.js";
 
-/** Native canvas size. Integer scaling only; see `boot.ts`. */
-export const NATIVE_WIDTH = 320;
-export const NATIVE_HEIGHT = 180;
-
 /**
- * The band of the canvas the room owns. The HUD holds the rest.
+ * Every coordinate in this module is **local to one floor**.
  *
- * The room stops well above the floor of the canvas because every piece draws
- * its caption *underneath* itself, and a caption that runs past `ROOM_BOTTOM`
- * lands on whichever HUD panel is there. `rooms.test.ts` holds the pieces to
- * this band and `CAPTION_HEIGHT` is the margin the captions need inside it.
+ * `(0, 0)` is the top-left of the floor's interior and `ROOM_WIDTH` is how
+ * wide that interior is; the scene translates by wherever `cutaway.ts` put the
+ * floor. That is what lets the same four room layouts be drawn at a floor's
+ * working height in one frame and inside a collapsed strip in the next,
+ * without a single chamber knowing where it sits in the building.
  */
-export const ROOM_TOP = 24;
-export const ROOM_BOTTOM = 120;
 
 /** Room for one 8px caption line under the lowest piece in the room. */
 export const CAPTION_HEIGHT = 10;
 
-/** The floor line PILOT stands on, and the grate KEEPER is behind. */
-export const FLOOR_Y = ROOM_BOTTOM - CAPTION_HEIGHT - 4;
-export const GRATE_X = 252;
-
-/**
- * The rightmost pixel a room's own furniture may occupy.
- *
- * Everything from `GRATE_X` rightward belongs to KEEPER, and the grate between
- * them is the relationship: the pair can see each other and cannot reach each
- * other. A lever drawn past this line is a lever PILOT could walk to, which
- * would quietly hand the human a mechanism the design gives only to the agent.
- * `rooms.test.ts` holds every chamber to it.
- */
-export const ROOM_RIGHT = GRATE_X - 4;
+/** The floor line PILOT stands on, given the floor's interior height. */
+export function floorLine(height: number): number {
+  return height - CAPTION_HEIGHT - 4;
+}
 
 /**
  * One drawn rectangle, with everything needed to colour and caption it.
@@ -153,7 +139,8 @@ function record(
  * amber is not decoration: it is the statement that this is the half only
  * PILOT holds.
  */
-function airlock(facts: Readonly<Record<string, unknown>>): RoomLayout {
+function airlock(facts: Readonly<Record<string, unknown>>, height: number): RoomLayout {
+  const floor = floorLine(height);
   const glyphByLever = record(facts, "glyphByLever");
   const pulled = new Set(list(facts, "pulled").map(String));
   const doorOpen = bool(facts, "doorOpen");
@@ -162,7 +149,7 @@ function airlock(facts: Readonly<Record<string, unknown>>): RoomLayout {
   const pieces: Piece[] = [
     {
       x: 128,
-      y: ROOM_TOP + 2,
+      y: 2,
       w: 64,
       h: 34,
       channel: "shared",
@@ -178,7 +165,7 @@ function airlock(facts: Readonly<Record<string, unknown>>): RoomLayout {
     const x = 46 + (levers.length > 1 ? (span / (levers.length - 1)) * index : span / 2);
     pieces.push({
       x: Math.round(x) - 9,
-      y: FLOOR_Y - 30,
+      y: floor - 30,
       w: 18,
       h: 30,
       channel: "pilot",
@@ -207,7 +194,8 @@ function airlock(facts: Readonly<Record<string, unknown>>): RoomLayout {
  * puzzle, and leaving it undrawn would remove the only cue the human has that
  * their partner is reading something false.
  */
-function signalRoom(facts: Readonly<Record<string, unknown>>): RoomLayout {
+function signalRoom(facts: Readonly<Record<string, unknown>>, height: number): RoomLayout {
+  const floor = floorLine(height);
   const glyphByKey = record(facts, "glyphByKey");
   const pressed = new Set(list(facts, "pressedSequence").map(String));
   const strikes = num(facts, "strikes");
@@ -215,7 +203,9 @@ function signalRoom(facts: Readonly<Record<string, unknown>>): RoomLayout {
 
   const pieces: Piece[] = keys.map((key, index) => ({
     x: 46 + (index % 3) * 46,
-    y: ROOM_TOP + 8 + Math.floor(index / 3) * 40,
+    // Two rows sitting on the floor rather than hanging from the ceiling, so
+    // the bank stays put whatever height the floor is given.
+    y: floor - 62 + Math.floor(index / 3) * 34,
     w: 24,
     h: 24,
     channel: "pilot" as const,
@@ -232,7 +222,7 @@ function signalRoom(facts: Readonly<Record<string, unknown>>): RoomLayout {
   for (let i = 0; i < 3; i += 1) {
     pieces.push({
       x: 190 + i * 10,
-      y: ROOM_TOP + 4,
+      y: floor - 78,
       w: 6,
       h: 6,
       channel: "shared",
@@ -248,7 +238,7 @@ function signalRoom(facts: Readonly<Record<string, unknown>>): RoomLayout {
     // the two captions read as one string.
     pieces.push({
       x: 190,
-      y: ROOM_TOP + 26,
+      y: floor - 62,
       w: 56,
       h: 18,
       channel: "pilot",
@@ -284,7 +274,8 @@ const GAUGE_HEIGHT = 48;
  * the dial bank without any indication of which gauge it drives is the human
  * half of that puzzle, so the dial pieces deliberately carry no value.
  */
-function blindPanel(facts: Readonly<Record<string, unknown>>): RoomLayout {
+function blindPanel(facts: Readonly<Record<string, unknown>>, height: number): RoomLayout {
+  const floor = floorLine(height);
   const values = record(facts, "gaugeValues");
   const targets = record(facts, "targets");
   const gauges = Object.keys(values).sort((a, b) => Number(a) - Number(b));
@@ -301,7 +292,7 @@ function blindPanel(facts: Readonly<Record<string, unknown>>): RoomLayout {
     // the same otherwise, and they mean very different things.
     pieces.push({
       x,
-      y: ROOM_TOP + 6,
+      y: 6,
       w: 20,
       h: GAUGE_HEIGHT,
       channel: "pilot",
@@ -311,7 +302,7 @@ function blindPanel(facts: Readonly<Record<string, unknown>>): RoomLayout {
     if (filled > 0) {
       pieces.push({
         x,
-        y: ROOM_TOP + 6 + (GAUGE_HEIGHT - filled),
+        y: 6 + (GAUGE_HEIGHT - filled),
         w: 20,
         h: filled,
         channel: "pilot",
@@ -320,7 +311,7 @@ function blindPanel(facts: Readonly<Record<string, unknown>>): RoomLayout {
     }
     pieces.push({
       x: x + 2,
-      y: FLOOR_Y - 18,
+      y: floor - 18,
       w: 16,
       h: 16,
       channel: "keeper",
@@ -351,7 +342,8 @@ function blindPanel(facts: Readonly<Record<string, unknown>>): RoomLayout {
  * parties at once under time pressure, so it is wide, shared, and drawn last
  * where nothing can overlap it.
  */
-function concordLock(facts: Readonly<Record<string, unknown>>): RoomLayout {
+function concordLock(facts: Readonly<Record<string, unknown>>, height: number): RoomLayout {
+  const floor = floorLine(height);
   const offset = num(facts, "cipherOffset");
   const bolts = num(facts, "boltsAligned");
   const armed = bool(facts, "armed");
@@ -362,7 +354,7 @@ function concordLock(facts: Readonly<Record<string, unknown>>): RoomLayout {
   const pieces: Piece[] = [
     {
       x: 24,
-      y: ROOM_TOP + 8,
+      y: 8,
       w: 48,
       h: 48,
       channel: "pilot",
@@ -374,7 +366,7 @@ function concordLock(facts: Readonly<Record<string, unknown>>): RoomLayout {
   for (let i = 0; i < 3; i += 1) {
     pieces.push({
       x: 84 + i * 34,
-      y: ROOM_TOP + 18,
+      y: 18,
       w: 26,
       h: 26,
       channel: "shared",
@@ -385,7 +377,7 @@ function concordLock(facts: Readonly<Record<string, unknown>>): RoomLayout {
 
   pieces.push({
     x: 186,
-    y: ROOM_TOP + 8,
+    y: 8,
     w: 60,
     h: 20,
     channel: "shared",
@@ -396,11 +388,11 @@ function concordLock(facts: Readonly<Record<string, unknown>>): RoomLayout {
   // The grip clock. Full width so it cannot be missed, and it collapses to
   // nothing rather than disappearing, because a bar that vanishes reads as a
   // rendering fault at exactly the moment nobody can afford to wonder.
-  const track = ROOM_RIGHT - 28;
+  const track = ROOM_WIDTH - 40;
   const held = window_ > 0 ? Math.max(0, Math.min(1, remaining / window_)) : 0;
   pieces.push({
     x: 28,
-    y: FLOOR_Y - 14,
+    y: floor - 14,
     w: track,
     h: 10,
     channel: "shared",
@@ -410,7 +402,7 @@ function concordLock(facts: Readonly<Record<string, unknown>>): RoomLayout {
   if (armed && held > 0) {
     pieces.push({
       x: 28,
-      y: FLOOR_Y - 14,
+      y: floor - 14,
       w: Math.max(1, Math.round(track * held)),
       h: 10,
       channel: "shared",
@@ -449,7 +441,7 @@ const PHASE_TITLES: Readonly<Record<string, string>> = {
  * Null rather than an empty layout, so a caller has to decide what to draw in
  * the Archive instead of silently rendering a room with no furniture in it.
  */
-export function roomLayout(view: PilotView): RoomLayout | null {
+export function roomLayout(view: PilotView, height: number): RoomLayout | null {
   const { facts, chamber } = view;
   // An empty `facts` is the server saying there is no room here, whatever
   // `machine.chamber` still names (D-025). Trusting the chamber alone would
@@ -457,15 +449,62 @@ export function roomLayout(view: PilotView): RoomLayout | null {
   if (chamber === null || Object.keys(facts).length === 0) return null;
   switch (chamber) {
     case "airlock":
-      return airlock(facts);
+      return airlock(facts, height);
     case "signal_room":
-      return signalRoom(facts);
+      return signalRoom(facts, height);
     case "blind_panel":
-      return blindPanel(facts);
+      return blindPanel(facts, height);
     case "concord_lock":
-      return concordLock(facts);
+      return concordLock(facts, height);
   }
 }
+
+/**
+ * A collapsed floor's silhouette: what the room looks like from the stairwell.
+ *
+ * Deliberately crude and deliberately dim. A strip is twenty-six pixels tall
+ * and its job is to say "this is a room and it is not the one you are in",
+ * so it carries a shape and nothing readable. Anything legible up here would
+ * compete with the floor that actually matters, and in a game where finding
+ * the channel-coded object is the whole task, decoration that competes is not
+ * decoration, it is noise.
+ */
+export const SILHOUETTE: Readonly<Record<string, readonly (readonly [number, number, number])[]>> =
+  {
+    // [x, width, height] per shape, sitting on the strip's floor.
+    airlock: [
+      [40, 10, 12],
+      [70, 10, 12],
+      [100, 10, 12],
+      [150, 40, 16],
+    ],
+    signal_room: [
+      [40, 14, 8],
+      [58, 14, 8],
+      [76, 14, 8],
+      [40, 14, 8],
+      [120, 50, 14],
+    ],
+    blind_panel: [
+      [40, 8, 16],
+      [54, 8, 12],
+      [68, 8, 18],
+      [82, 8, 10],
+      [120, 44, 8],
+    ],
+    archive: [
+      [40, 34, 18],
+      [86, 12, 10],
+      [130, 40, 14],
+    ],
+    concord_lock: [
+      [40, 18, 18],
+      [70, 12, 12],
+      [88, 12, 12],
+      [106, 12, 12],
+      [150, 46, 20],
+    ],
+  };
 
 /** The HUD's room name, in every phase including the ones with no room. */
 export function roomTitle(view: PilotView): string {

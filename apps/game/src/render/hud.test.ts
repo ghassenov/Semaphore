@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from "vitest";
 import { CHANNEL_MARKER, PALETTE } from "./palette.js";
-import { NATIVE_HEIGHT, ROOM_BOTTOM, ROOM_TOP } from "./rooms.js";
+import { CANVAS, FRAME, SECTION_BOTTOM, SECTION_TOP } from "./cutaway.js";
 import {
   AUDIBLE_HEIGHT,
   AUDIBLE_Y,
@@ -162,10 +162,10 @@ describe("truncate", () => {
 describe("the HUD's vertical budget", () => {
   /** Every band, as a half-open [top, bottom) pair, in drawing order. */
   const bands: readonly (readonly [string, number, number])[] = [
-    ["top bar", 0, METER_Y],
+    ["top bar", FRAME, METER_Y],
     ["meter", METER_Y, METER_Y + METER_HEIGHT],
-    ["meter label", METER_Y + METER_HEIGHT + 1, ROOM_TOP],
-    ["room", ROOM_TOP, ROOM_BOTTOM],
+    ["meter label", METER_Y + METER_HEIGHT + 1, SECTION_TOP],
+    ["section", SECTION_TOP, SECTION_BOTTOM],
     ["audible", AUDIBLE_Y - 1, AUDIBLE_Y + AUDIBLE_HEIGHT + 1],
     ["panels", PANEL_Y, PANEL_Y + LINE_HEIGHT + 2 + LOG_LINES * LINE_HEIGHT],
     ["legend", LEGEND_Y, LEGEND_Y + LINE_HEIGHT],
@@ -182,9 +182,9 @@ describe("the HUD's vertical budget", () => {
     }
   });
 
-  it("fits inside the canvas", () => {
+  it("fits inside the canvas, frame included", () => {
     for (const [name, , bottom] of bands) {
-      expect(bottom, `${name} runs off the canvas`).toBeLessThanOrEqual(NATIVE_HEIGHT);
+      expect(bottom, `${name} runs off the canvas`).toBeLessThanOrEqual(CANVAS - FRAME);
     }
   });
 

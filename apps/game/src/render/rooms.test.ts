@@ -14,18 +14,16 @@
 import { describe, expect, it } from "vitest";
 import type { PilotView } from "@semaphore/protocol";
 import { WALL_PAD_WIDTH, WALL_PAD_X, textWidth } from "./hud.js";
-import {
-  CAPTION_HEIGHT,
-  FLOOR_Y,
-  GRATE_X,
-  NATIVE_HEIGHT,
-  NATIVE_WIDTH,
-  ROOM_BOTTOM,
-  ROOM_TOP,
-  interlude,
-  roomLayout,
-  roomTitle,
-} from "./rooms.js";
+import { CANVAS, ROOM_WIDTH } from "./cutaway.js";
+import { CAPTION_HEIGHT, floorLine, interlude, roomLayout, roomTitle } from "./rooms.js";
+
+/**
+ * The height of an active floor in a full session.
+ *
+ * Room layouts are local to their floor now, so every test measures against
+ * the band it was given rather than against a canvas constant.
+ */
+const BAND = 106;
 
 /** A view in a chamber, with whatever facts a test wants in it. */
 function view(over: Partial<PilotView> = {}): PilotView {
@@ -37,6 +35,7 @@ function view(over: Partial<PilotView> = {}): PilotView {
     retries: 0,
     facts: {},
     notes: [],
+    mode: "full",
     ...over,
   };
 }
@@ -80,8 +79,10 @@ describe("roomLayout", () => {
     // The Archive keeps `machine.chamber` set so the machine knows which room
     // was last entered (D-025). Drawing from that alone would put the Blind
     // Panel behind the Archive's ghost monitor.
-    expect(roomLayout(view({ phase: "ARCHIVE", chamber: "blind_panel", facts: {} }))).toBeNull();
-    expect(roomLayout(view({ phase: "LOBBY", chamber: null, facts: {} }))).toBeNull();
+    expect(
+      roomLayout(view({ phase: "ARCHIVE", chamber: "blind_panel", facts: {} }), BAND),
+    ).toBeNull();
+    expect(roomLayout(view({ phase: "LOBBY", chamber: null, facts: {} }), BAND)).toBeNull();
   });
 
   it("keeps every piece inside the band the room owns", () => {
@@ -91,28 +92,28 @@ describe("roomLayout", () => {
       ["blind_panel", BLIND_FACTS],
       ["concord_lock", CONCORD_FACTS],
     ] as const) {
-      const layout = roomLayout(view({ chamber, facts }));
+      const layout = roomLayout(view({ chamber, facts }), BAND);
       expect(layout, chamber).not.toBeNull();
       for (const piece of layout?.pieces ?? []) {
         expect(piece.x, `${chamber} left`).toBeGreaterThanOrEqual(0);
-        expect(piece.x + piece.w, `${chamber} right`).toBeLessThanOrEqual(NATIVE_WIDTH);
-        expect(piece.y, `${chamber} top`).toBeGreaterThanOrEqual(ROOM_TOP);
-        expect(piece.y + piece.h, `${chamber} bottom`).toBeLessThanOrEqual(ROOM_BOTTOM);
-        expect(piece.y + piece.h, `${chamber} fits the canvas`).toBeLessThanOrEqual(NATIVE_HEIGHT);
+        expect(piece.x + piece.w, `${chamber} right`).toBeLessThanOrEqual(ROOM_WIDTH);
+        expect(piece.y, `${chamber} top`).toBeGreaterThanOrEqual(0);
+        expect(piece.y + piece.h, `${chamber} bottom`).toBeLessThanOrEqual(BAND);
       }
     }
   });
 
-  it("leaves KEEPER's side of the grate clear of room furniture", () => {
-    // The grate is the relationship: they can see each other and cannot reach
-    // each other. A lever drawn behind it would be a lever PILOT could walk to.
+  it("leaves the machine deck clear of room furniture", () => {
+    // The deck is the relationship: they can see each other through the grate
+    // and reach each other nowhere. A lever drawn past the room's own width
+    // would be a mechanism PILOT could walk to.
     for (const [chamber, facts] of [
       ["airlock", AIRLOCK_FACTS],
       ["signal_room", SIGNAL_FACTS],
       ["blind_panel", BLIND_FACTS],
       ["concord_lock", CONCORD_FACTS],
     ] as const) {
-      const layout = roomLayout(view({ chamber, facts }));
+      const layout = roomLayout(view({ chamber, facts }), BAND);
       for (const piece of layout?.pieces ?? []) {
         // Captions are centred under their piece and are routinely wider than
         // it, so the caption is what actually reaches the grate first.
@@ -120,8 +121,8 @@ describe("roomLayout", () => {
           piece.label === undefined
             ? piece.x + piece.w
             : Math.max(piece.x + piece.w, piece.x + piece.w / 2 + textWidth(piece.label) / 2);
-        expect(reach, `${chamber}: ${String(piece.label)} clears the grate`).toBeLessThanOrEqual(
-          GRATE_X,
+        expect(reach, `${chamber}: ${String(piece.label)} reaches the deck`).toBeLessThanOrEqual(
+          ROOM_WIDTH,
         );
       }
     }
@@ -129,7 +130,7 @@ describe("roomLayout", () => {
 
   describe("the airlock", () => {
     it("gives every lever the pilot channel, because only PILOT sees a glyph", () => {
-      const layout = roomLayout(view({ chamber: "airlock", facts: AIRLOCK_FACTS }));
+      const layout = roomLayout(view({ chamber: "airlock", facts: AIRLOCK_FACTS }), BAND);
       const levers = layout?.pieces.filter((piece) => piece.channel === "pilot") ?? [];
       expect(levers).toHaveLength(3);
       // The shape, not the name. A lever captioned "spiral" lets PILOT say the
@@ -139,33 +140,34 @@ describe("roomLayout", () => {
     });
 
     it("spends a lever that has been pulled", () => {
-      const layout = roomLayout(view({ chamber: "airlock", facts: AIRLOCK_FACTS }));
+      const layout = roomLayout(view({ chamber: "airlock", facts: AIRLOCK_FACTS }), BAND);
       const byGlyph = new Map(layout?.pieces.map((piece) => [piece.glyph, piece.active]));
       expect(byGlyph.get("cross")).toBe(false);
       expect(byGlyph.get("spiral")).toBe(true);
     });
 
     it("reads the door from the shared fact, and flashes when it opens", () => {
-      const shut = roomLayout(view({ chamber: "airlock", facts: AIRLOCK_FACTS }));
+      const shut = roomLayout(view({ chamber: "airlock", facts: AIRLOCK_FACTS }), BAND);
       expect(shut?.solved).toBe(false);
       expect(shut?.pieces[0]?.label).toBe("DOOR SEALED");
 
       const open = roomLayout(
         view({ chamber: "airlock", facts: { ...AIRLOCK_FACTS, doorOpen: true } }),
+        BAND,
       );
       expect(open?.solved).toBe(true);
       expect(open?.pieces[0]?.channel).toBe("shared");
     });
 
     it("carries the audible fact both parties perceive", () => {
-      const layout = roomLayout(view({ chamber: "airlock", facts: AIRLOCK_FACTS }));
+      const layout = roomLayout(view({ chamber: "airlock", facts: AIRLOCK_FACTS }), BAND);
       expect(layout?.sound).toBe("a hard hiss of venting air");
     });
   });
 
   describe("the signal room", () => {
     it("lays six keys out in two rows and spends the pressed ones", () => {
-      const layout = roomLayout(view({ chamber: "signal_room", facts: SIGNAL_FACTS }));
+      const layout = roomLayout(view({ chamber: "signal_room", facts: SIGNAL_FACTS }), BAND);
       const keys = layout?.pieces.filter((piece) => piece.glyph) ?? [];
       expect(keys).toHaveLength(6);
       expect(new Set(keys.map((piece) => piece.y)).size).toBe(2);
@@ -176,14 +178,14 @@ describe("roomLayout", () => {
     });
 
     it("lights one strike pip per strike, on the shared channel", () => {
-      const layout = roomLayout(view({ chamber: "signal_room", facts: SIGNAL_FACTS }));
+      const layout = roomLayout(view({ chamber: "signal_room", facts: SIGNAL_FACTS }), BAND);
       const pips = layout?.pieces.filter((piece) => piece.w === 6 && piece.h === 6) ?? [];
       expect(pips.map((piece) => piece.active)).toEqual([true, false, false]);
       expect(pips.every((piece) => piece.channel === "shared")).toBe(true);
     });
 
     it("shows PILOT the state of this session's manual page", () => {
-      const layout = roomLayout(view({ chamber: "signal_room", facts: SIGNAL_FACTS }));
+      const layout = roomLayout(view({ chamber: "signal_room", facts: SIGNAL_FACTS }), BAND);
       const page = layout?.pieces.find((piece) => piece.label?.startsWith("PAGE"));
       expect(page?.label).toBe("PAGE MARKED");
       expect(page?.channel).toBe("pilot");
@@ -198,6 +200,7 @@ describe("roomLayout", () => {
           chamber: "signal_room",
           facts: { ...SIGNAL_FACTS, pressedSequence: [1, 2, 3, 4, 5, 6] },
         }),
+        BAND,
       );
       expect(layout?.solved).toBe(false);
     });
@@ -205,7 +208,7 @@ describe("roomLayout", () => {
 
   describe("the blind panel", () => {
     it("fills each gauge in proportion to its needle", () => {
-      const layout = roomLayout(view({ chamber: "blind_panel", facts: BLIND_FACTS }));
+      const layout = roomLayout(view({ chamber: "blind_panel", facts: BLIND_FACTS }), BAND);
       const columns = layout?.pieces.filter((piece) => piece.label?.includes("/")) ?? [];
       expect(columns.map((piece) => piece.label)).toEqual(["4/4", "0/6", "8/1", "2/2"]);
       // Gauge 2 reads zero, so it has a column and no fill: an empty gauge and
@@ -217,7 +220,7 @@ describe("roomLayout", () => {
     });
 
     it("marks a gauge that has reached its target", () => {
-      const layout = roomLayout(view({ chamber: "blind_panel", facts: BLIND_FACTS }));
+      const layout = roomLayout(view({ chamber: "blind_panel", facts: BLIND_FACTS }), BAND);
       const active = layout?.pieces.filter(
         (piece) => piece.channel === "pilot" && piece.label === undefined && piece.active,
       );
@@ -226,17 +229,18 @@ describe("roomLayout", () => {
     });
 
     it("draws the dial bank in KEEPER's colour and gives it no value", () => {
-      const layout = roomLayout(view({ chamber: "blind_panel", facts: BLIND_FACTS }));
+      const layout = roomLayout(view({ chamber: "blind_panel", facts: BLIND_FACTS }), BAND);
       const dials = layout?.pieces.filter((piece) => piece.channel === "keeper") ?? [];
       expect(dials).toHaveLength(4);
       expect(dials.map((piece) => piece.label)).toEqual(["DIAL 1", "DIAL 2", "DIAL 3", "DIAL 4"]);
     });
 
     it("renders the registered click count as the audible fact", () => {
-      const layout = roomLayout(view({ chamber: "blind_panel", facts: BLIND_FACTS }));
+      const layout = roomLayout(view({ chamber: "blind_panel", facts: BLIND_FACTS }), BAND);
       expect(layout?.sound).toBe("3 clicks registered");
       const silent = roomLayout(
         view({ chamber: "blind_panel", facts: { ...BLIND_FACTS, lastClicks: null } }),
+        BAND,
       );
       expect(silent?.sound).toBeNull();
     });
@@ -244,7 +248,7 @@ describe("roomLayout", () => {
 
   describe("the concord lock", () => {
     it("seats one bolt piece per aligned bolt", () => {
-      const layout = roomLayout(view({ chamber: "concord_lock", facts: CONCORD_FACTS }));
+      const layout = roomLayout(view({ chamber: "concord_lock", facts: CONCORD_FACTS }), BAND);
       const bolts = layout?.pieces.filter((piece) => piece.label?.startsWith("BOLT")) ?? [];
       expect(bolts.map((piece) => piece.active)).toEqual([true, true, false]);
       expect(layout?.solved).toBe(false);
@@ -253,6 +257,7 @@ describe("roomLayout", () => {
     it("solves when all three bolts are seated", () => {
       const layout = roomLayout(
         view({ chamber: "concord_lock", facts: { ...CONCORD_FACTS, boltsAligned: 3 } }),
+        BAND,
       );
       expect(layout?.solved).toBe(true);
     });
@@ -263,8 +268,9 @@ describe("roomLayout", () => {
           chamber: "concord_lock",
           facts: { ...CONCORD_FACTS, staminaRemainingMs: 16_000 },
         }),
+        BAND,
       );
-      const narrow = roomLayout(view({ chamber: "concord_lock", facts: CONCORD_FACTS }));
+      const narrow = roomLayout(view({ chamber: "concord_lock", facts: CONCORD_FACTS }), BAND);
       const fillOf = (pieces: readonly { w: number; active: boolean; h: number }[]) =>
         pieces.find((piece) => piece.h === 10 && piece.active)?.w ?? 0;
       expect(fillOf(wide?.pieces ?? [])).toBeGreaterThan(fillOf(narrow?.pieces ?? []));
@@ -275,12 +281,13 @@ describe("roomLayout", () => {
       // time they do not have, at the one moment that is unrecoverable.
       const layout = roomLayout(
         view({ chamber: "concord_lock", facts: { ...CONCORD_FACTS, armed: false } }),
+        BAND,
       );
       expect(layout?.pieces.filter((piece) => piece.h === 10 && piece.active)).toHaveLength(0);
     });
 
     it("shows PILOT the wheel offset, which only PILOT can read", () => {
-      const layout = roomLayout(view({ chamber: "concord_lock", facts: CONCORD_FACTS }));
+      const layout = roomLayout(view({ chamber: "concord_lock", facts: CONCORD_FACTS }), BAND);
       const wheel = layout?.pieces.find((piece) => piece.label?.startsWith("WHEEL"));
       expect(wheel?.label).toBe("WHEEL 11");
       expect(wheel?.channel).toBe("pilot");
@@ -297,7 +304,7 @@ describe("roomLayout", () => {
       ["blind_panel", BLIND_FACTS],
       ["concord_lock", CONCORD_FACTS],
     ] as const) {
-      for (const piece of roomLayout(view({ chamber, facts }))?.pieces ?? []) {
+      for (const piece of roomLayout(view({ chamber, facts }), BAND)?.pieces ?? []) {
         const reach =
           piece.label === undefined
             ? piece.x
@@ -320,12 +327,12 @@ describe("roomLayout", () => {
       ["blind_panel", BLIND_FACTS],
       ["concord_lock", CONCORD_FACTS],
     ] as const) {
-      for (const piece of roomLayout(view({ chamber, facts }))?.pieces ?? []) {
+      for (const piece of roomLayout(view({ chamber, facts }), BAND)?.pieces ?? []) {
         if (piece.label === undefined) continue;
         expect(
           piece.y + piece.h + CAPTION_HEIGHT,
-          `${chamber}: the caption on ${piece.label} runs past the room`,
-        ).toBeLessThanOrEqual(ROOM_BOTTOM);
+          `${chamber}: the caption on ${piece.label} runs past the floor`,
+        ).toBeLessThanOrEqual(BAND);
       }
     }
   });
@@ -357,7 +364,7 @@ describe("roomLayout", () => {
       ["blind_panel", BLIND_FACTS],
       ["concord_lock", CONCORD_FACTS],
     ] as const) {
-      const captioned = (roomLayout(view({ chamber, facts }))?.pieces ?? []).filter(
+      const captioned = (roomLayout(view({ chamber, facts }), BAND)?.pieces ?? []).filter(
         (piece) => piece.label !== undefined,
       );
       for (let i = 0; i < captioned.length; i += 1) {
@@ -384,12 +391,13 @@ describe("roomLayout", () => {
     // rather than dying mid-session over a field it has never seen.
     const layout = roomLayout(
       view({ chamber: "airlock", facts: { ...AIRLOCK_FACTS, somethingNew: { deep: [1, 2] } } }),
+      BAND,
     );
     expect(layout?.pieces.length).toBeGreaterThan(0);
   });
 
   it("survives a frame missing the fields it expects", () => {
-    const layout = roomLayout(view({ chamber: "concord_lock", facts: { armed: true } }));
+    const layout = roomLayout(view({ chamber: "concord_lock", facts: { armed: true } }), BAND);
     expect(layout?.title).toBe("CONCORD LOCK");
     expect(layout?.pieces.length).toBeGreaterThan(0);
   });
@@ -409,14 +417,19 @@ describe("roomTitle", () => {
   });
 });
 
-describe("the canvas the room is drawn on", () => {
-  it("is 320x180, because integer scaling depends on it", () => {
-    expect([NATIVE_WIDTH, NATIVE_HEIGHT]).toEqual([320, 180]);
+describe("the floor a room is drawn on", () => {
+  it("puts the floor line inside the band, with room for a caption below", () => {
+    // Every piece draws its caption underneath itself, so the floor cannot sit
+    // flush with the bottom of the band or the lowest caption falls out of the
+    // building.
+    for (const height of [70, 90, BAND, 140]) {
+      expect(floorLine(height)).toBeGreaterThan(0);
+      expect(floorLine(height) + CAPTION_HEIGHT).toBeLessThanOrEqual(height);
+    }
   });
 
-  it("leaves the floor inside the room band", () => {
-    expect(FLOOR_Y).toBeGreaterThan(ROOM_TOP);
-    expect(FLOOR_Y).toBeLessThan(ROOM_BOTTOM);
+  it("moves the floor line with the band, so a room fits whatever it is given", () => {
+    expect(floorLine(140)).toBeGreaterThan(floorLine(90));
   });
 });
 
@@ -454,7 +467,7 @@ describe("the phases with no room", () => {
       "ESCAPED",
     ] as const) {
       for (const line of interlude(view({ phase, chamber: null, facts: {} }))) {
-        expect(textWidth(line), `${phase}: "${line}"`).toBeLessThanOrEqual(NATIVE_WIDTH - 8);
+        expect(textWidth(line), `${phase}: "${line}"`).toBeLessThanOrEqual(CANVAS - 8);
       }
     }
   });
@@ -471,15 +484,17 @@ describe("the blind panel's audible line", () => {
     // hit its bound - so the line carrying it should not read like a stub.
     const one = roomLayout(
       view({ chamber: "blind_panel", facts: { ...BLIND_FACTS, lastClicks: 1 } }),
+      BAND,
     );
     expect(one?.sound).toBe("1 click registered");
-    const three = roomLayout(view({ chamber: "blind_panel", facts: BLIND_FACTS }));
+    const three = roomLayout(view({ chamber: "blind_panel", facts: BLIND_FACTS }), BAND);
     expect(three?.sound).toBe("3 clicks registered");
   });
 
   it("says nothing at all when no dial has been turned", () => {
     const none = roomLayout(
       view({ chamber: "blind_panel", facts: { ...BLIND_FACTS, lastClicks: null } }),
+      BAND,
     );
     expect(none?.sound).toBeNull();
   });

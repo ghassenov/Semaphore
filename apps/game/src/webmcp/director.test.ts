@@ -265,6 +265,7 @@ describe("instrumentation", () => {
       retries: 0,
       facts: {},
       notes: [],
+      mode: "full",
     };
     await d.applyState(frame);
     expect(registry.names()).not.toContain("pull_lever");
