@@ -212,6 +212,36 @@ describe("instrumentation", () => {
     expect(calls).toEqual(["begin_shift:ok"]);
   });
 
+  it("announces a call before it runs, so the visor lights while it is in flight", async () => {
+    // KEEPER's visor is the human's only cue that their partner is doing
+    // something. A hook that fired on completion could only ever light it
+    // after the work was over, which is the one moment it says nothing.
+    const order: string[] = [];
+    let release: (() => void) | undefined;
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          order.push("fetch");
+          release = () => {
+            resolve(body("LOBBY"));
+          };
+        }),
+    );
+
+    const client = new SessionClient("s_test");
+    const d = new ToolDirector(client, {
+      onCallStart: (tool) => order.push(`start:${tool}`),
+      onCall: (call) => order.push(`done:${call.tool}`),
+    });
+    await d.mountEntry();
+
+    const pending = registry.call("begin_shift", { designation: "KEEPER" });
+    expect(order).toEqual(["start:begin_shift", "fetch"]);
+    release?.();
+    await pending;
+    expect(order).toEqual(["start:begin_shift", "fetch", "done:begin_shift"]);
+  });
+
   it("hands a failed call text to act on rather than a rejection", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("network down"));
     const { director: d } = director();

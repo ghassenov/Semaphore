@@ -49,6 +49,15 @@ export interface CallRecord {
 
 /** What the director tells the page. Both are optional; the tests use neither. */
 export interface DirectorHooks {
+  /**
+   * Fired the moment a tool starts executing, before anything is awaited.
+   *
+   * Separate from `onCall` because KEEPER's visor pulses while a call is in
+   * flight, and a hook that only fires on completion can only ever light it
+   * after the fact. This is the human's single cue that their partner is doing
+   * something right now, so it has to lead the work rather than follow it.
+   */
+  readonly onCallStart?: (tool: string) => void;
   /** Fired after every tool execution, whatever the outcome. */
   readonly onCall?: (record: CallRecord) => void;
   /** Fired when the server's machine state moves. Drives the HUD. */
@@ -296,6 +305,7 @@ export class ToolDirector {
       execute: async (input, context): Promise<ToolResult> => {
         const startedAt = performance.now();
         const args = input ?? {};
+        this.hooks.onCallStart?.(tool.name);
         try {
           const text = await tool.run(args, context?.signal);
           this.hooks.onCall?.({
