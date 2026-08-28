@@ -1,0 +1,92 @@
+/**
+ * The PILOT half of the projection boundary: what the client is allowed to
+ * render, and nothing else.
+ *
+ * This module is the mirror of `views.ts`. Where that one builds every string
+ * a KEEPER tool returns out of `projectForKeeper`, this one builds the single
+ * structure every rendered frame derives from out of `projectForPilot`. The
+ * two are kept in separate files for the same reason each is small: the design
+ * law says a rendered frame may never reach around the agent's projection, and
+ * that claim should be checkable by reading one file rather than by auditing a
+ * large switch shared with the tool surface.
+ *
+ * Nothing here reads a chamber's raw state. Every fact reaches the wire only
+ * through the chamber's own `facts()` and the PILOT projection of it, so a
+ * field tagged `TACTILE` or `HIDDEN` cannot be rendered even by a careless
+ * template later. `pilot.test.ts` asserts that for all four chambers.
+ */
+
+import type { Phase, PilotView } from "@semaphore/protocol";
+import * as airlock from "./chambers/airlock.js";
+import * as signalRoom from "./chambers/signal_room.js";
+import * as blindPanel from "./chambers/blind_panel.js";
+import * as concordLock from "./chambers/concord_lock.js";
+import { projectForPilot } from "./projection.js";
+import type { PersistedSession } from "./reducer.js";
+
+/**
+ * The machine fields both the tool responses and the socket carry.
+ *
+ * Phase, chamber and the clock are `SHARED` by construction, which is what
+ * makes it safe for one function to feed both surfaces. Kept here rather than
+ * inside `Session` so the two cannot drift into disagreeing about how much
+ * time is left.
+ */
+export function stateSummary(
+  session: PersistedSession,
+  nowMs: number,
+): Pick<PilotView, "phase" | "chamber" | "designation" | "remainingMs"> {
+  return {
+    phase: session.machine.phase,
+    chamber: session.machine.chamber,
+    designation: session.designation,
+    remainingMs:
+      session.chamberDeadlineMs === null ? null : Math.max(0, session.chamberDeadlineMs - nowMs),
+  };
+}
+
+/**
+ * The phases in which PILOT is actually standing in the chamber.
+ *
+ * `machine.chamber` is not enough on its own: it stays set through `ARCHIVE`,
+ * `TRANSITIONING` and `DEADLOCK` so the machine knows which room was last
+ * entered, and rendering the Blind Panel behind the Archive's monitor because
+ * of that would draw a room the pair is not in. `DEADLOCK` is included because
+ * PILOT has to see the chamber to decide to reset it, which is a thing only
+ * PILOT can do.
+ */
+const IN_THE_ROOM: readonly Phase[] = ["IN_CHAMBER", "PENALISED", "DEADLOCK"] as const;
+
+/**
+ * The active chamber's facts as PILOT perceives them.
+ *
+ * Empty in every phase with no room to draw: the lobby, the transitions, the
+ * Archive, the finale, the end. An empty object is the honest answer there and
+ * it keeps the caller free of a null check on the one field it always reads.
+ */
+function chamberFacts(session: PersistedSession, nowMs: number): Record<string, unknown> {
+  const { chamber, phase } = session.machine;
+  if (!IN_THE_ROOM.includes(phase)) return {};
+  if (chamber === "airlock" && session.airlock) {
+    return projectForPilot(airlock.facts(session.airlock));
+  }
+  if (chamber === "signal_room" && session.signalRoom) {
+    return projectForPilot(signalRoom.facts(session.signalRoom));
+  }
+  if (chamber === "blind_panel" && session.blindPanel) {
+    return projectForPilot(blindPanel.facts(session.blindPanel));
+  }
+  if (chamber === "concord_lock" && session.concordLock) {
+    return projectForPilot(concordLock.facts(session.concordLock, nowMs));
+  }
+  return {};
+}
+
+/** Everything the client may render, for one session at one instant. */
+export function pilotView(session: PersistedSession, nowMs: number): PilotView {
+  return {
+    ...stateSummary(session, nowMs),
+    retries: session.machine.retries,
+    facts: chamberFacts(session, nowMs),
+  };
+}

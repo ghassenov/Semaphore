@@ -43,6 +43,7 @@ export type {
   DifficultySettings,
   FailureState,
   Phase,
+  PilotView,
   SessionMode,
 } from "./game.js";
 

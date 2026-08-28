@@ -23,3 +23,4 @@ The Phaser client. It renders PILOT's world and hosts the WebMCP tool director. 
 |---|---|---|
 | 2026-08-27 | Ahmed Saad | Created. Client rules recorded ahead of the rewrite. |
 | 2026-08-28 | Ahmed Saad | WebMCP tool layer landed: adapter, director, tool modules. Budgets enforced by test rather than lint (D-022); registry-follows-server rule added (D-021). |
+| 2026-08-28 | Ahmed Saad | The view feed landed (`net/socket.ts`, D-025). No rule change: the no-puzzle-values-in-DOM rule already governed it, and the operator console prints fact names only because of it. |
