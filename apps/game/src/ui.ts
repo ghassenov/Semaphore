@@ -21,6 +21,7 @@
  * them into the room; the calls they make do not change.
  */
 
+import type { PilotView } from "@semaphore/protocol";
 import type { SessionClient, StateSummary } from "./net/sessionClient.js";
 import { listToolNames, onToolChange } from "./webmcp/adapter.js";
 import type { CallRecord } from "./webmcp/director.js";
@@ -157,6 +158,8 @@ export function renderConsole(root: HTMLElement, deps: ConsoleDeps): ConsoleHand
   const main = el("main", { class: "console" });
 
   const status = el("dl", { class: "status" });
+  const pilotFacts = el("pre", { class: "facts" }, "waiting for the view feed");
+  let frames = 0;
   const manifest = el("ul", { class: "manifest" });
   const log = el("ol", { class: "log" });
 
@@ -208,6 +211,8 @@ export function renderConsole(root: HTMLElement, deps: ConsoleDeps): ConsoleHand
     card,
     el("h2", {}, "Session"),
     status,
+    el("h2", {}, "PILOT's view feed"),
+    pilotFacts,
     el("h2", {}, "KEEPER's manifest"),
     manifest,
     begin,
@@ -250,6 +255,21 @@ export function renderConsole(root: HTMLElement, deps: ConsoleDeps): ConsoleHand
         ),
       );
     },
+    setView(view: PilotView) {
+      // Field *names* only, never values. A glyph, a needle reading or a
+      // cipher offset in a text node would put puzzle-critical information in
+      // the DOM, which this app's rules forbid outright: an agent that can
+      // read the page would then be able to read PILOT's half of the split
+      // and the whole game would collapse. The values are drawn on the canvas
+      // by `ChamberScene`. This line exists to show the feed is alive.
+      frames += 1;
+      const names = Object.keys(view.facts);
+      pilotFacts.textContent =
+        `frame ${String(frames)}: ` +
+        (names.length > 0
+          ? `${String(names.length)} facts (${names.join(", ")})`
+          : "no room to draw");
+    },
     note(line: string) {
       log.prepend(el("li", {}, line));
       while (log.childElementCount > 40) log.lastElementChild?.remove();
@@ -264,6 +284,8 @@ export function renderConsole(root: HTMLElement, deps: ConsoleDeps): ConsoleHand
 /** The console's handle: what `main.ts` pushes into it as the session moves. */
 export interface ConsoleHandle {
   setState(state: StateSummary): void;
+  /** The latest frame off the view socket. PILOT's half of the split. */
+  setView(view: PilotView): void;
   note(line: string): void;
   recordCall(call: CallRecord): void;
   dispose(): void;
