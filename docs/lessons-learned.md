@@ -154,3 +154,15 @@ The actual quantity needed was not "how long did my own code take" but "how long
 The general lesson: **before timing a call, ask what you are actually trying to measure the rhythm of, not just wrap the nearest function.** A metric that always resolves to a constant, like every model getting the clamp floor, is a specific and checkable smell, and it would have been worth writing a test for even before implementing the fix, since "does the derived window ever vary across different latency samples" is exactly the property that failed silently here.
 
 Recorded fully as D-010.
+
+### 2026-08-28 - Two more bugs the proof caught, both from copying a pattern past where it applied
+
+Chamber I reused Chamber 0's shape (`generate` / `initial` / `facts` / `candidates` / `correctAction`) almost exactly, and two places where the pattern quietly stopped being correct only showed up once the numbers were actually run.
+
+**"The action from here" meant something different once the answer had more than one step.** Chamber 0's answer is a single lever, so "the action that solves it" and "the whole answer" are the same sentence. Chamber I's answer is a sequence of up to six keys, and `correctAction` returning only the *next* key capped the measured ambiguity at `log2(6)` no matter how large the real plan space was, because a six-key ring only ever has six possible first moves. The published figure (1,956 worlds, 10.93 bits) is about the whole plan, not the first step of it. The fix was one line (return the whole remaining sequence, not just its head), but finding it required actually running `measure()` and getting a suspiciously small, suspiciously round-looking wrong number (6 actions, exactly the key count) rather than trusting that copying a working pattern would keep working.
+
+**A witness-based candidate set can quietly stop filtering anything.** `candidates()` built one representative state per achievable answer and copied the real session's play-history fields onto every one of them, including the accepted-key-sequence. That made every witness trivially agree with the observed history on that field, which meant `consistentWorlds` could never actually narrow the set as correct keys landed. The bug produced no wrong answer at the entry state (nothing has happened yet, so there was nothing to filter), and only appeared when a test walked the sequence forward and asked whether ambiguity was dropping. **A test that only checks the starting state cannot catch a bug in how a value changes over time.**
+
+Both bugs share a lineage: they happened while extending working code by analogy rather than by re-deriving it, and both were invisible until a test exercised the SEQUENCE of states a real session actually visits, not just its first one. The general habit worth keeping: whenever a chamber's answer is more than one action long, write the "does this converge as play progresses" test before trusting the entry-state number, because the entry state is exactly the case where a missing filter or a truncated action can't yet show itself.
+
+Full reasoning: D-011 (the action-scope fix) and D-012 (the candidate-filtering fix).

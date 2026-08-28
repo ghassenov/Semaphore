@@ -199,3 +199,35 @@ The quantity doc 02 section 3.4 and doc 05 section 6 actually want is agent reas
 Option 3 was rejected because it requires the client to be trusted for a value that gates game difficulty, and a tamper-proof server-authoritative measurement is one of the reasons Durable Objects were chosen in the first place (doc 05 section 1, point 2).
 
 **Result.** `PersistedSession.lastRespondedAtMs` is updated on every mutating action. `observedLatencyMs` is appended to only for chamber actions (`pull_lever` and its successors), not for the one-off `begin_shift` and `start` lifecycle calls, matching doc 05 section 6's "across Chambers 0-II" scope. `ActionSemaphore.latencies` still exists and still means something, server-side processing duration, useful for spotting a stuck or unusually slow mutation, but it is a distinct metric from `observedLatencyMs` and must never be substituted for it. The two are documented separately in `latency.ts` and `semaphore.ts` so a future reader cannot conflate them the way this pass almost did.
+
+---
+
+### D-011 `correctAction` must return the whole remaining plan for multi-step chambers
+
+**Decision.** `ChamberWorlds.correctAction` returns the complete sequence of actions still needed to solve the chamber from the given state, encoded as one stable string, not just the single next action. `chambers/signal_room.ts`'s `correctAction` returns the remaining key sequence joined by commas (`"5,1,2,6"`), not the next key alone.
+
+**Options considered.**
+1. Return only the next single action, matching what a first reading of "the action that solves the chamber from here" suggests, and what Chamber 0 already does (correctly, since its answer is one lever).
+2. Return the whole remaining plan.
+
+**Why.** Running `measure()` against Chamber I's entry state with option 1 in place reported `actions: 6, bits: 2.58`, not the `actions: 1956, bits: 10.93` doc 02 section 3.2 and doc 03 section 6 publish. The reason is structural, not a bug in the arithmetic: a six-key ring has only six possible *first* moves no matter how large the underlying plan space is, so "how many distinct next actions are consistent with KEEPER's view" is capped at 6 regardless of scoping. That is a real and correct quantity, just not the one the published bits table means. The table's intended meaning, stated in doc 01 section 4 tier 2 and doc 03 section 6, is "how much information PILOT must supply for KEEPER to know what to do", which for a multi-step chamber is ambiguity over the *whole plan*, not ambiguity over the first step of it. Chamber 0's answer happens to be exactly one action, so both readings coincide there, which is presumably why the distinction was never surfaced before Chamber I existed.
+
+Making `correctAction` return the full remaining plan fixes this without touching `worlds.ts`: `measure()`, `consistentWorlds`, and the CONCORD-meter machinery are unchanged, because they already treat `correctAction`'s return value as an opaque string to be counted, not interpreted. Verified by re-running `measure()` after the change: entry now reports `worlds: 1956, actions: 1956, bits: 10.9337` exactly, and the value collapses monotonically to 0 as the correct sequence is pressed, mirroring Chamber 0's collapse behaviour and matching what the CONCORD meter (doc 02 section 5) needs for step-by-step convergence.
+
+**Result.** `worlds.ts`'s `ChamberWorlds.correctAction` docstring now states the requirement explicitly, naming Chamber I's first pass as the cautionary example, so Chambers II and III are implemented against the corrected contract rather than repeating the mistake.
+
+---
+
+### D-012 A witness-scoped `candidates()` must filter by history, not force it
+
+**Decision.** `chambers/signal_room.ts`'s `candidates()` includes a witness only if that witness's *own* correct plan is consistent with the keys already accepted (`SHARED.pressedSequence`), rather than copying the observed state's `pressedSequence` onto every witness regardless of whether the witness's own answer would produce it.
+
+**Options considered.**
+1. Copy `state.pressedSequence` onto every generated witness verbatim (the first version written).
+2. Filter witnesses to those whose own target sequence actually starts with the accepted prefix, and only then copy the (now-consistent) history across.
+
+**Why.** Option 1 makes `consistentWorlds`'s filter trivially pass on the `pressedSequence` field for every witness, because every witness was built to already agree with the observed value rather than being checked against it. That defeats the entire point of the filter: mid-solve narrowing (the ambiguity dropping as correct keys land) would never actually happen, because nothing in the candidate set was ever excluded by play history. The bug did not surface in the entry-state assertions, since at entry the accepted prefix is empty and every witness trivially satisfies it; it was only caught by testing the *collapse* behaviour along the correct-solve path, the same kind of test that validated Chamber 0's narrowing.
+
+Option 2 makes membership genuine: a candidate is a member of `W(s)` only if it is actually compatible with everything KEEPER's SHARED view has recorded, which is what "consistent world" is supposed to mean. Re-verified empirically after the fix: worlds drop from 1,956 at entry to 325, 64, 15, 1 across a four-key solve, monotonically, reaching exactly 0 bits at the solved state.
+
+**Result.** The bug and its fix are documented in the function's own docstring in `signal_room.ts`, and the possible-worlds test suite asserts the collapse property directly (`collapses monotonically to zero as the correct sequence is pressed`) so a regression here fails loudly rather than silently passing an entry-only check.
