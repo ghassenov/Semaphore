@@ -1,0 +1,15 @@
+{"t":2100,"seq":0,"type":"session_start","sessionId":"ghost-01","seed":"ghost-01-seed","difficulty":"standard","mode":"brief","designation":"WREN"}
+{"t":2100,"seq":1,"type":"chamber_enter","chamber":"airlock"}
+{"t":6300,"seq":2,"type":"tool_call","tool":"pull_lever","input":{"lever_id":"lever_c"},"result":"ok","latencyMs":4200,"keeperViewHash":"84c018ec","concordBits":0,"wasted":false}
+{"t":6300,"seq":3,"type":"chamber_solved","chamber":"airlock"}
+{"t":6300,"seq":4,"type":"chamber_enter","chamber":"signal_room"}
+{"t":9400,"seq":5,"type":"tool_call","tool":"press_key","input":{"key_id":1},"result":"ok","latencyMs":3100,"keeperViewHash":"3159a2e1","concordBits":8.34,"wasted":false}
+{"t":12500,"seq":6,"type":"tool_call","tool":"press_key","input":{"key_id":4},"result":"ok","latencyMs":3100,"keeperViewHash":"b571cce1","concordBits":6,"wasted":false}
+{"t":15600,"seq":7,"type":"tool_call","tool":"press_key","input":{"key_id":2},"result":"ok","latencyMs":3100,"keeperViewHash":"a85e60e1","concordBits":3.91,"wasted":false}
+{"t":18700,"seq":8,"type":"tool_call","tool":"press_key","input":{"key_id":3},"result":"ok","latencyMs":3100,"keeperViewHash":"43361dc3","concordBits":2,"wasted":false}
+{"t":21800,"seq":9,"type":"tool_call","tool":"press_key","input":{"key_id":6},"result":"ok","latencyMs":3100,"keeperViewHash":"c20d9636","concordBits":0,"wasted":false}
+{"t":21800,"seq":10,"type":"chamber_solved","chamber":"signal_room"}
+{"t":21800,"seq":11,"type":"chamber_enter","chamber":"concord_lock"}
+{"t":23800,"seq":12,"type":"pilot_action","action":"grip","target":"release_bar"}
+{"t":26200,"seq":13,"type":"tool_call","tool":"align_bolt","input":{"bolt_id":1},"result":"ok","latencyMs":2400,"keeperViewHash":"5a156029","concordBits":4.7,"wasted":false}
+{"t":28800,"seq":14,"type":"tool_call","tool":"align_bolt","input":{"bolt_id":2},"result":"ok","latencyMs":2600,"keeperViewHash":"b0c3cb05","concordBits":4.7,"wasted":false}
