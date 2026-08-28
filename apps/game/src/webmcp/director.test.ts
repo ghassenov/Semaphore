@@ -1,0 +1,242 @@
+/**
+ * The three-tier lifecycle, proved.
+ *
+ * The claims under test are the ones the whole WebMCP Leverage argument rests
+ * on: the front door closes behind you and cannot reopen, a chamber's tools
+ * do not survive the chamber, `read_manual` does survive every one of them,
+ * and the registry ends the session empty.
+ *
+ * The fake registry stands in for the browser (see `fake-registry.ts` for what
+ * that trades away). What is being proved here is the director's logic, not
+ * the specification's behaviour, which is `apps/spike`'s job.
+ */
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Phase } from "@semaphore/protocol";
+import { SessionClient, type StateSummary } from "../net/sessionClient.js";
+import { ToolDirector } from "./director.js";
+import { installFakeRegistry, type FakeRegistry } from "./fake-registry.js";
+
+let registry: FakeRegistry;
+
+/** A response body in the shape the worker returns, carrying machine state. */
+function body(phase: Phase, chamber: StateSummary["chamber"] = null, text = "ok") {
+  return {
+    ok: true,
+    status: 200,
+    json: () =>
+      Promise.resolve({
+        content: [{ type: "text", text }],
+        state: { phase, chamber, designation: "KEEPER", remainingMs: null },
+      }),
+  } as unknown as Response;
+}
+
+function state(phase: Phase, chamber: StateSummary["chamber"] = null): StateSummary {
+  return { phase, chamber, designation: "KEEPER", remainingMs: null };
+}
+
+beforeEach(() => {
+  registry = installFakeRegistry();
+  vi.stubGlobal("performance", { now: () => 0 });
+});
+
+afterEach(() => {
+  registry.uninstall();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+function director(): { director: ToolDirector; client: SessionClient } {
+  const client = new SessionClient("s_test");
+  return { director: new ToolDirector(client), client };
+}
+
+describe("the entry tier", () => {
+  it("registers begin_shift and nothing else", async () => {
+    const { director: d } = director();
+    await d.mountEntry();
+    expect(registry.names()).toEqual(["begin_shift"]);
+  });
+
+  it("closes the front door behind you and never reopens it", async () => {
+    const { director: d } = director();
+    await d.mountEntry();
+    await d.applyState(state("LOBBY"));
+    expect(registry.names()).not.toContain("begin_shift");
+
+    // Even if the server somehow reported ENTRY again, the entry controller
+    // is spent: `mountEntry` sees a tier that is not "entry" and re-arms it,
+    // so this test pins the one behaviour we do *not* want to regress into.
+    await d.applyState(state("IN_CHAMBER", "airlock"));
+    expect(registry.names()).not.toContain("begin_shift");
+  });
+});
+
+describe("the session tier", () => {
+  it("brings up KEEPER's constant faculties when the shift begins", async () => {
+    const { director: d } = director();
+    await d.mountEntry();
+    await d.applyState(state("LOBBY"));
+    expect(registry.names().sort()).toEqual([
+      "describe_chamber",
+      "get_status",
+      "inspect",
+      "read_manual",
+    ]);
+  });
+
+  it("survives every chamber transition, registered exactly once", async () => {
+    const { director: d } = director();
+    await d.mountEntry();
+    await d.applyState(state("LOBBY"));
+    for (const chamber of ["airlock", "signal_room", "blind_panel", "concord_lock"] as const) {
+      await d.applyState(state("IN_CHAMBER", chamber));
+      expect(registry.names()).toContain("read_manual");
+    }
+    // Re-registering a surviving tool on every transition would be a bug the
+    // manifest panel would render as a flicker, so count the registrations.
+    expect(registry.registrations.filter((n) => n === "read_manual")).toHaveLength(1);
+  });
+});
+
+describe("the chamber tier", () => {
+  it("gives each chamber its own mechanisms and no other chamber's", async () => {
+    const { director: d } = director();
+    await d.mountEntry();
+    await d.applyState(state("IN_CHAMBER", "airlock"));
+    expect(registry.names()).toContain("pull_lever");
+
+    await d.applyState(state("IN_CHAMBER", "signal_room"));
+    expect(registry.names()).toContain("press_key");
+    expect(registry.names()).not.toContain("pull_lever");
+
+    await d.applyState(state("IN_CHAMBER", "blind_panel"));
+    expect(registry.names()).toContain("rotate_dial");
+    expect(registry.names()).not.toContain("press_key");
+  });
+
+  it("gives the Archive its one read tool and no chamber mechanism", async () => {
+    const { director: d } = director();
+    await d.mountEntry();
+    await d.applyState(state("IN_CHAMBER", "blind_panel"));
+    await d.applyState(state("ARCHIVE", "blind_panel"));
+    expect(registry.names()).toContain("read_station_log");
+    expect(registry.names()).not.toContain("rotate_dial");
+    // leave_archive is PILOT's decision, so it is not on the registry at all.
+    expect(registry.names()).not.toContain("leave_archive");
+  });
+
+  it("takes the mechanisms away on a deadlock, because the room cannot answer", async () => {
+    const { director: d } = director();
+    await d.mountEntry();
+    await d.applyState(state("IN_CHAMBER", "signal_room"));
+    await d.applyState(state("DEADLOCK", "signal_room"));
+    expect(registry.names()).not.toContain("press_key");
+    expect(registry.names()).toContain("get_status");
+
+    // And gives them back when PILOT resets it.
+    await d.applyState(state("IN_CHAMBER", "signal_room"));
+    expect(registry.names()).toContain("press_key");
+  });
+
+  it("holds what it has through TRANSITIONING, which carries no tools", async () => {
+    const { director: d } = director();
+    await d.mountEntry();
+    await d.applyState(state("IN_CHAMBER", "airlock"));
+    await d.applyState(state("TRANSITIONING", "airlock"));
+    expect(registry.names()).toContain("pull_lever");
+  });
+});
+
+describe("the ending", () => {
+  it("burns everything off and leaves exactly one tool at the finale", async () => {
+    const { director: d } = director();
+    await d.mountEntry();
+    await d.applyState(state("IN_CHAMBER", "concord_lock"));
+    await d.applyState(state("FINALE"));
+    expect(registry.names()).toEqual(["open_the_door"]);
+  });
+
+  it("drains the registry to empty, which is the last toolchange", async () => {
+    const { director: d } = director();
+    const changes: number[] = [];
+    registry.addEventListener("toolchange", () => {
+      void registry.getTools().then((tools) => changes.push(tools.length));
+    });
+
+    await d.mountEntry();
+    await d.applyState(state("IN_CHAMBER", "concord_lock"));
+    await d.applyState(state("FINALE"));
+    await d.applyState(state("ESCAPED"));
+
+    expect(registry.names()).toEqual([]);
+    // The event fired, and the registry really was empty when it did.
+    await Promise.resolve();
+    expect(changes.at(-1)).toBe(0);
+  });
+});
+
+describe("instrumentation", () => {
+  it("returns the worker's text in the spec's envelope", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(body("LOBBY", null, "SHIFT BRIEFING"));
+    const { director: d } = director();
+    await d.mountEntry();
+    expect(await registry.call("begin_shift", { designation: "KEEPER" })).toBe("SHIFT BRIEFING");
+  });
+
+  it("moves the registry from the state the response carried, with no extra call", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(body("IN_CHAMBER", "airlock", "The door is shut."));
+    const { director: d } = director();
+    await d.mountEntry();
+
+    await registry.call("begin_shift", { designation: "KEEPER" });
+    // Let the queued tier change settle.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(registry.names()).toContain("pull_lever");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports every call to the page, with a duration", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(body("LOBBY"));
+    const calls: string[] = [];
+    const client = new SessionClient("s_test");
+    const d = new ToolDirector(client, {
+      onCall: (call) => calls.push(`${call.tool}:${call.outcome}`),
+    });
+    await d.mountEntry();
+    await registry.call("begin_shift", { designation: "KEEPER" });
+    expect(calls).toEqual(["begin_shift:ok"]);
+  });
+
+  it("hands a failed call text to act on rather than a rejection", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("network down"));
+    const { director: d } = director();
+    await d.mountEntry();
+    const text = await registry.call("begin_shift", { designation: "KEEPER" });
+    expect(text).toContain("try the call again");
+  });
+
+  it("passes the host's AbortSignal through, and reports a cancellation", async () => {
+    const controller = new AbortController();
+    vi.spyOn(globalThis, "fetch").mockImplementation((_url, init) => {
+      const signal = (init as RequestInit | undefined)?.signal;
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      });
+    });
+
+    const calls: string[] = [];
+    const client = new SessionClient("s_test");
+    const d = new ToolDirector(client, { onCall: (call) => calls.push(call.outcome) });
+    await d.mountEntry();
+
+    const pending = registry.call("begin_shift", { designation: "KEEPER" }, controller.signal);
+    controller.abort();
+    await expect(pending).rejects.toThrow(DOMException);
+    expect(calls).toEqual(["cancelled"]);
+  });
+});
