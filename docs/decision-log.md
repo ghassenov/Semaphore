@@ -250,3 +250,40 @@ Option 2 fails for the same structural reason D-012 already found in Chamber I: 
 Option 3 was verified before being written into a test, following the discipline D-009 and D-011 established: a probe script confirmed the entry state reports exactly 384 worlds and 8.585 bits (`log2(384)`), that querying a fresh dial by rotating it 8 clicks from a resting gauge halves the consistent set every time (384 to 192 to 96 to 48 to 24, since a fully-registering versus fully-blocked rotation identifies that dial's inversion bit exactly), that a repeat query on an already-saturated dial registers 0 new clicks and leaves the world count unchanged, and, structurally rather than just empirically, that the consistent set can never grow as history is appended, because matching a longer replayed sequence is never less restrictive than matching its prefix.
 
 **Result.** The cross-link's effect on a *second* gauge is deliberately excluded from what `lastClicks` reports: it changes only that gauge's value, which is `VISUAL`, so it stays a pure-PILOT surprise exactly as doc 02 section 3.3 describes ("nothing announces this"). `wasted` for `rotate_dial` is defined as "this call eliminated no candidates" (`concordBits` unchanged), which is doc 02 section 5's own phrase for this chamber, rather than reusing Chamber 0 or Chamber I's repeat-of-a-failed-guess definitions, since rotation here has no pass/fail outcome to repeat. Drift toward zero (doc 02 section 3.3) is not modelled; it needs a Durable Object alarm that does not exist yet and is tracked in NEXT-STEPS.
+
+---
+
+### D-014 Chamber III's passphrase is uniform random letters, because an English one destroys the finale's asymmetry
+
+**Decision.** `chambers/concord_lock.ts` generates the passphrase as uniform random letters in groups (for example `MAVQ KIAQ`), not as an English phrase. Doc 02 section 3.4's worked example is superseded.
+
+**Options considered.**
+1. An English passphrase, as doc 02 section 3.4's own example shows (`"XLI XMHI XYVRW"` deciphering at offset 4 to `THE TIDE TURNS`).
+2. A pronounceable but meaningless passphrase, for flavour.
+3. Uniform random letters.
+
+**Why.** Option 1 does not work, and the reason is worth stating plainly because it would have shipped: **of the 26 possible decryptions of an English ciphertext, exactly one is English.** Any agent that knows English picks it instantly; so does frequency analysis; so does a human. The cipher wheel PILOT reads becomes decorative, and Chamber III's published figure of 26 consistent worlds and 4.70 bits is really one world and zero bits. That is the finale, the last thing a judge sees, and the chamber whose whole point is that amber and cyan finally meet at one object. Verified directly by enumerating all 26 shifts of the doc's own example before writing any code.
+
+Option 2 fails for a subtler version of the same reason. Caesar shifting does not preserve pronounceability: if the plaintext has vowel-consonant structure and its 25 shifts do not, an agent can still score the candidates and pick the structured one. Any linguistic property that survives in the plaintext but not in the shifts is a channel PILOT is not needed for.
+
+Option 3 removes the attack entirely rather than making it harder. With letters drawn uniformly, every one of the 26 decryptions is equally meaningless, no offset is privileged by any amount of language modelling, and the offset genuinely has to come from PILOT reading the wheel. That restores exactly what doc 02 intended and what the bits table claims.
+
+A consequence worth noting: with a uniform-random passphrase, offset 0 (ciphertext equal to plaintext) becomes indistinguishable from any other offset, because the plaintext is no more meaningful than any shift of it. So the full 0-25 range is used, giving exactly 26 candidates and `log2(26) = 4.70` bits, matching the published figure precisely rather than approximately.
+
+**Result.** Verified empirically before the assertions were written, per the discipline D-009 and D-011 established: entry reports exactly 26 worlds, 26 distinct actions and 4.7004 bits across all twenty canonical seeds. `tests/possible-worlds.test.ts` pins the fix with a block named "the asymmetry is real, not a language puzzle", asserting that the generated passphrase has no English structure, that every candidate produces the identical observed ciphertext, and that the offset never reaches KEEPER while the ciphertext never reaches PILOT. Doc 02 section 3.4's example needs correcting before the submission copy quotes it.
+
+---
+
+### D-015 Chamber III's `wasted` is "not a possible decryption", the sharpest definition in the game
+
+**Decision.** A `speak_passphrase` call is wasted when the phrase is not among the passphrases still consistent with the ciphertext KEEPER holds.
+
+**Options considered.**
+1. Wasted when the phrase is simply wrong.
+2. Wasted when the phrase is not one of the 26 decryptions of the observed ciphertext, minus those already rejected.
+
+**Why.** Option 1 would mark 25 of 26 legitimate deductions as wasted, which inverts the metric's meaning: doc 07 section 2.2 defines a wasted call as one that *could not have succeeded given what the agent knew*, precisely to separate guessing from reasoning. An agent that correctly narrows to 26 candidates and tries one has reasoned well and may still be wrong; that is not waste, it is the cost of 4.70 bits it does not have.
+
+Option 2 is exactly computable here, and more sharply than in any other chamber: KEEPER holds the ciphertext, so it can enumerate all 26 decryptions itself, and the rejected list is `SHARED`. A phrase outside that set is one the agent had everything it needed to rule out before calling. Chamber 0's and Chamber I's repeat-of-a-failed-guess rules are cruder proxies for the same idea; this chamber admits the real thing.
+
+**Result.** Both directions are tested: a phrase that was never a candidate is wasted, and a wrong-but-possible decryption is not. The same distinction drives world narrowing, so a rejected candidate is eliminated from `candidates()` while an impossible phrase eliminates nothing, and both behaviours are asserted in the proof suite.

@@ -181,3 +181,19 @@ Two things worth keeping from this:
 Verified with a probe before trusting it, same as every other bits figure this session: entry gives exactly 384 worlds and 8.585 bits, and rotating a resting gauge 8 clicks halves the consistent set on every fresh dial, in that order, for all twenty canonical seeds.
 
 Full reasoning: D-013.
+
+### 2026-08-28 - The finale's own worked example would have destroyed the finale
+
+Chamber III is the last thing a judge sees and the one moment the design docs describe as amber and cyan finally meeting at one object: PILOT reads a Caesar offset off a wheel, KEEPER holds the enciphered passphrase, neither half is enough. Doc 02 section 3.4 illustrates it with `"XLI XMHI XYVRW"`.
+
+That example breaks the chamber. Enumerating all 26 shifts takes one line of Python, and exactly one of them is `THE TIDE TURNS`. Any agent that knows English solves the whole chamber alone, in one turn, without ever asking what the wheel says. The published 4.70 bits is really 0 bits.
+
+Nothing about this was a coding error. The design doc's mechanics are right, its channel tags are right, its bits arithmetic is right *given its stated assumption* that all 26 decryptions are equally plausible. The example quietly violated that assumption, because a human writing an illustrative ciphertext naturally reaches for a meaningful phrase, and meaning is exactly the thing that makes 25 of the candidates wrong.
+
+Three things worth carrying:
+
+1. **An asymmetry claim is only as strong as the least ambiguous instance the generator can produce.** It is not enough that the *space* has 26 members; every member has to be indistinguishable to the party who is supposed to be missing information. A single distinguishable case is not a rare bad seed, it is a general solution for the agent.
+2. **The fix was to remove the attack, not to make it harder.** Pronounceable-but-meaningless nonsense was the tempting middle option, and it fails too: Caesar shifting does not preserve pronounceability, so an agent could still score the 26 and pick the structured one. Uniform random letters have no property that survives in the plaintext but not in the shifts, so there is nothing left to score.
+3. **Check the doc's examples, not just its rules.** Every bits figure this session has been verified by running `measure()` before writing the assertion (D-009, D-011, D-013). This one needed a different check: enumerate what an adversary would actually try. Worth doing for any chamber whose secret is small enough to enumerate, which is all of them.
+
+The correction is D-014, and the submission copy needs updating before it quotes doc 02's example.
