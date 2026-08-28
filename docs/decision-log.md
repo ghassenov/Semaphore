@@ -656,3 +656,67 @@ Option 3. Option 1 is much the cheapest and leaves the station illegible as a pl
 **How it was found, which is the part worth recording.** Not by a test. The scripted playthrough started killing the dev worker every run, once it was exercising PILOT's own actions end to end. Every unit test in `reducer.test.ts` calls `reduce()` directly and never builds a `Request` with a body, and `Session.test.ts` builds requests only for the routes that already read one. The whole class of defect was invisible to the suite and obvious the moment a real client talked to a real runtime.
 
 **Result.** Six near-identical parse lines removed and no route able to forget. `readBody` never throws: every route already defaults every field it reads, so a malformed body produces the game's own validation message rather than a 500.
+
+---
+
+### D-033 The archive origin is a delegation surface, not a second copy of the manual
+
+**Decision.** `apps/archive` exists and registers `read_manual` and
+`read_station_log` from its own origin, exposed back to the game. It holds no
+content of its own: both tools are fulfilled by fetching this session's routes
+on the worker. Tool lifetime stays with the game's `ToolDirector` and reaches
+the frame over `postMessage`. `ARCHIVE_ORIGIN` is expressed as
+`VITE_ARCHIVE_ORIGIN`, unset meaning `same`, and it stays unset.
+
+**Options considered.**
+1. Ship the six static manual sections inside `apps/archive` and fetch only the
+   session-scoped vandalised page from the worker, as D-020 anticipated.
+2. Register both tools on the archive origin and fulfil both by fetching the
+   worker, so the origin holds no content at all.
+3. Serve the archive page from the game's own origin in the fallback, so there
+   is one code path instead of two.
+
+**Why.** Option 2, and the deciding argument is that one of the two tools was
+never going to be static. `read_station_log` mutates the session:
+`archiveEntriesRead` is what `leave_archive` checks, and doc 02 section 4's
+"required to progress, cannot be skipped" is that check. A static asset cannot
+record that it was read. So the archive origin has to call the worker for at
+least one of its tools whatever else is decided, and option 1 buys a shared
+manual package, a second worker route and two content paths in exchange for
+moving six paragraphs of text across the boundary.
+
+The claim doc 03 section 7 makes is about *registration*, not about bytes. What
+is rare in the spec is that a tool is registered by a different document on a
+different origin and composed into this page at runtime through the `tools`
+Permissions Policy and `exposedTo`. That is exactly what happens here, and
+where the frame gets its text from is an implementation detail of the frame.
+The fiction survives intact: the manual is still not part of the control
+system, and it is still reached over a link.
+
+Option 3 was rejected because the fallback's entire purpose is to survive
+delegation not working. A fallback that also depends on a frame registering
+tools into a parent registry is not a fallback.
+
+`apps/archive/CLAUDE.md` said "manual sections are static content shipped with
+the page". That rule is amended rather than quietly broken, and the rule it
+was really protecting - this origin never gets a storage binding - is
+unchanged and now enforced by the fact that it has nothing to store.
+
+**Two things this cost that were not obvious.** A default `getTools()` does not
+include a frame's tools even with both gates satisfied, so the manifest plate
+had to start asking with `fromOrigins`; a plate that under-reports is worse
+than no plate, because the plate exists to prove the registry is not a lie.
+And the frame reports what it registered back to the parent, because whether a
+cross-origin registration fires `toolchange` on the parent is a row doc 11
+section 4 could not fill.
+
+**Result.** `tests/cross-origin-delegation.ts` plays a full session in Chrome
+151 twice, once through the archive origin and once through the fallback,
+seventeen checks each, both green. `read_manual` returns the station's own
+manual across two origin boundaries and a CORS preflight; `read_station_log`
+called through the frame records itself, so the Archive's door opens; and the
+registry still drains to one tool at the finale and to nothing at the end,
+counting both origins together. The flag stays `same`: Chrome passes and
+ChatGPT's in-app browser is still untested, and `apps/archive/CLAUDE.md`
+requires both.
+
