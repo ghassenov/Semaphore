@@ -35,10 +35,11 @@ import type { PersistedSession } from "./reducer.js";
 export function stateSummary(
   session: PersistedSession,
   nowMs: number,
-): Pick<PilotView, "phase" | "chamber" | "designation" | "remainingMs"> {
+): Pick<PilotView, "phase" | "chamber" | "mode" | "designation" | "remainingMs"> {
   return {
     phase: session.machine.phase,
     chamber: session.machine.chamber,
+    mode: session.machine.mode,
     designation: session.designation,
     remainingMs:
       session.chamberDeadlineMs === null ? null : Math.max(0, session.chamberDeadlineMs - nowMs),
