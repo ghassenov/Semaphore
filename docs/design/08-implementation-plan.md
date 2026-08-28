@@ -108,7 +108,7 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 - [ ] Persistent tools: `get_status`, `describe_chamber`, `inspect`, `read_note`
 - [ ] **Archive origin**: `read_manual`, `read_station_log` with `exposedTo`, embedded via `allow="tools"`
 - [ ] Single-origin fallback behind `ARCHIVE_ORIGIN=same|cross`
-- [ ] **Declarative notepad form** exposing `write_note`
+- [x] **Declarative notepad form** exposing `write_note` *(with `read_note` imperative beside it, which is the rule applied rather than an inconsistency, D-028)*
 - [x] Correct `readOnlyHint` everywhere; `untrustedContentHint` on the three untrusted-content tools
 - [x] Chamber 0 tool: `pull_lever`
 - [x] Full error taxonomy with descriptive messages (doc 03 §9)
@@ -220,7 +220,7 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 
 - [ ] `enterFinale()`: chamber + session controllers abort, everything falls, manifest empties
 - [ ] `open_the_door` stamps in alone; KEEPER calls it; bolts retract
-- [x] `endSession()`: the **final `toolchange` fires with an empty registry** *(holds only until the notepad form exists, which `endSession` must then also remove, D-024)*
+- [x] `endSession()`: the **final `toolchange` fires with an empty registry** *(the notepad exists now, so this aborts the controllers **and** removes the form element; verified live in Chrome 151, D-028)*
 - [ ] Balcony at dawn, both avatars at the rail. **Hold ten seconds. Let it breathe.**
 - [ ] *Then* the stats card, including the derived stamina window and final CONCORD
 - [ ] Link to `/replay/:id` — the same monitor the ghosts were on
