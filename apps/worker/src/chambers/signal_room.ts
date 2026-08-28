@@ -32,6 +32,17 @@ import { GLYPHS, GLYPH_IDS, PRIME_STROKE_GLYPHS, type GlyphId } from "./glyphs.j
 
 /** The six ring positions, and the six keys below them (doc 03 §3.4: they correspond 1:1). */
 export type KeyId = 1 | 2 | 3 | 4 | 5 | 6;
+
+/** Doc 02 section 3.2: a wrong key costs fifteen seconds and resets the sequence. */
+export const WRONG_KEY_PENALTY_MS = 15_000;
+
+/**
+ * A RACE CONDITION (three wrong presses in a row) costs thirty seconds
+ * instead of the usual fifteen. It replaces the lighter charge rather than
+ * stacking on it: the third press is one action and is charged once.
+ */
+export const RACE_CONDITION_PENALTY_MS = 30_000;
+
 export const KEYS: readonly KeyId[] = [1, 2, 3, 4, 5, 6];
 
 /**

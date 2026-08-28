@@ -11,8 +11,8 @@ It answers three questions and only three: where the repo is right now, what to 
 | | |
 |---|---|
 | **Last updated** | 2026-08-28, Ahmed Saad |
-| **Branch** | `main`, clean, pushed |
-| **Pipeline** | Green: 238 tests, typecheck, lint, format, real `wrangler deploy --dry-run` against the live account |
+| **Branch** | `feat/server-authoritative-timer`, clean, **not pushed** |
+| **Pipeline** | Green: 273 tests, typecheck, lint, format, real `wrangler deploy --dry-run` against the live account |
 | **Verify with** | `pnpm install && pnpm typecheck && pnpm lint && pnpm test && pnpm build` |
 | **Cloudflare** | Logged in (`npx wrangler login`). Real D1 database `semaphore-sessions` provisioned and migrated, both local and remote. |
 
@@ -21,16 +21,16 @@ It answers three questions and only three: where the repo is right now, what to 
 | Path | State |
 |---|---|
 | `docs/design/` | Numbered set 00-12, complete. |
-| `docs/` | Decision log at D-017, lessons journal live, both beside the set. |
+| `docs/` | Decision log at D-018, lessons journal live, both beside the set. |
 | `packages/seed`, `packages/protocol` | Done. |
 | `apps/worker/src/chambers/*.ts` | Done. **All four chambers** modelled: generation, state, facts, world enumeration. |
 | `apps/worker/src/archive/*.ts` | Done, **temporarily placed** (D-017): the Archive beat's logic and one generated ghost fixture, living in `apps/worker` until `apps/archive` exists to host it properly on its own origin. |
 | `apps/worker/src/{projection,worlds}.ts` | Done. `projectForPilot`/`projectForKeeper`, `consistentWorlds`, `measure`, `concordBits`. |
-| `apps/worker/src/{latency,semaphore,machine}.ts` | Done. Stamina window calc, the action semaphore, the full session state machine. |
-| `apps/worker/src/reducer.ts` | **Done end to end: a full-mode session now completes all four chambers**, verified by tracing it. |
-| `apps/worker/src/{log,Session,index}.ts` | Done. Event persistence, the Durable Object shell, the router. |
+| `apps/worker/src/{latency,semaphore,machine}.ts` | Done. Stamina window calc, the action semaphore, the full session state machine. `DEADLOCK` and `RETRY` are now reachable in play; `PENALISED` is deliberately unused (D-018). |
+| `apps/worker/src/reducer.ts` | **Done end to end: a full-mode session now completes all four chambers**, verified by tracing it. Also owns the timer: `settleSession`, the chamber deadline, penalties, `retry_chamber` (D-018). |
+| `apps/worker/src/{log,Session,index}.ts` | Done. Event persistence, the Durable Object shell **including the deadline alarm**, the router. |
 | `apps/worker/migrations/0001_sessions.sql` | Done. Applied to the real D1 database, local and remote. |
-| `tests/possible-worlds.test.ts` | **Done and passing for all four chambers.** The headline proof, honestly scoped (see below). |
+| `tests/possible-worlds.test.ts` | **Done and passing for all four chambers**, including two tests that drift is not a back channel. The headline proof, honestly scoped (see below). |
 | `apps/spike/` | Built, **never run**. Needs a WebMCP browser. |
 | `apps/game/`, `apps/archive/`, `bench/` | Rules files only, no code. |
 
@@ -46,17 +46,11 @@ Still the only task nobody can automate, and it still gates real architecture. U
 
 **The row that matters is `toolchange.empty`.** If `toolchange` does not fire when the registry drains to zero, the game's ending does not exist and Chamber III's finale needs redesigning. Check that one first. Second: `crossorigin.delegation`, which decides whether `apps/archive` is a real deployment or `ARCHIVE_ORIGIN=same`.
 
-### 2. The server-authoritative timer
-
-The only mechanical gap left in the worker. Nothing fires `TIMER_EXPIRED` anywhere. Needs a Durable Object alarm (`state.storage.setAlarm`), not a client-driven tick, since the timer must be tamper-proof (doc 05 section 1). Chamber II's gauge drift (doc 02 section 3.3) is the other thing waiting on it.
-
-Note that Chamber III did **not** need this: its stamina window and lockout are derived from timestamps passed into the pure reducer, so the whole finale is testable without any alarm. Prefer that pattern where it fits, before reaching for a real alarm.
-
-### 3. The WebMCP client layer
+### 2. The WebMCP client layer
 
 `apps/game/src/webmcp/adapter.ts` first, then `director.ts` with the three-tier `AbortController` lifecycle, then `begin_shift` wired to `fetch("/session/:id/begin_shift")`. The briefing text already exists verbatim in `reducer.ts`'s `briefing()` function; do not retype it.
 
-### 4. `apps/archive`, and moving the Archive beat to it
+### 3. `apps/archive`, and moving the Archive beat to it
 
 Once the client exists to embed it, build the real cross-origin tool provider (doc 03 section 7) and move `read_station_log`'s logic there from `apps/worker/src/archive/` (D-017 documents exactly what moves). The data is already in the right place and format: `fixtures/ghosts/ghost-01.jsonl`.
 
@@ -75,6 +69,9 @@ Once the client exists to embed it, build the real cross-origin tool provider (d
 - **`PERCEIVED_BY` must never be forked.** One definition, three consumers: the projections, the proof, the smoke test.
 - **`execute` takes two arguments**, `(inputObject, { signal })`, and `requestUserInteraction` does not exist (D-007). The `AbortSignal` is real and unused so far.
 - **No Cloudflare product that needs a card.** D1 plus DO SQLite is the store, both provisioned. Check a product's *activation* path before adopting it, not its pricing page.
+- **A Durable Object alarm must never be the only place a rule lives** (D-018). The chamber timer is a stored deadline that `settleSession` compares against the clock on every read; the alarm calls that same pure function and does nothing else. If you add time-dependent behaviour, derive it from a stored timestamp first and reach for an alarm only for the thing derivation genuinely cannot do (here: stamping the event at the true instant when no call arrives).
+- **A `GameError` thrown out of `reduce()` discards everything that call settled.** `Session.#act` catches it and responds without persisting, so a deadlock discovered mid-call has to come back as a normal `ReduceResult` carrying its own text, not a throw. Check this before making any new refusal a `GameError`.
+- **The failure card quotes courses of action, not consistent worlds** (D-018). `bits` is `log2(actions)` on purpose, so printing the world count beside it prints two numbers that disagree. Chamber 0: six worlds, three actions, 1.58 bits.
 - **`state.id.name` recovers a Durable Object's own session id.** It only works because `index.ts` creates ids via `idFromName(sessionId)`.
 - **`tests/` is a workspace package** (`@semaphore/tests`), and `apps/worker` exports `./*` from source, so import `@semaphore/worker/chambers/airlock`, not a relative path.
 - **`pnpm-workspace.yaml` needs `allowBuilds`** for `esbuild` and `workerd`, or wrangler's install fails non-interactively.
@@ -88,7 +85,7 @@ Once the client exists to embed it, build the real cross-origin tool provider (d
 
 | Item | Owner | Note |
 |---|---|---|
-| Spike results | Human with a WebMCP browser | Blocks nothing yet, gates the archive design and the finale |
+| Spike results | Human with a WebMCP browser | Now the **only** thing blocking the client layer's design. Gates the archive and the finale. |
 | Playtesters | Human | Doc 08 section 0.1 wants six people. The only task that does not parallelise. |
 | Repo made public | Human | Deliberately deferred to just before the deadline. |
 | Netlify credits | Done | Form submitted 2026-08-28. |
