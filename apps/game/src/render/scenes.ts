@@ -55,14 +55,30 @@ import {
   meterFill,
   truncate,
 } from "./hud.js";
+import { SPRITE_SIZE, TEXTURE, allSprites, toCanvas } from "./sprites.js";
 import type { StationModel } from "./station.js";
 
-/** The greybox font. A bitmap font replaces this when art lands. */
+/** The interface font. Pixel art carries the room; text carries the readouts. */
 const FONT = { fontFamily: "monospace", fontSize: "8px" } as const;
 
-/** PILOT is a person, not a mascot: 16 wide, 24 tall (doc 06 section 3). */
-const AVATAR_WIDTH = 16;
-const AVATAR_HEIGHT = 24;
+/**
+ * Build every sprite's texture, once per scene that needs them.
+ *
+ * The art is authored as pixels in `sprites.ts` rather than loaded as files
+ * (see that module for why), so there is no preload step and nothing to wait
+ * for: the textures exist by the end of `create()`. Guarded on `exists`
+ * because both scenes call it and a texture key may only be claimed once.
+ */
+function installSprites(scene: Phaser.Scene): void {
+  for (const [key, sprite] of allSprites()) {
+    if (scene.textures.exists(key)) continue;
+    scene.textures.addCanvas(key, toCanvas(sprite));
+  }
+}
+
+/** Below this width a piece cannot legibly carry its channel marker. */
+const MARKER_MIN_WIDTH = 12;
+
 /** Native pixels per second. Slow, because the room is 320 wide. */
 const WALK_SPEED = 60;
 
@@ -132,13 +148,16 @@ export class LandingScene extends Phaser.Scene {
 
   create(): void {
     this.cameras.main.setBackgroundColor(PALETTE.void);
+    installSprites(this);
     this.#pool = new TextPool(this);
 
-    // The station: a hull mass with one lit window. Greybox, and enough of a
-    // silhouette to establish the place before anything is asked of anyone.
-    this.add.rectangle(160, 122, 240, 76, PALETTE.hull).setOrigin(0.5, 0.5);
-    this.add.rectangle(160, 84, 120, 24, PALETTE.hullLight).setOrigin(0.5, 0.5);
-    this.#glow = this.add.rectangle(160, 84, 20, 10, PALETTE.amber).setOrigin(0.5, 0.5);
+    // The station from outside, built from the same hull the rooms are made
+    // of, with one lit window and the two of them already in it.
+    this.add.tileSprite(40, 84, 240, 76, TEXTURE.wall).setOrigin(0, 0);
+    this.add.rectangle(160, 78, 128, 14, PALETTE.hullLight).setOrigin(0.5, 0.5);
+    this.#glow = this.add.rectangle(160, 78, 22, 8, PALETTE.amber).setOrigin(0.5, 0.5);
+    this.add.image(120, 156, TEXTURE.pilot).setOrigin(0.5, 1);
+    this.add.image(200, 156, TEXTURE.keeper).setOrigin(0.5, 1).setTint(PALETTE.bone);
 
     // The lamp breathes so a page waiting for a first frame does not look
     // frozen. Twelve frames per second on game motion (doc 06 section 3).
@@ -153,19 +172,19 @@ export class LandingScene extends Phaser.Scene {
 
   override update(): void {
     this.#pool.begin();
-    this.#pool.write(160, 24, "SEMAPHORE", PALETTE.bone, 0.5);
-    this.#pool.write(160, 38, "A DERELICT SIGNAL STATION", PALETTE.boneDim, 0.5);
+    this.#pool.write(160, 18, "SEMAPHORE", PALETTE.bone, 0.5);
+    this.#pool.write(160, 30, "A DERELICT SIGNAL STATION", PALETTE.boneDim, 0.5);
     const tools = this.#model.tools.length;
     this.#pool.write(
       160,
-      150,
+      162,
       tools > 0
         ? `KEEPER IS HERE. ${String(tools)} TOOL${tools === 1 ? "" : "S"} ON THE PLATE.`
         : "WAITING FOR KEEPER TO READ ITS TOOLS",
       tools > 0 ? PALETTE.cyan : PALETTE.boneDim,
       0.5,
     );
-    this.#pool.write(160, 162, "PASTE THE PROMPT BELOW TO YOUR AGENT", PALETTE.amber, 0.5);
+    this.#pool.write(160, 172, "PASTE THE PROMPT BELOW TO YOUR AGENT", PALETTE.amber, 0.5);
     this.#pool.end();
   }
 }
@@ -182,7 +201,13 @@ export class ChamberScene extends Phaser.Scene {
   readonly #model: StationModel;
   #pool!: TextPool;
   #paint!: Phaser.GameObjects.Graphics;
-  #avatar!: Phaser.GameObjects.Rectangle;
+  #avatar!: Phaser.GameObjects.Image;
+  #keeperBody!: Phaser.GameObjects.Image;
+  #wall!: Phaser.GameObjects.TileSprite;
+  #floor!: Phaser.GameObjects.TileSprite;
+  /** Reused glyph faces, one per piece that wants one. Never re-created. */
+  readonly #faces: Phaser.GameObjects.Image[] = [];
+  #facesUsed = 0;
   #keys!: {
     left: Phaser.Input.Keyboard.Key;
     right: Phaser.Input.Keyboard.Key;
@@ -207,13 +232,28 @@ export class ChamberScene extends Phaser.Scene {
 
   create(): void {
     this.cameras.main.setBackgroundColor(PALETTE.void);
+    installSprites(this);
+    // The room's surfaces, under everything. Tile sprites rather than a
+    // repeated draw call: the GPU repeats the texture and the scene owns two
+    // objects instead of a hundred.
+    this.#wall = this.add
+      .tileSprite(0, ROOM_TOP, NATIVE_WIDTH, ROOM_BOTTOM - ROOM_TOP, TEXTURE.wall)
+      .setOrigin(0, 0)
+      .setDepth(0);
+    this.#floor = this.add
+      .tileSprite(0, FLOOR_Y, NATIVE_WIDTH, ROOM_BOTTOM - FLOOR_Y, TEXTURE.floor)
+      .setOrigin(0, 0)
+      .setDepth(0);
+
     this.#paint = this.add.graphics().setDepth(1);
     this.#pool = new TextPool(this);
 
-    this.#avatar = this.add
-      .rectangle(60, FLOOR_Y, AVATAR_WIDTH, AVATAR_HEIGHT, PALETTE.bone)
+    this.#avatar = this.add.image(60, FLOOR_Y, TEXTURE.pilot).setOrigin(0.5, 1).setDepth(5);
+    // Behind the grate, which is drawn over it every frame.
+    this.#keeperBody = this.add
+      .image(GRATE_X + 30, FLOOR_Y, TEXTURE.keeper)
       .setOrigin(0.5, 1)
-      .setDepth(5);
+      .setDepth(2);
 
     // Arrow keys and WASD, because a player whose hands are on the keyboard
     // to talk to their agent should not have to find a different set to move.
@@ -230,10 +270,12 @@ export class ChamberScene extends Phaser.Scene {
     this.#movePilot(deltaMs);
     this.#paint.clear();
     this.#pool.begin();
+    this.#facesUsed = 0;
     this.#drawRoom();
     this.#drawKeeper();
     this.#drawHud();
     this.#pool.end();
+    for (let i = this.#facesUsed; i < this.#faces.length; i += 1) this.#faces[i]?.setVisible(false);
   }
 
   /**
@@ -256,10 +298,11 @@ export class ChamberScene extends Phaser.Scene {
   /** The floor, then whatever `rooms.ts` says is standing on it. */
   #drawRoom(): void {
     const view = this.#model.view;
-    this.#paint.fillStyle(PALETTE.hull, 1);
-    this.#paint.fillRect(0, ROOM_TOP, NATIVE_WIDTH, ROOM_BOTTOM - ROOM_TOP);
-    this.#paint.fillStyle(PALETTE.hullLight, 1);
-    this.#paint.fillRect(0, FLOOR_Y, NATIVE_WIDTH, ROOM_BOTTOM - FLOOR_Y);
+    // Tiled hull rather than a flat fill: the station should look built, and
+    // the tiles carry the rust marks that stop 96 pixels of wall reading as a
+    // rectangle. Created once in `create()` and only positioned here.
+    this.#wall.setVisible(true);
+    this.#floor.setVisible(true);
 
     this.#layout = view ? roomLayout(view) : null;
     const layout = this.#layout;
@@ -305,20 +348,60 @@ export class ChamberScene extends Phaser.Scene {
     );
   }
 
-  /** One piece: filled body, channel outline, marker and caption. */
+  /** One piece: body, channel outline, glyph face, marker and caption. */
   #drawPiece(piece: Piece): void {
     const colour =
       PALETTE[piece.active ? CHANNEL_COLOUR[piece.channel] : CHANNEL_DIM[piece.channel]];
-    this.#paint.fillStyle(colour, piece.active ? 1 : 0.55);
+    // A piece wearing a glyph gets a dark plate to carry it; a bare piece is
+    // filled in its channel colour as before. Filling under a glyph would
+    // leave the shape fighting the field it sits on at eight pixels.
+    this.#paint.fillStyle(piece.glyph ? PALETTE.void : colour, piece.active ? 1 : 0.55);
     this.#paint.fillRect(piece.x, piece.y, piece.w, piece.h);
     this.#paint.lineStyle(1, colour, 1);
     this.#paint.strokeRect(piece.x + 0.5, piece.y + 0.5, piece.w - 1, piece.h - 1);
-    // The marker rides on every channel-coded piece, so the colour is never
-    // the only thing saying who can perceive it.
-    this.#pool.write(piece.x + 1, piece.y + 1, CHANNEL_MARKER[piece.channel], PALETTE.void);
+
+    if (piece.glyph) this.#drawGlyph(piece, colour);
+
+    // The marker rides on every channel-coded piece big enough to carry it, so
+    // the colour is never the only thing saying who can perceive it. On a 6px
+    // strike pip it is illegible noise, and those pips are captioned in the
+    // channel colour anyway, so the shape cue is not lost.
+    if (piece.w >= MARKER_MIN_WIDTH) {
+      this.#pool.write(piece.x + 1, piece.y + 1, CHANNEL_MARKER[piece.channel], colour);
+    }
     if (piece.label !== undefined) {
       this.#pool.write(piece.x + piece.w / 2, piece.y + piece.h + 1, piece.label, colour, 0.5);
     }
+  }
+
+  /**
+   * The glyph on a piece's face, tinted to the piece's channel.
+   *
+   * The sprite is monochrome and the tint is applied here, so the same mark
+   * that says "this is a spiral" also says "only PILOT can see this" and the
+   * two cannot disagree. Faces come from a pool for the same reason the text
+   * does: this runs sixty times a second.
+   */
+  #drawGlyph(piece: Piece, colour: number): void {
+    const key = TEXTURE.glyph(piece.glyph ?? "");
+    if (!this.textures.exists(key)) return;
+    let face = this.#faces[this.#facesUsed];
+    if (!face) {
+      face = this.add.image(0, 0, key).setDepth(3);
+      this.#faces.push(face);
+    }
+    // Scaled down to fit inside the piece, integer-snapped so the pixel art
+    // never lands on a half pixel.
+    const scale = Math.max(1, Math.floor(Math.min(piece.w - 4, piece.h - 4) / SPRITE_SIZE)) || 1;
+    const fit = Math.min(piece.w - 2, piece.h - 2) / SPRITE_SIZE;
+    face
+      .setTexture(key)
+      .setPosition(Math.round(piece.x + piece.w / 2), Math.round(piece.y + piece.h / 2))
+      .setScale(fit >= 1 ? scale : fit)
+      .setTint(colour)
+      .setAlpha(piece.active ? 1 : 0.5)
+      .setVisible(true);
+    this.#facesUsed += 1;
   }
 
   /**
@@ -336,17 +419,18 @@ export class ChamberScene extends Phaser.Scene {
     this.#paint.fillStyle(PALETTE.void, 1);
     this.#paint.fillRect(GRATE_X, ROOM_TOP, NATIVE_WIDTH - GRATE_X, FLOOR_Y - ROOM_TOP);
 
-    const torsoX = GRATE_X + 18;
-    this.#paint.fillStyle(PALETTE.cyanDeep, 1);
-    this.#paint.fillRect(torsoX, FLOOR_Y - 34, 24, 34);
-    this.#paint.fillStyle(busy ? PALETTE.cyanBright : PALETTE.cyan, 1);
-    this.#paint.fillRect(torsoX + 4, FLOOR_Y - 30, 16, 5);
+    // The visor brightens while a call is in flight. It is the human's only
+    // cue that their partner is doing something right now.
+    this.#keeperBody.setTint(busy ? PALETTE.cyanBright : PALETTE.bone).setVisible(true);
 
-    // One limb segment per registered tool, brass, stacked down the torso.
+    // One limb segment per registered tool, brass, stacked down each side.
+    // Read from `getTools()` rather than from a record of what was registered,
+    // so a registration that silently failed costs KEEPER a visible limb.
+    const torsoX = GRATE_X + 22;
     this.#paint.fillStyle(PALETTE.brass, 1);
     this.#model.tools.forEach((_tool, index) => {
       const y = FLOOR_Y - 22 + (index % 6) * 3;
-      const x = index < 6 ? torsoX - 8 : torsoX + 26;
+      const x = index < 6 ? torsoX - 12 : torsoX + 14;
       this.#paint.fillRect(x, y, 6, 2);
     });
 
@@ -416,12 +500,18 @@ export class ChamberScene extends Phaser.Scene {
       this.#peakChamber = chamber;
       this.#peakBits = 0;
     }
-    if (report?.bits != null) this.#peakBits = Math.max(this.#peakBits, report.bits);
+    // The route is polled, so for a couple of seconds after a chamber change
+    // the last answer is about the room the pair has already left. Reporting
+    // the Airlock's 1.58 bits in the Signal Room is not a stale number, it is
+    // a wrong one, so a reading from another room is discarded rather than
+    // drawn.
+    const current = report?.chamber === chamber ? report : null;
+    if (current?.bits != null) this.#peakBits = Math.max(this.#peakBits, current.bits);
 
     const track = NATIVE_WIDTH - 8;
     this.#paint.fillStyle(PALETTE.hull, 1);
     this.#paint.fillRect(4, METER_Y, track, METER_HEIGHT);
-    const fill = meterFill(report?.bits ?? null, this.#peakBits);
+    const fill = meterFill(current?.bits ?? null, this.#peakBits);
     if (fill > 0) {
       this.#paint.fillStyle(PALETTE.brass, 1);
       this.#paint.fillRect(4, METER_Y, Math.max(1, Math.round(track * fill)), METER_HEIGHT);
@@ -429,9 +519,9 @@ export class ChamberScene extends Phaser.Scene {
     this.#pool.write(
       4,
       METER_Y + METER_HEIGHT + 1,
-      report?.bits == null
+      current?.bits == null
         ? "REMAINING AMBIGUITY -"
-        : `REMAINING AMBIGUITY ${report.bits.toFixed(2)} BITS`,
+        : `REMAINING AMBIGUITY ${current.bits.toFixed(2)} BITS`,
       PALETTE.boneDim,
     );
   }

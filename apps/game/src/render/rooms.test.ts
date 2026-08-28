@@ -132,14 +132,17 @@ describe("roomLayout", () => {
       const layout = roomLayout(view({ chamber: "airlock", facts: AIRLOCK_FACTS }));
       const levers = layout?.pieces.filter((piece) => piece.channel === "pilot") ?? [];
       expect(levers).toHaveLength(3);
-      expect(levers.map((piece) => piece.label)).toEqual(["cross", "spiral", "wave"]);
+      // The shape, not the name. A lever captioned "spiral" lets PILOT say the
+      // word and be done, which deletes the chamber.
+      expect(levers.map((piece) => piece.glyph)).toEqual(["cross", "spiral", "wave"]);
+      expect(levers.map((piece) => piece.label)).toEqual(["A", "B", "C"]);
     });
 
     it("spends a lever that has been pulled", () => {
       const layout = roomLayout(view({ chamber: "airlock", facts: AIRLOCK_FACTS }));
-      const byLabel = new Map(layout?.pieces.map((piece) => [piece.label, piece.active]));
-      expect(byLabel.get("cross")).toBe(false);
-      expect(byLabel.get("spiral")).toBe(true);
+      const byGlyph = new Map(layout?.pieces.map((piece) => [piece.glyph, piece.active]));
+      expect(byGlyph.get("cross")).toBe(false);
+      expect(byGlyph.get("spiral")).toBe(true);
     });
 
     it("reads the door from the shared fact, and flashes when it opens", () => {
@@ -163,11 +166,13 @@ describe("roomLayout", () => {
   describe("the signal room", () => {
     it("lays six keys out in two rows and spends the pressed ones", () => {
       const layout = roomLayout(view({ chamber: "signal_room", facts: SIGNAL_FACTS }));
-      const keys = layout?.pieces.filter((piece) => piece.label?.includes(":")) ?? [];
+      const keys = layout?.pieces.filter((piece) => piece.glyph) ?? [];
       expect(keys).toHaveLength(6);
       expect(new Set(keys.map((piece) => piece.y)).size).toBe(2);
-      expect(keys.find((piece) => piece.label === "1:arch")?.active).toBe(false);
-      expect(keys.find((piece) => piece.label === "2:knot")?.active).toBe(true);
+      // Numbered for KEEPER, shaped for PILOT. The glyph's name is on neither.
+      expect(keys.map((piece) => piece.label)).toEqual(["1", "2", "3", "4", "5", "6"]);
+      expect(keys.find((piece) => piece.label === "1")?.active).toBe(false);
+      expect(keys.find((piece) => piece.label === "2")?.active).toBe(true);
     });
 
     it("lights one strike pip per strike, on the shared channel", () => {

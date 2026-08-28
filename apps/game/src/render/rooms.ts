@@ -73,6 +73,16 @@ export interface Piece {
   readonly active: boolean;
   /** Caption drawn under the piece, on canvas. Never in the DOM. */
   readonly label?: string;
+  /**
+   * A glyph id to draw on the piece's face, rather than its name.
+   *
+   * This is the difference between the game and a reading exercise. A lever
+   * captioned "spiral" lets PILOT say the word and be done; a lever wearing
+   * the shape makes them describe it, which is the entire Airlock and most of
+   * the Signal Room. The name is KEEPER's half - it is in the manual's stroke
+   * table - and it must not appear on PILOT's side of the split.
+   */
+  readonly glyph?: string;
 }
 
 /** Everything `ChamberScene` needs to draw one frame of one room. */
@@ -163,17 +173,21 @@ function airlock(facts: Readonly<Record<string, unknown>>): RoomLayout {
 
   // Levers spread evenly across the usable floor so three of them read as a
   // bank rather than a cluster, whatever the seed named them.
-  const span = 168;
+  const span = 150;
   levers.forEach((lever, index) => {
-    const x = 40 + (levers.length > 1 ? (span / (levers.length - 1)) * index : span / 2);
+    const x = 46 + (levers.length > 1 ? (span / (levers.length - 1)) * index : span / 2);
     pieces.push({
-      x: Math.round(x) - 6,
-      y: FLOOR_Y - 34,
-      w: 12,
-      h: 34,
+      x: Math.round(x) - 9,
+      y: FLOOR_Y - 30,
+      w: 18,
+      h: 30,
       channel: "pilot",
       active: !pulled.has(lever),
-      label: String(glyphByLever[lever] ?? "?"),
+      // The lever's *position*, which is what KEEPER can be told to pull, and
+      // the glyph's *shape*, which is what PILOT has to describe. The glyph's
+      // name appears nowhere: it lives in KEEPER's stroke table.
+      label: lever.replace(/^lever_/, "").toUpperCase(),
+      glyph: String(glyphByLever[lever] ?? ""),
     });
   });
 
@@ -200,13 +214,16 @@ function signalRoom(facts: Readonly<Record<string, unknown>>): RoomLayout {
   const keys = Object.keys(glyphByKey).sort((a, b) => Number(a) - Number(b));
 
   const pieces: Piece[] = keys.map((key, index) => ({
-    x: 44 + (index % 3) * 52,
-    y: ROOM_TOP + 12 + Math.floor(index / 3) * 44,
-    w: 40,
-    h: 26,
+    x: 46 + (index % 3) * 46,
+    y: ROOM_TOP + 8 + Math.floor(index / 3) * 40,
+    w: 24,
+    h: 24,
     channel: "pilot" as const,
     active: !pressed.has(key),
-    label: `${key}:${String(glyphByKey[key] ?? "?")}`,
+    // The number is how KEEPER names a key. The shape is what PILOT has to get
+    // across, and it is the only thing on the face.
+    label: String(key),
+    glyph: String(glyphByKey[key] ?? ""),
   }));
 
   // Three strike pips, because the room vents on the third. Shared: both
@@ -231,9 +248,9 @@ function signalRoom(facts: Readonly<Record<string, unknown>>): RoomLayout {
     // the two captions read as one string.
     pieces.push({
       x: 190,
-      y: ROOM_TOP + 24,
+      y: ROOM_TOP + 26,
       w: 56,
-      h: 26,
+      h: 18,
       channel: "pilot",
       active: page === "vandalised",
       // Short, because a wider caption on this plate reaches left far enough
