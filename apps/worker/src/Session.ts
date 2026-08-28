@@ -26,6 +26,7 @@ import { ActionSemaphore } from "./semaphore.js";
 import { percentile, staminaWindowMs } from "./latency.js";
 import type { LeverId } from "./chambers/airlock.js";
 import type { KeyId } from "./chambers/signal_room.js";
+import type { DialId, Direction } from "./chambers/blind_panel.js";
 
 export interface Env {
   SESSIONS: DurableObjectNamespace;
@@ -45,6 +46,8 @@ function labelFor(action: Action): string {
       return "pressing a key";
     case "reset_sequence":
       return "resetting the sequence";
+    case "rotate_dial":
+      return "turning a dial";
   }
 }
 
@@ -98,6 +101,19 @@ export class Session {
     }
     if (pathname.endsWith("/reset_sequence")) {
       return this.#act({ type: "reset_sequence" });
+    }
+    if (pathname.endsWith("/rotate_dial")) {
+      const body = (await request.json()) as {
+        dial_id?: unknown;
+        direction?: unknown;
+        clicks?: unknown;
+      };
+      return this.#act({
+        type: "rotate_dial",
+        dialId: Number(body.dial_id ?? 0) as DialId,
+        direction: (body.direction as Direction | undefined) ?? "clockwise",
+        clicks: Number(body.clicks ?? 0),
+      });
     }
 
     return new Response("Not found", { status: 404 });
