@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { DIFFICULTIES, GameError, timerFor, type Difficulty } from "@semaphore/protocol";
+import {
+  DIFFICULTIES,
+  GameError,
+  MODE_CHAMBERS,
+  timerFor,
+  type Difficulty,
+} from "@semaphore/protocol";
 import * as airlock from "./chambers/airlock.js";
 import * as signalRoom from "./chambers/signal_room.js";
 import * as blindPanel from "./chambers/blind_panel.js";
@@ -1245,5 +1251,70 @@ describe("Chamber II's gauge drift", () => {
     // Not inverted: the gauge sat at 3 after drifting, so 5 clicks reach 8.
     // Inverted: it was already driven to its bound, so nothing registers.
     expect(registered).toBe(inverted ? 0 : 5);
+  });
+});
+
+/** Drive a session all the way to FINALE: every chamber cleared, door still shut. */
+function finaleSession(): { session: PersistedSession; nowMs: number } {
+  const { session, nowMs } = concordLockSession();
+  let t = nowMs + 1000;
+  let s = reduce(session, { type: "grip_bar" }, t).session;
+  const phrase = s.concordLock!.params.passphrase;
+  for (const bolt of concordLock.BOLTS) {
+    s = reduce(s, { type: "align_bolt", boltId: bolt }, (t += 500)).session;
+  }
+  s = reduce(s, { type: "speak_passphrase", phrase }, (t += 500)).session;
+  return { session: s, nowMs: t };
+}
+
+describe("open_the_door", () => {
+  it("is the only call that reaches ESCAPED", () => {
+    const { session, nowMs } = finaleSession();
+    expect(session.machine.phase).toBe("FINALE");
+    const { session: out } = reduce(session, { type: "open_the_door" }, nowMs + 500);
+    expect(out.machine.phase).toBe("ESCAPED");
+  });
+
+  it("writes the log's last line, with the derived stamina window on it", () => {
+    const { session, nowMs } = finaleSession();
+    const { events } = reduce(session, { type: "open_the_door" }, nowMs + 500);
+    expect(events.map((e) => e.type)).toEqual(["tool_call", "session_end"]);
+    const end = events[1];
+    expect(end).toMatchObject({
+      type: "session_end",
+      outcome: "escaped",
+      // BRIEF mode is two chambers plus the finale's own lock.
+      chambersCleared: MODE_CHAMBERS.brief.length,
+    });
+    // Derived, never hardcoded: the same window Chamber III was sized with.
+    expect((end as { staminaWindowMs: number }).staminaWindowMs).toBeGreaterThan(0);
+  });
+
+  it("names the agent's own designation in the last thing it ever reads", () => {
+    const { session, nowMs } = finaleSession();
+    const { toolText } = reduce(session, { type: "open_the_door" }, nowMs + 500);
+    expect(toolText).toContain("KEEPER");
+    expect(toolText).toContain("Neither of you got out alone");
+  });
+
+  it("refuses before the Concord Lock opens, naming what is in the way", () => {
+    const { session } = concordLockSession();
+    expect(() => reduce(session, { type: "open_the_door" }, NOW)).toThrow(GameError);
+    try {
+      reduce(session, { type: "open_the_door" }, NOW);
+    } catch (err) {
+      expect((err as GameError).code).toBe("E_UNREACHABLE");
+      expect((err as GameError).message).toContain("Concord Lock");
+    }
+  });
+
+  it("refuses before the shift has started at all", () => {
+    expect(() => reduce(fresh(), { type: "open_the_door" }, NOW)).toThrow(GameError);
+  });
+
+  it("clears the chamber deadline, so no alarm survives the ending", () => {
+    const { session, nowMs } = finaleSession();
+    const { session: out } = reduce(session, { type: "open_the_door" }, nowMs + 500);
+    expect(out.chamberDeadlineMs).toBeNull();
   });
 });
