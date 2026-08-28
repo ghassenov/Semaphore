@@ -28,3 +28,11 @@ new_sqlite_classes = ["Session"]
 binding = "SESSIONS_DB"
 database_name = "semaphore-sessions"
 database_id = "e8e649f2-b891-4f0f-9ff4-09419d8639e0"
+
+# Origins permitted to call the session routes from a browser (see src/cors.ts).
+# Empty by default: local development proxies `/session` through Vite, so every
+# request is same-origin and no header is needed. Production sets the game's
+# Pages origin and the archive origin here, comma-separated. Nothing
+# environment-specific belongs in a source file (repo CLAUDE.md section 3).
+[vars]
+ALLOWED_ORIGINS = ""
