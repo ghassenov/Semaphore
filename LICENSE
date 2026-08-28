@@ -19,3 +19,18 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+## Third-party art
+
+This MIT licence covers the source code in this repository. It does not cover
+the image files under `apps/game/public/art/`, which are not ours to relicense.
+
+Those come from "[FREE] 16x16 Top Down Puzzle System - Asset Pack" by LorisC
+(https://lorisc.itch.io/puzzle-system-asset-pack) and are used under the pack's
+own terms, which permit use in a game and withhold redistribution. Full detail,
+and what was and was not taken, is in `apps/game/public/art/CREDITS.md`.
+
+The distinction matters: MIT grants redistribution and the pack's terms do not,
+so nothing in this file should be read as permission to redistribute that art.
