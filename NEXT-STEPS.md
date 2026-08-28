@@ -23,7 +23,7 @@ It answers three questions and only three: where the repo is right now, what to 
 | Path | State |
 |---|---|
 | `docs/design/` | Numbered set 00-12, complete. |
-| `docs/` | Decision log at D-023, lessons journal live. |
+| `docs/` | Decision log at D-024, lessons journal live. |
 | `packages/seed`, `packages/protocol` | Done. |
 | `apps/worker/src/chambers/*.ts` | Done. All four chambers: generation, state, facts, world enumeration. |
 | `apps/worker/src/reducer.ts` | Done end to end. A full-mode session now runs ENTRY through **ESCAPED**: `open_the_door` was the missing terminal action, so `session_end` is written for the first time. |

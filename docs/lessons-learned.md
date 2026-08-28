@@ -57,11 +57,25 @@ Resolution is D-006, amended by D-008: session logs live in DO SQLite while a se
 
 ## The WebMCP specification
 
+### 2026-08-28 - The IDL was not the answer, and the testing helper was not the agent path
+
+The entry below this one settled a disputed claim by reading the W3C draft IDL carefully, concluded that `execute` receives two arguments with an `AbortSignal`, and recorded it as D-007. Running the spike against Chrome 151 today found that `execute` receives **one** argument and no signal. The IDL says one thing; the only shipping implementation does another.
+
+That is not a criticism of reading the IDL, which was the right thing to do with no browser available. It is a lesson about how long a spec reading is allowed to stand unverified. D-007 sat for a day and had already been written into `apps/game`'s adapter types, its director, its session client, its fake registry, a test, and the handoff. None of it was broken - the parameter was optional throughout - but six places claimed a capability the browser does not provide, and every one of them had to be corrected. **A spec reading is a hypothesis with a shelf life. Mark it as one, and go and measure it before it has propagated into six files.**
+
+The sharper half of the lesson is about *what* you measure with. The spike's own check drove tools through `mc.executeTool(tool, input)`, the page-side helper, and found the argument count that way. It also found something odd: `executeTool` **rejects an input object** and requires a JSON string, which contradicted the IDL a second time. Both observations came from a path the game never uses. Invoking the same tool the way a host does, through the DevTools Protocol's `WebMCP.invokeTool`, showed the truth: an agent invocation delivers a plain **object**, and the JSON-string requirement belongs to the testing helper alone. Had we stopped at the first result we would have "fixed" the client to parse a JSON string it will never receive, breaking every tool.
+
+**When a platform gives you two ways to invoke your own code, the one your users take is the one that defines the contract.** A convenience or testing entry point can differ from the real one in ways that look like the API and are not, and a diagnostic that only exercises the convenient path will confidently report the wrong answer. Worth asking of any instrument, not just this one: is this the path production takes, or the path that was easy to call?
+
+A third finding came free from the same run, and it is the one that changes a design rather than a claim: **a declaratively registered tool does not leave the registry when its `AbortSignal` aborts.** Its lifetime is its form element's, so it goes when the form leaves the DOM. Our whole ending is a registry draining to empty, and the spike's `toolchange.empty` row came back with one tool still registered. The event had fired correctly; the registry simply was not empty, because the two registration APIs have two different lifetimes and we had only thought about one. **When a platform offers two ways to create the same kind of thing, check that they are destroyed the same way too.** It is the sort of asymmetry that is invisible until the demo.
+
+All three are recorded in D-024 and in doc 11 section 2.
+
 ### 2026-08-27 - Two of our three disputed spec claims resolve against doc 03
 
 Read directly from the W3C draft IDL rather than from memory. Both corrections matter, and one of them invalidates a sentence we had written into our own architecture document.
 
-**`execute` receives two arguments, not one.** The callback signature is `(object inputObject, ToolExecuteCallbackOptions options)`, and `options` carries `required AbortSignal signal`. Doc 03 section 1 lists "execute receives a single argument" as a high-confidence claim. It is wrong.
+**`execute` receives two arguments, not one.** The callback signature is `(object inputObject, ToolExecuteCallbackOptions options)`, and `options` carries `required AbortSignal signal`. Doc 03 section 1 lists "execute receives a single argument" as a high-confidence claim. It is wrong. *(Superseded 2026-08-28: Chrome 151 passes one argument and no signal. Doc 03 was right and this reading was not. See the entry above and D-024.)*
 
 **`requestUserInteraction` does not exist.** The second argument is not an agent handle. It contains a cancellation signal and nothing else. So the conditional plan in doc 02 section 3.4 ("if it turns out to exist it goes on `speak_passphrase`") resolves to the no-change branch, and the caution behaviour around the one irreversible action stays exactly what it was: state the consequence in the description, provide `get_lock_state` for verification, enforce no ordering in code, and let the benchmark measure which models check first.
 
