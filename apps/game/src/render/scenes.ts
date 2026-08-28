@@ -23,6 +23,7 @@ import {
   NATIVE_WIDTH,
   ROOM_BOTTOM,
   ROOM_TOP,
+  interlude,
   roomLayout,
   roomTitle,
   type Piece,
@@ -42,8 +43,14 @@ import {
   MANIFEST_X,
   METER_HEIGHT,
   METER_Y,
+  PAD_LINES,
+  PAD_WIDTH,
+  PAD_X,
   PANEL_Y,
   TIMER_URGENT_FRACTION,
+  WALL_PAD_WIDTH,
+  WALL_PAD_X,
+  formatNote,
   formatTimer,
   meterFill,
   truncate,
@@ -257,7 +264,12 @@ export class ChamberScene extends Phaser.Scene {
     this.#layout = view ? roomLayout(view) : null;
     const layout = this.#layout;
     if (!layout) {
-      if (view) this.#pool.write(160, 64, "NO ROOM HERE", PALETTE.boneDim, 0.5);
+      if (!view) return;
+      // Not dead air: the Archive is a designed beat and `ESCAPED` is the last
+      // frame anybody sees. Both deserve better than a diagnostic.
+      const [headline, instruction] = interlude(view);
+      this.#pool.write(160, 58, headline, PALETTE.bone, 0.5);
+      if (instruction) this.#pool.write(160, 72, instruction, PALETTE.boneDim, 0.5);
       return;
     }
 
@@ -383,6 +395,7 @@ export class ChamberScene extends Phaser.Scene {
     this.#drawSound();
     this.#drawMeter();
     this.#drawLog();
+    this.#drawPad();
     this.#drawManifest();
     this.#drawLegend();
   }
@@ -432,6 +445,52 @@ export class ChamberScene extends Phaser.Scene {
         PANEL_Y + LINE_HEIGHT + 2 + index * LINE_HEIGHT,
         truncate(line, LOG_WIDTH),
         PALETTE.bone,
+      );
+    });
+  }
+
+  /**
+   * The shared notepad, in both places it exists.
+   *
+   * On the wall, as a physical pad in the room's left margin, because it is an
+   * object in the station and not an interface element: doc 03 section 8 puts
+   * it there and the whole exhibit is that the two parties act on the same
+   * physical thing. In the panel below, as readable lines, because 14 pixels
+   * of wall cannot hold a sentence.
+   *
+   * Each line is drawn in its writer's channel colour. That is the only reason
+   * `SubmitEvent.agentInvoked` is tracked at all, and it is the one surface in
+   * the game where amber and cyan appear side by side rather than opposed.
+   */
+  #drawPad(): void {
+    const notes = this.#model.view?.notes ?? [];
+
+    // The pad on the wall. Brass corner, bone paper, one ruled line per note
+    // it is holding, so a full pad reads as full from across the room.
+    this.#paint.fillStyle(PALETTE.brass, 1);
+    this.#paint.fillRect(WALL_PAD_X - 1, ROOM_TOP + 5, WALL_PAD_WIDTH + 2, 3);
+    this.#paint.fillStyle(PALETTE.bone, notes.length > 0 ? 0.9 : 0.35);
+    this.#paint.fillRect(WALL_PAD_X, ROOM_TOP + 8, WALL_PAD_WIDTH, 34);
+    this.#paint.fillStyle(PALETTE.void, 1);
+    notes.slice(-6).forEach((note, index) => {
+      // The ruled lines are colour-coded too, so the wall pad shows at a
+      // glance whether the last thing written was yours or your partner's.
+      this.#paint.fillStyle(PALETTE[note.author === "KEEPER" ? "cyanDeep" : "amberDeep"], 1);
+      this.#paint.fillRect(WALL_PAD_X + 2, ROOM_TOP + 12 + index * 5, WALL_PAD_WIDTH - 4, 2);
+    });
+
+    // The readable copy.
+    this.#pool.write(PAD_X, PANEL_Y, `NOTEPAD ${String(notes.length)}`, PALETTE.bone);
+    if (notes.length === 0) {
+      this.#pool.write(PAD_X, PANEL_Y + LINE_HEIGHT + 2, "BLANK", PALETTE.boneDim);
+      return;
+    }
+    notes.slice(-PAD_LINES).forEach((note, index) => {
+      this.#pool.write(
+        PAD_X,
+        PANEL_Y + LINE_HEIGHT + 2 + index * LINE_HEIGHT,
+        formatNote(note.author, note.text, PAD_WIDTH),
+        PALETTE[note.author === "KEEPER" ? "cyan" : "amber"],
       );
     });
   }

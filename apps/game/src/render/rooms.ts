@@ -316,7 +316,13 @@ function blindPanel(facts: Readonly<Record<string, unknown>>): RoomLayout {
   return {
     title: ROOM_TITLES.blind_panel ?? "BLIND PANEL",
     pieces,
-    sound: typeof clicks === "number" ? `${String(clicks)} clicks registered` : null,
+    // Singular at one. The count is puzzle-critical in this room - it is how
+    // KEEPER learns a linkage hit its bound - so the line that carries it
+    // should not read like a placeholder.
+    sound:
+      typeof clicks === "number"
+        ? `${String(clicks)} click${clicks === 1 ? "" : "s"} registered`
+        : null,
     solved,
   };
 }
@@ -450,4 +456,37 @@ export function roomTitle(view: PilotView): string {
     return ROOM_TITLES[view.chamber] ?? view.chamber.toUpperCase();
   }
   return PHASE_TITLES[view.phase] ?? view.phase;
+}
+
+/**
+ * What the room band says when there is no room to draw.
+ *
+ * The phases between chambers are not dead air: the Archive is a designed
+ * beat, the finale is the moment the pair has played fifteen minutes for, and
+ * `ESCAPED` is the last thing anybody sees. A first pass drew "NO ROOM HERE"
+ * in all of them, which is accurate and reads as a rendering fault at exactly
+ * the moment the game should be landing.
+ *
+ * Two lines: what is happening, and what to do about it. The second is empty
+ * where there is nothing to do, because inventing an instruction for a beat
+ * that has none is worse than silence.
+ */
+export function interlude(view: PilotView): readonly [string, string] {
+  switch (view.phase) {
+    case "ENTRY":
+      return ["THE STATION IS DARK", "YOUR AGENT OPENS THE DOOR"];
+    case "LOBBY":
+      return ["THE SHIFT HAS NOT BEGUN", "CHOOSE A SESSION LENGTH BELOW"];
+    case "TRANSITIONING":
+      return ["THE DOOR AHEAD IS OPENING", ""];
+    case "ARCHIVE":
+      return ["A DEAD MONITOR, STILL WARM", "KEEPER READS THE GHOST LOGS"];
+    case "FINALE":
+      return ["THE OUTER DOOR", "ONE THING LEFT TO DO"];
+    case "ESCAPED":
+      // The last frame of the game. It is worth a sentence.
+      return ["THE DOOR IS OPEN", "COLD AIR, AND THE SOUND OF THE SEA"];
+    default:
+      return ["NOTHING TO SEE FROM HERE", ""];
+  }
 }

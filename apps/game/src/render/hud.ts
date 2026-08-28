@@ -32,15 +32,59 @@ export const LEGEND_Y = 170;
 /** One line of 8px text, which is what every band below is measured in. */
 export const LINE_HEIGHT = 8;
 
-/** The action log's own box, left of the manifest plate. */
+/**
+ * The panel row, in three columns: what KEEPER did, what the pair wrote down,
+ * and what KEEPER can currently do.
+ *
+ * The middle column is the widest because it holds sentences two people wrote
+ * for each other, and the other two hold identifiers. Three columns rather
+ * than two because the notepad is the exhibit, not an extra: it is the only
+ * surface both parties write to, and a pad the player cannot see is a pad they
+ * will not use.
+ */
 export const LOG_X = 4;
-export const LOG_WIDTH = 172;
+export const LOG_WIDTH = 88;
 /** How many lines fit before the oldest is dropped. */
 export const LOG_LINES = 3;
 
+/**
+ * The pad on the wall, in the room band's right margin beside the grate.
+ *
+ * On the wall rather than in a HUD panel because it is a physical object in
+ * the station that both parties act on, and doc 03 section 8 asks for it to be
+ * one. The DOM form below the canvas is the part PILOT types into; this is the
+ * paper it writes on.
+ */
+export const PAD_X = 98;
+export const PAD_WIDTH = 128;
+export const PAD_LINES = 3;
+
+/**
+ * The pad's in-world marker: a paper pad on the wall, in the room's left
+ * margin, clear of every chamber's furniture.
+ *
+ * Narrow, because the readable copy is in the panel below and the point of
+ * this one is that the pad is a physical thing in the station rather than an
+ * interface element. `rooms.test.ts` holds every chamber's pieces clear of it.
+ */
+export const WALL_PAD_X = 4;
+export const WALL_PAD_WIDTH = 14;
+
+/**
+ * A note as the pad draws it: the writer's name, then their words.
+ *
+ * Each line is drawn in its writer's channel colour, which is the whole reason
+ * authorship is tracked at all. Amber is PILOT's, cyan is KEEPER's, and the
+ * pad is the one surface in the game where the two appear together. Marked
+ * with the channel's shape as well, because colour alone must never carry it.
+ */
+export function formatNote(author: string, text: string, widthPx: number): string {
+  return truncate(`${author === "KEEPER" ? "K" : "P"} ${text}`, widthPx);
+}
+
 /** The manifest plate: KEEPER's registry, as the page actually reports it. */
-export const MANIFEST_X = 182;
-export const MANIFEST_WIDTH = 134;
+export const MANIFEST_X = 232;
+export const MANIFEST_WIDTH = 84;
 export const MANIFEST_LINES = 3;
 
 /**

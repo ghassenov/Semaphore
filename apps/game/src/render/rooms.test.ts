@@ -13,7 +13,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { PilotView } from "@semaphore/protocol";
-import { textWidth } from "./hud.js";
+import { WALL_PAD_WIDTH, WALL_PAD_X, textWidth } from "./hud.js";
 import {
   CAPTION_HEIGHT,
   FLOOR_Y,
@@ -22,6 +22,7 @@ import {
   NATIVE_WIDTH,
   ROOM_BOTTOM,
   ROOM_TOP,
+  interlude,
   roomLayout,
   roomTitle,
 } from "./rooms.js";
@@ -35,6 +36,7 @@ function view(over: Partial<PilotView> = {}): PilotView {
     remainingMs: 120_000,
     retries: 0,
     facts: {},
+    notes: [],
     ...over,
   };
 }
@@ -280,6 +282,29 @@ describe("roomLayout", () => {
     });
   });
 
+  it("leaves the wall pad's column clear in every chamber", () => {
+    // The notepad hangs in the room's left margin and is drawn by the scene
+    // rather than by `roomLayout`, so nothing else here can notice a room
+    // growing leftward into it.
+    for (const [chamber, facts] of [
+      ["airlock", AIRLOCK_FACTS],
+      ["signal_room", SIGNAL_FACTS],
+      ["blind_panel", BLIND_FACTS],
+      ["concord_lock", CONCORD_FACTS],
+    ] as const) {
+      for (const piece of roomLayout(view({ chamber, facts }))?.pieces ?? []) {
+        const reach =
+          piece.label === undefined
+            ? piece.x
+            : Math.min(piece.x, piece.x + piece.w / 2 - textWidth(piece.label) / 2);
+        expect(
+          reach,
+          `${chamber}: ${String(piece.label)} covers the wall pad`,
+        ).toBeGreaterThanOrEqual(WALL_PAD_X + WALL_PAD_WIDTH);
+      }
+    }
+  });
+
   it("leaves every caption inside the room's band", () => {
     // Captions are drawn *under* their piece. One that runs past ROOM_BOTTOM
     // lands on the audible strip, which is how three lever names ended up
@@ -387,5 +412,70 @@ describe("the canvas the room is drawn on", () => {
   it("leaves the floor inside the room band", () => {
     expect(FLOOR_Y).toBeGreaterThan(ROOM_TOP);
     expect(FLOOR_Y).toBeLessThan(ROOM_BOTTOM);
+  });
+});
+
+describe("the phases with no room", () => {
+  it("says what is happening in every one of them", () => {
+    // A first pass drew "NO ROOM HERE" in all of these, which is accurate and
+    // reads as a rendering fault at exactly the moment the game should land.
+    for (const phase of [
+      "ENTRY",
+      "LOBBY",
+      "TRANSITIONING",
+      "ARCHIVE",
+      "FINALE",
+      "ESCAPED",
+    ] as const) {
+      const [headline] = interlude(view({ phase, chamber: null, facts: {} }));
+      expect(headline.length, phase).toBeGreaterThan(0);
+      expect(headline, phase).not.toContain("NO ROOM");
+    }
+  });
+
+  it("gives the last frame of the game a real ending", () => {
+    const [headline, instruction] = interlude(view({ phase: "ESCAPED", chamber: null, facts: {} }));
+    expect(headline).toBe("THE DOOR IS OPEN");
+    expect(instruction.length).toBeGreaterThan(0);
+  });
+
+  it("keeps both lines inside the canvas at the greybox font", () => {
+    for (const phase of [
+      "ENTRY",
+      "LOBBY",
+      "TRANSITIONING",
+      "ARCHIVE",
+      "FINALE",
+      "ESCAPED",
+    ] as const) {
+      for (const line of interlude(view({ phase, chamber: null, facts: {} }))) {
+        expect(textWidth(line), `${phase}: "${line}"`).toBeLessThanOrEqual(NATIVE_WIDTH - 8);
+      }
+    }
+  });
+
+  it("offers no instruction where there is nothing to do", () => {
+    // Inventing one for a beat that has none is worse than silence.
+    expect(interlude(view({ phase: "TRANSITIONING", chamber: null, facts: {} }))[1]).toBe("");
+  });
+});
+
+describe("the blind panel's audible line", () => {
+  it("is singular at one click", () => {
+    // The count is puzzle-critical here - it is how KEEPER learns a linkage
+    // hit its bound - so the line carrying it should not read like a stub.
+    const one = roomLayout(
+      view({ chamber: "blind_panel", facts: { ...BLIND_FACTS, lastClicks: 1 } }),
+    );
+    expect(one?.sound).toBe("1 click registered");
+    const three = roomLayout(view({ chamber: "blind_panel", facts: BLIND_FACTS }));
+    expect(three?.sound).toBe("3 clicks registered");
+  });
+
+  it("says nothing at all when no dial has been turned", () => {
+    const none = roomLayout(
+      view({ chamber: "blind_panel", facts: { ...BLIND_FACTS, lastClicks: null } }),
+    );
+    expect(none?.sound).toBeNull();
   });
 });
