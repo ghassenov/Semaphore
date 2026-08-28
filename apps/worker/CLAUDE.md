@@ -13,6 +13,7 @@ The Cloudflare Worker and the `Session` Durable Object. One DO per session, hold
 - **The log format is a published contract.** One append-only JSONL stream per session, one line per event (doc 05 section 7). The same file is the replay source, the benchmark corpus, and the Archive's ghosts. Changing a field name breaks three consumers at once.
 - **The timer is server time.** A client timer is one `debugger` statement from infinite, and it would make every benchmark number untrustworthy.
 - **Zero PII.** No accounts, no email, no persistent identity. A session is an opaque server-generated id plus a designation the agent chose for itself. This is what makes future ARCHIVE mode safe, and it is worth stating in the submission.
+- **Read-only tools are pure and unlogged** (D-019). `views.ts` and `manual.ts` derive from `projectForKeeper`, take no semaphore permit, append no event and write no storage. A read that needs to mutate is not a read; move it to `reducer.ts`. Adding a `tool_call` event for reads is a deliberate open question for the benchmark, not an oversight.
 - `consistentWorlds()` has one implementation and three consumers: the possible-worlds proof, the CONCORD meter, and the benchmark's bits-per-question metric. Never fork it.
 
 ## Change Log
@@ -26,3 +27,4 @@ The Cloudflare Worker and the `Session` Durable Object. One DO per session, hold
 | 2026-08-28 | Ahmed Saad | Chamber III (Concord Lock) implemented, including the D-014 passphrase fix. All four chambers now covered by the possible-worlds proof. |
 | 2026-08-28 | Ahmed Saad | Archive beat implemented (temporary worker-side placement, D-017); session_start timing bug fixed (D-016). Full mode now completes end to end. |
 | 2026-08-28 | Ahmed Saad | Server-authoritative timer implemented (D-018): stored chamber deadline settled on read, DO alarm as a second caller, time penalties, retry_chamber, Chamber II gauge drift. |
+| 2026-08-28 | Ahmed Saad | Read-only tool surface (views.ts), the station manual (manual.ts) and the terminal open_the_door action added for the client layer (D-019, D-020). |

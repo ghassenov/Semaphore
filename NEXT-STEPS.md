@@ -11,28 +11,32 @@ It answers three questions and only three: where the repo is right now, what to 
 | | |
 |---|---|
 | **Last updated** | 2026-08-28, Ahmed Saad |
-| **Branch** | `feat/server-authoritative-timer`, clean, **not pushed** |
-| **Pipeline** | Green: 273 tests, typecheck, lint, format, real `wrangler deploy --dry-run` against the live account |
+| **Branch** | `feat/webmcp-tool-layer`, off `main` at `0f65aad`, **not pushed** |
+| **Pipeline** | Green: 365 tests, typecheck, lint, format, `vite build`, real `wrangler deploy --dry-run` |
 | **Verify with** | `pnpm install && pnpm typecheck && pnpm lint && pnpm test && pnpm build` |
-| **Cloudflare** | Logged in (`npx wrangler login`). Real D1 database `semaphore-sessions` provisioned and migrated, both local and remote. |
+| **Run it** | `cd apps/worker && npx wrangler dev` in one shell, `cd apps/game && pnpm dev` in another. Vite proxies `/session` to `127.0.0.1:8787`. |
+| **Cloudflare** | Logged in. D1 database `semaphore-sessions` provisioned and migrated, local and remote. |
 
 ### What exists
 
 | Path | State |
 |---|---|
 | `docs/design/` | Numbered set 00-12, complete. |
-| `docs/` | Decision log at D-018, lessons journal live, both beside the set. |
+| `docs/` | Decision log at D-023, lessons journal live. |
 | `packages/seed`, `packages/protocol` | Done. |
-| `apps/worker/src/chambers/*.ts` | Done. **All four chambers** modelled: generation, state, facts, world enumeration. |
-| `apps/worker/src/archive/*.ts` | Done, **temporarily placed** (D-017): the Archive beat's logic and one generated ghost fixture, living in `apps/worker` until `apps/archive` exists to host it properly on its own origin. |
-| `apps/worker/src/{projection,worlds}.ts` | Done. `projectForPilot`/`projectForKeeper`, `consistentWorlds`, `measure`, `concordBits`. |
-| `apps/worker/src/{latency,semaphore,machine}.ts` | Done. Stamina window calc, the action semaphore, the full session state machine. `DEADLOCK` and `RETRY` are now reachable in play; `PENALISED` is deliberately unused (D-018). |
-| `apps/worker/src/reducer.ts` | **Done end to end: a full-mode session now completes all four chambers**, verified by tracing it. Also owns the timer: `settleSession`, the chamber deadline, penalties, `retry_chamber` (D-018). |
-| `apps/worker/src/{log,Session,index}.ts` | Done. Event persistence, the Durable Object shell **including the deadline alarm**, the router. |
-| `apps/worker/migrations/0001_sessions.sql` | Done. Applied to the real D1 database, local and remote. |
-| `tests/possible-worlds.test.ts` | **Done and passing for all four chambers**, including two tests that drift is not a back channel. The headline proof, honestly scoped (see below). |
+| `apps/worker/src/chambers/*.ts` | Done. All four chambers: generation, state, facts, world enumeration. |
+| `apps/worker/src/reducer.ts` | Done end to end. A full-mode session now runs ENTRY through **ESCAPED**: `open_the_door` was the missing terminal action, so `session_end` is written for the first time. |
+| `apps/worker/src/views.ts` | Done. `describe_chamber`, `inspect`, `read_ciphertext`, `get_lock_state` as pure `projectForKeeper` projections (D-019). |
+| `apps/worker/src/manual.ts` | Done. The station manual, all seven sections, including the seeded vandalised page. **Temporarily placed** (D-020), like `archive/` (D-017). |
+| `apps/worker/src/{projection,worlds,latency,semaphore,machine,log,Session,index}.ts` | Done. `chamberSeed` moved to `machine.ts`; `Session` gained the read routes and puts machine state on every response. |
+| `apps/game/src/webmcp/adapter.ts` | Done. The only file touching the spec. Degrades to nulls, never throws. |
+| `apps/game/src/webmcp/director.ts` | Done. The three-tier `AbortController` lifecycle, ending in an empty registry. **The file a judge reads first.** |
+| `apps/game/src/webmcp/tools.*.ts` | Done. All 12 tools: `begin_shift`, four persistent, the chamber sets, the Archive's, `open_the_door`. |
+| `apps/game/src/net/sessionClient.ts` | Done. Never rejects except on abort; announces machine state to the director (D-021). |
+| `apps/game/src/ui.ts` | Gate screen done. Operator console is deliberate greybox scaffolding, replaced by Phase 1.4. |
+| `tests/possible-worlds.test.ts` | Done and passing for all four chambers. The headline proof, honestly scoped. |
 | `apps/spike/` | Built, **never run**. Needs a WebMCP browser. |
-| `apps/game/`, `apps/archive/`, `bench/` | Rules files only, no code. |
+| `apps/archive/`, `bench/` | Rules files only, no code. |
 
 ---
 
@@ -42,41 +46,51 @@ In order. Each item ends somewhere the pipeline is green and the repo is committ
 
 ### 1. Run the spike [needs a human with a browser]
 
-Still the only task nobody can automate, and it still gates real architecture. Unchanged from before: see "How to run this" in `apps/spike/index.html`, or `apps/spike/CLAUDE.md`.
+Unchanged and now overdue: it is the only task nobody can automate, and the tool layer is built on three behaviours it has not yet confirmed. See `apps/spike/CLAUDE.md`.
 
-**The row that matters is `toolchange.empty`.** If `toolchange` does not fire when the registry drains to zero, the game's ending does not exist and Chamber III's finale needs redesigning. Check that one first. Second: `crossorigin.delegation`, which decides whether `apps/archive` is a real deployment or `ARCHIVE_ORIGIN=same`.
+**The row that matters is `toolchange.empty`.** `director.ts` ends the session by aborting into an empty registry, and that is the game's last beat. Second: `crossorigin.delegation`, which decides whether `apps/archive` is a real deployment or `ARCHIVE_ORIGIN=same`.
 
-### 2. The WebMCP client layer
+Then play a session in ChatGPT's in-app browser. Everything needed for one now exists.
 
-`apps/game/src/webmcp/adapter.ts` first, then `director.ts` with the three-tier `AbortController` lifecycle, then `begin_shift` wired to `fetch("/session/:id/begin_shift")`. The briefing text already exists verbatim in `reducer.ts`'s `briefing()` function; do not retype it.
+### 2. The client foundation (plan §1.4)
 
-### 3. `apps/archive`, and moving the Archive beat to it
+Phaser boot at 320x180 with integer snap, `LandingScene` with the starter prompt card, greybox `ChamberScene`, the PILOT avatar, and the two `toolchange` renderings the console currently fakes with a `<ul>`: `ManifestPanel` and `KeeperBody`, both from one listener reading `getTools()`.
 
-Once the client exists to embed it, build the real cross-origin tool provider (doc 03 section 7) and move `read_station_log`'s logic there from `apps/worker/src/archive/` (D-017 documents exactly what moves). The data is already in the right place and format: `fixtures/ghosts/ghost-01.jsonl`.
+This also needs the WebSocket the client does not have yet: a `/session/:id/socket` endpoint on the Durable Object pushing `projectForPilot` deltas. Nothing renders a puzzle until it exists, which is why the console shows only machine state today.
+
+The declarative notepad (`write_note`/`read_note`, doc 03 §8) belongs here rather than in the tool layer, because it is a real form in the room and needs one.
+
+### 3. `apps/archive`, and moving `read_manual` and `read_station_log` to it
+
+Once the client exists to embed it. D-017 and D-020 record exactly what moves. One shape to know in advance: the vandalised Signal Room page is drawn from the session seed and the archive origin holds no storage binding, so it will serve static section text and fetch the session-scoped annotation from the worker.
 
 ---
 
 ## Things that will bite you
 
-- **A log event cannot honestly carry a field that is not yet chosen at the point it fires** (D-016). `session_start`'s `mode` was wrong for every non-full-mode session until this was caught by generating a fixture from real play. If you add a field to an event type, check what is actually known at the moment that event fires, not just at the moment it feels natural to emit it.
-- **Generate fixtures from the real code path, not by hand, even for something that is not a test** (the lesson behind D-016's discovery). The ghost fixture's job was fidelity; the bug-finding was free. `apps/worker/scripts/generate-ghost.ts` is the pattern to reuse for a second ghost.
-- **Check a chamber's secret against what an adversary would actually try, not just against its own rules** (D-014). Chamber III's design doc used an English passphrase, which meant exactly one of its 26 decryptions was readable and an agent solved the finale alone: 0 bits, not the published 4.70.
-- **A narrowing signal that depends on history must replay the whole history under each hypothesis, not compare current state** (D-013, generalising D-012). Ask this before writing a new chamber's `candidates()`, not after a collapse test fails.
-- **`correctAction` must be the whole remaining plan, not the next single step, for any multi-step chamber** (D-011). `worlds.ts`'s `ChamberWorlds` interface docstring says this explicitly.
-- **A witness-scoped `candidates()` must filter by accepted history, not copy it onto every witness** (D-012). Test the collapse, not just the start.
-- **Latency is the gap between calls, not a call's own duration** (D-010). `ActionSemaphore.latencies` is a *different*, much smaller number and must never feed `staminaWindowMs`.
-- **The possible-worlds proof is scoped, deliberately** (D-009). Do not widen a scope to make a chamber pass; if a chamber fails the proof, the chamber's design is wrong, not the test.
-- **`PERCEIVED_BY` must never be forked.** One definition, three consumers: the projections, the proof, the smoke test.
-- **`execute` takes two arguments**, `(inputObject, { signal })`, and `requestUserInteraction` does not exist (D-007). The `AbortSignal` is real and unused so far.
-- **No Cloudflare product that needs a card.** D1 plus DO SQLite is the store, both provisioned. Check a product's *activation* path before adopting it, not its pricing page.
-- **A Durable Object alarm must never be the only place a rule lives** (D-018). The chamber timer is a stored deadline that `settleSession` compares against the clock on every read; the alarm calls that same pure function and does nothing else. If you add time-dependent behaviour, derive it from a stored timestamp first and reach for an alarm only for the thing derivation genuinely cannot do (here: stamping the event at the true instant when no call arrives).
-- **A `GameError` thrown out of `reduce()` discards everything that call settled.** `Session.#act` catches it and responds without persisting, so a deadlock discovered mid-call has to come back as a normal `ReduceResult` carrying its own text, not a throw. Check this before making any new refusal a `GameError`.
-- **The failure card quotes courses of action, not consistent worlds** (D-018). `bits` is `log2(actions)` on purpose, so printing the world count beside it prints two numbers that disagree. Chamber 0: six worlds, three actions, 1.58 bits.
-- **`state.id.name` recovers a Durable Object's own session id.** It only works because `index.ts` creates ids via `idFromName(sessionId)`.
-- **`tests/` is a workspace package** (`@semaphore/tests`), and `apps/worker` exports `./*` from source, so import `@semaphore/worker/chambers/airlock`, not a relative path.
-- **`pnpm-workspace.yaml` needs `allowBuilds`** for `esbuild` and `workerd`, or wrangler's install fails non-interactively.
-- **D1 migrations are not automatic.** After editing `migrations/*.sql`, run both the local and `--remote` `wrangler d1 execute` from `apps/worker/`.
-- **`apps/worker/scripts/generate-ghost.ts` does not format its own output.** Run `npx prettier --write apps/worker/src/archive/ghost-01.ts` after regenerating, or CI's format check fails.
+- **The spike has still not been run, and more now rests on it.** `fake-registry.ts` implements the three behaviours the whole tool layer assumes. If a browser disagrees with any of them, that file is wrong and every director test is measuring the wrong thing. Its docstring says so; do not let that stay theoretical.
+- **`describe_chamber` must answer every phase, not just the chambers.** It threw `E_NO_SESSION` for `FINALE` on the first pass, which the reducer's idempotent `start` path would have surfaced as a lie. An agent that has lost the thread needs a next action, not a diagnosis.
+- **A read-only tool must not take the semaphore** (D-019). Blocking a look behind a turning dial returns `E_BUSY` for a call that was always safe, and teaches an agent to stop calling `get_status` under pressure, which is exactly when the briefing tells it to.
+- **Read-only calls are not in the session log.** Deliberate (D-019), and it means "did the agent read the manual before acting" is not yet measurable. The benchmark's author should read that entry, not discover the gap.
+- **The registry follows the server, never a guess** (D-021). Chambers auto-advance inside one `reduce()` call and PILOT moves the session without any tool call at all, so anything inferring a tier from what it just called will be wrong within one chamber.
+- **A log event cannot honestly carry a field that is not yet chosen at the point it fires** (D-016). Check what is actually known at the moment an event fires, not at the moment it feels natural to emit it.
+- **Generate fixtures from the real code path, not by hand** (the lesson behind D-016). `apps/worker/scripts/generate-ghost.ts` is the pattern to reuse for a second ghost.
+- **Check a chamber's secret against what an adversary would actually try** (D-014), not just against its own rules.
+- **A narrowing signal that depends on history must replay the whole history under each hypothesis** (D-013, generalising D-012). Ask this before writing a new chamber's `candidates()`.
+- **`correctAction` must be the whole remaining plan, not the next single step** (D-011).
+- **Latency is the gap between calls, not a call's own duration** (D-010). The director's own timing is the client's view for the action log; the number the game derives from is server-side.
+- **The possible-worlds proof is scoped, deliberately** (D-009). If a chamber fails it, the chamber is wrong, not the test.
+- **`PERCEIVED_BY` must never be forked.** One definition, three consumers.
+- **`execute` takes two arguments**, `(input, { signal })` (D-007). The `AbortSignal` is now genuinely used: it reaches `fetch`, and an abort is the one thing `sessionClient` re-throws.
+- **A `GameError` thrown out of `reduce()` discards everything that call settled.** A refusal that has state to persist has to come back as a normal `ReduceResult`, not a throw.
+- **A Durable Object alarm must never be the only place a rule lives** (D-018). Derive from a stored timestamp first.
+- **The failure card quotes courses of action, not consistent worlds** (D-018). Chamber 0: six worlds, three actions, 1.58 bits.
+- **Nothing in `apps/game` outside `adapter.ts` may touch `modelContext`.** A grep that returns a second file is a defect.
+- **Nothing puzzle-critical goes into the DOM.** The operator console prints machine and registry state only. When the chambers get real rendering it goes on a canvas.
+- **`tests/` is a workspace package** (`@semaphore/tests`); import `@semaphore/worker/chambers/airlock`, not a relative path.
+- **`pnpm-workspace.yaml` needs `allowBuilds`** for `esbuild` and `workerd`.
+- **D1 migrations are not automatic.** Run both the local and `--remote` `wrangler d1 execute` from `apps/worker/`.
+- **`generate-ghost.ts` does not format its own output.** Run `npx prettier --write apps/worker/src/archive/ghost-01.ts` after regenerating.
 - Never weaken an asymmetry check to go green. It is the one class of change that is never accepted.
 
 ---
@@ -85,10 +99,11 @@ Once the client exists to embed it, build the real cross-origin tool provider (d
 
 | Item | Owner | Note |
 |---|---|---|
-| Spike results | Human with a WebMCP browser | Now the **only** thing blocking the client layer's design. Gates the archive and the finale. |
-| Playtesters | Human | Doc 08 section 0.1 wants six people. The only task that does not parallelise. |
+| Spike results | Human with a WebMCP browser | Now blocking verification of a layer that is already built, not just its design. |
+| A real agent session | Human | Everything needed for one exists. This is the first time that has been true. |
+| Playtesters | Human | Doc 08 section 0.1 wants six. The only task that does not parallelise. |
 | Repo made public | Human | Deliberately deferred to just before the deadline. |
-| Netlify credits | Done | Form submitted 2026-08-28. |
+| Doc 03 §10 wording fix | Whoever writes submission copy | It claims "server-generated ID"; the real guarantee is zero PII (D-023). Say what is true. |
 
 ---
 

@@ -352,3 +352,92 @@ Option 3 keeps the rule in one pure function and adds the alarm purely as a seco
 **The failure card quotes actions, not worlds.** Doc 06 section 5's draft copy reads "Time ran out with 4 worlds still consistent." Printing the world count beside the bits figure would print two numbers that disagree, because `bits` is `log2(actions)` by deliberate design (`worlds.ts`: worlds that agree on what to do next are ambiguity that costs the pair nothing). Chamber 0 is the clearest case: six consistent worlds, three courses of action, 1.58 bits. The card reads back the count the bits are actually computed from.
 
 **Result.** `DEADLOCK` and `RETRY` are reachable in play for the first time. A deadlocked session answers every action except `retry_chamber` with the failure card rather than a thrown error, because the settle that produced the deadlock has state and a log line to persist and a throw would discard both. `retry_chamber` is a PILOT action for the same reason `grip_bar` is: an agent that cannot see the chamber cannot decide to restart it. The first retry preserves the seed and the second re-randomises (doc 02 section 7), with `preservesSeed` as the single definition of which is which. 273 tests pass, up from 238.
+
+---
+
+### D-019 The read-only tools are pure functions, outside the semaphore and outside the log
+
+**Decision.** `describe_chamber`, `inspect`, `read_ciphertext`, `get_lock_state` and `read_manual` are served by pure functions in `apps/worker/src/views.ts` and `manual.ts`, reached over `GET`. They do not take the action semaphore, they append no `tool_call` event, and they write no storage.
+
+**Options considered.**
+1. Route every tool through `reduce()` and the semaphore, so there is one path for everything.
+2. Reads as pure projections, served outside both, with mutation keeping the existing path.
+3. Option 2, but still appending a `tool_call` event so the benchmark sees reads.
+
+**Why.** Option 1 has an active cost, not just an overhead. The semaphore exists to serialise mutation (doc 05 section 5), and a look cannot conflict with anything, so making one block behind a turning dial would return `E_BUSY` for a call that was always safe. That teaches an agent to stop calling `get_status` under time pressure, which is exactly when doc 04's briefing tells it to call `get_status`. It would also make every read a storage write.
+
+Option 3 is the one worth revisiting. Doc 02 wants "did the agent read the manual before acting" to be measurable, and today it is not: the log records `read_station_log` (a mutating action, because it tracks which entries have been read) and nothing else that KEEPER looked at. The cost of adding it is a storage write and a `seq` bump on every read, for a benchmark that does not exist until Phase 7.3. Deferred deliberately, not overlooked, and recorded here and in NEXT-STEPS so the benchmark's author finds the decision rather than the gap.
+
+Gathering the read projections in one module is what makes the design law checkable by reading one file: everything in `views.ts` derives from `projectForKeeper`, appends nothing, and changes nothing. `describe_chamber` moved there out of `reducer.ts` and now answers every phase with a next action instead of throwing, because an agent that has lost the thread needs somewhere to go, which is the same rule `E_STALE_TOOL`'s message follows.
+
+**Result.** `views.ts`, `manual.ts` and 21 tests, whose leak assertions are the point: the possible-worlds proof establishes that the channel *tags* are right, and these establish that the prose built on top of them did not reach around the tags with a template string. `open_the_door` also landed in this change: `FINALE` was reachable and had no exit, so `session_end` was never written and the registry could never drain to empty.
+
+---
+
+### D-020 The station manual ships inside `apps/worker` for now, next to the ghost log
+
+**Decision.** The manual's seven sections live in `apps/worker/src/manual.ts` and are read over a session-scoped `GET`. Doc 03 section 7 puts `read_manual` on the cross-origin archive origin, and it will move there, exactly as D-017 planned for `read_station_log`.
+
+**Options considered.**
+1. Build `apps/archive` now, so `read_manual` lands in its final home first time.
+2. Ship the manual in the worker, move it with `read_station_log` when `apps/archive` is built.
+3. Register `read_manual` against nothing and fill it in later.
+
+**Why.** Option 3 is not available: Chamber 0 cannot be solved without the manual naming the spiral, and the briefing's last line tells the agent to start with `read_manual('index')`. A registered tool that returns nothing would be a stub, and the briefing would be pointing at a lie.
+
+Option 1 is the correct end state and is blocked on something real. `apps/archive` needs the client to exist to embed it, and cross-origin delegation is still unverified because the Phase 0.3 spike has not been run in a browser, so `ARCHIVE_ORIGIN` would have to ship as `same` regardless. Building the origin before either is settled means building it twice.
+
+One part of the manual will not move cleanly, and it is better to know that now. The Signal Room's page is vandalised on roughly half of seeds (doc 02 section 3.2), the flag is drawn from the session seed, and `apps/archive` holds no storage binding by its own rules. So the archive origin will serve static section text and fetch the session-scoped annotation from this worker. That is recorded here so it is a known shape rather than a surprise during the move.
+
+**Result.** `manual.ts`, sharing `chamberSeed` with the reducer's generator so the vandalised page reads identically before the room is entered and inside it. That equality is asserted rather than assumed: a page that changed between reads would read as a rendering fault instead of as something a previous keeper did, and the whole trust mechanic depends on PILOT being able to confirm what KEEPER just read.
+
+---
+
+### D-021 The registry follows the server's machine state, carried on every response
+
+**Decision.** Every worker response carries a small machine-state summary (phase, chamber, designation, remaining time). `SessionClient` announces it to watchers at the one place every response passes through, and `ToolDirector.applyState` is the only thing that decides which controller tier is mounted.
+
+**Options considered.**
+1. The client tracks what it did and infers the tier: after `pull_lever` succeeds, mount the Signal Room.
+2. The director polls `/status` after every tool call.
+3. The server's state rides on every response and the client follows it.
+
+**Why.** Option 1 is the parallel-guess anti-pattern doc 03 section 4.2 rejects for the manifest panel, applied one layer lower and with worse consequences: the panel would be honest about a registry that was itself wrong. The client cannot infer the tier anyway, because chambers auto-advance inside a single `reduce()` call and the Archive beat sits between two of them.
+
+Option 2 is correct and doubles the request count, and it still misses things: PILOT grips the release bar, resets a deadlocked chamber and leaves the Archive without any tool call existing, so a poll hung off tool calls would lag every one of those.
+
+Option 3 costs four fields on a response the client was already receiving and covers both parties, because PILOT's actions go through the same client. Nothing about it weakens the asymmetry: phase and chamber are `SHARED` by construction (both parties always know which room they are in) and no chamber fact reaches the summary. Rendering still derives exclusively from `projectForPilot`, over a socket that is a separate channel and a later phase.
+
+**Result.** No polling anywhere in the client, and `applyState` is idempotent by tier, so it is safe to call after every response and only a genuine tier change fires a `toolchange`. `applyState` serialises through a promise chain, because two responses landing together could otherwise register a tier twice.
+
+---
+
+### D-022 Tool character budgets are enforced by a test over the tool objects, not by a lint rule
+
+**Decision.** `apps/game/src/webmcp/budgets.test.ts` asserts Chrome's published budgets (30 characters per name, 500 per description, 150 per parameter description) against every tool the director will register, together with the schema and annotation invariants.
+
+**Options considered.**
+1. A custom ESLint rule, as doc 03 section 10 and `apps/game/CLAUDE.md` both say.
+2. A test that imports the tool factories and checks the objects.
+
+**Why.** Option 2 is a stronger check for less machinery. A lint rule reads source text, so it can only see a description written as one literal; the tools here are built by factories and several descriptions are assembled from concatenated strings, which a rule would either miss or have to constant-fold. The test reads the objects the registry will actually receive, which is the thing the budget is about.
+
+It also covers what a lint rule could not reach at all: that exactly the mutating tools carry `readOnlyHint: false`, that exactly the two genuinely adversarial channels carry `untrustedContentHint`, that every schema is closed with every property described, and that no tool name, title or description contains an interpolation hole. That last one is the tool-poisoning vector the spec names first, and it is worth an assertion rather than a convention.
+
+**Result.** 20 assertions over 12 tools, in CI with everything else. `apps/game/CLAUDE.md`'s line about lint is updated to point here.
+
+---
+
+### D-023 The session id is generated by the client and doubles as the seed
+
+**Decision.** `sessionIdFrom()` returns `?seed=` when present and a `crypto.randomUUID()` otherwise. The worker creates the Durable Object record on first contact, as it already did.
+
+**Options considered.**
+1. A `POST /session` route that mints an id server-side, as doc 03 section 10's phrase "an opaque server-generated ID" reads.
+2. The client generates it, and `?seed=` overrides.
+
+**Why.** The property doc 03 section 10 is actually claiming is that a session carries no personal data, and a v4 UUID satisfies that exactly as well as a server-minted string: no accounts, no email, no profile, nothing derived from the person. That is what makes post-submission ARCHIVE mode safe, and it is untouched.
+
+What option 1 costs is a round trip before the front door and a route outside the `/session/:id` pattern the router is built on. What it does not buy is control over the seed, because doc 05 section 9 already requires `?seed=` to reproduce a session exactly, and that is how a bug is reproduced, a demo is rehearsed, and two models are compared on the same four chambers. An id the client cannot choose would have to be overridable anyway.
+
+**Result.** No new route. Doc 03 section 10's wording is the one thing to correct before submission: the guarantee is zero PII, not server-minted ids, and the copy should say what is true.
