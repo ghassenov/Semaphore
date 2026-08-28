@@ -25,6 +25,7 @@ import { newSession, reduce, type Action, type PersistedSession } from "./reduce
 import { ActionSemaphore } from "./semaphore.js";
 import { percentile, staminaWindowMs } from "./latency.js";
 import type { LeverId } from "./chambers/airlock.js";
+import type { KeyId } from "./chambers/signal_room.js";
 
 export interface Env {
   SESSIONS: DurableObjectNamespace;
@@ -40,6 +41,10 @@ function labelFor(action: Action): string {
       return "entering the chamber";
     case "pull_lever":
       return "pulling a lever";
+    case "press_key":
+      return "pressing a key";
+    case "reset_sequence":
+      return "resetting the sequence";
   }
 }
 
@@ -86,6 +91,13 @@ export class Session {
     if (pathname.endsWith("/pull_lever")) {
       const body = (await request.json()) as { lever_id?: unknown };
       return this.#act({ type: "pull_lever", leverId: String(body.lever_id ?? "") as LeverId });
+    }
+    if (pathname.endsWith("/press_key")) {
+      const body = (await request.json()) as { key_id?: unknown };
+      return this.#act({ type: "press_key", keyId: Number(body.key_id ?? 0) as KeyId });
+    }
+    if (pathname.endsWith("/reset_sequence")) {
+      return this.#act({ type: "reset_sequence" });
     }
 
     return new Response("Not found", { status: 404 });
