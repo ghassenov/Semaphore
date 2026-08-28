@@ -29,4 +29,5 @@ The Cloudflare Worker and the `Session` Durable Object. One DO per session, hold
 | 2026-08-28 | Ahmed Saad | Server-authoritative timer implemented (D-018): stored chamber deadline settled on read, DO alarm as a second caller, time penalties, retry_chamber, Chamber II gauge drift. |
 | 2026-08-28 | Ahmed Saad | Read-only tool surface (views.ts), the station manual (manual.ts) and the terminal open_the_door action added for the client layer (D-019, D-020). |
 | 2026-08-28 | Ahmed Saad | The CONCORD route added (D-027): `GET /concord`, on demand, gated by the exported `pilot.inTheRoom` so the meter and the frame cannot disagree about which room the pair is in. |
+| 2026-08-28 | Ahmed Saad | Every POST now drains its body before answering (D-032): a response sent with the stream still open crashes workerd, and no unit test could see it. |
 | 2026-08-28 | Ahmed Saad | The shared notepad added (D-028): `write_note` as an action, `GET /notes` as a read, notes on every pushed frame. It is the session log's only record of what the pair said to each other, and it deliberately stays out of the latency sample. |

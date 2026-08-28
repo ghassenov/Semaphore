@@ -45,8 +45,9 @@ Deliberately absent: green. Success is a **bone-white flash and a shape change**
 
 ## 3. Resolution and rendering
 
-- **Native canvas: 320 × 180.** Chunky enough to feel hand-placed, roomy enough for six glyphs and readable text.
-- **Integer scaling only.** ×4 → 1280×720, ×6 → 1920×1080. `pixelArt: true`, `roundPixels: true`, `Phaser.Scale.FIT` with an integer-snap step. Non-integer scaling produces shimmering half-pixel artefacts that instantly read as "someone didn't care."
+- **Native canvas: 320 × 320.** *(Amended 2026-08-28, D-031: was 320 × 180.* The station is drawn as a cutaway section rather than one room at a time, which needs a square canvas. Chunky enough to feel hand-placed, roomy enough for six glyphs and readable text.*)*
+- **The station is a section.** Every floor is on screen at once: the floor the pair is standing in at working size, the rest as silhouette strips, KEEPER's machine deck a column down the right of all of them. Cleared floors stay lit as the only progress display the game has. Floors are deliberately unequal, because the Signal Room needs ~70px and five equal floors would give it 46.
+- **Integer scaling only.** ×2 → 640×640, ×3 → 960×960. `pixelArt: true`, `roundPixels: true`, `Phaser.Scale.FIT` with an integer-snap step. Non-integer scaling produces shimmering half-pixel artefacts that instantly read as "someone didn't care."
 - **Tile grid: 16 × 16.** Avatars **16 × 24** — a proportion that reads as a person rather than a mascot.
 - **Game motion on a 12 fps animation grid**; UI and camera at 60 fps. The mismatch is intentional: sprites feel hand-drawn, interface feels responsive.
 
