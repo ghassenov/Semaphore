@@ -100,5 +100,9 @@ export function pilotView(session: PersistedSession, nowMs: number): PilotView {
     ...stateSummary(session, nowMs),
     retries: session.machine.retries,
     facts: chamberFacts(session, nowMs),
+    // Beside the facts, not inside them. A note is `SHARED` by construction -
+    // one of the two parties wrote it for the other to read - so there is no
+    // channel for `projectForPilot` to strip and nothing it could hide.
+    notes: session.notes,
   };
 }

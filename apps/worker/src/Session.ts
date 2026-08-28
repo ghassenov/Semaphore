@@ -30,7 +30,7 @@ import {
   type PersistedSession,
 } from "./reducer.js";
 import { ActionSemaphore } from "./semaphore.js";
-import { describeChamber, inspectObject, lockState, readCiphertext } from "./views.js";
+import { describeChamber, inspectObject, lockState, readCiphertext, readNotes } from "./views.js";
 import { inTheRoom, pilotView, stateSummary } from "./pilot.js";
 import { MANUAL_SECTIONS, isManualSection, manualSection } from "./manual.js";
 import { percentile, staminaWindowMs } from "./latency.js";
@@ -75,6 +75,8 @@ function labelFor(action: Action): string {
       return "opening the outer door";
     case "retry_chamber":
       return "resetting the chamber";
+    case "write_note":
+      return "writing to the notepad";
   }
 }
 
@@ -111,6 +113,7 @@ export class Session {
     if (request.method === "GET") {
       if (pathname.endsWith("/status")) return this.#status();
       if (pathname.endsWith("/concord")) return this.#concord();
+      if (pathname.endsWith("/notes")) return this.#read((session) => readNotes(session));
       // Every other GET is a read-only tool. They share one handler because
       // they share the property that makes them safe: `views.ts` and
       // `manual.ts` are pure, so none of them can be made to mutate by a
@@ -197,6 +200,19 @@ export class Session {
     }
     if (pathname.endsWith("/retry_chamber")) {
       return this.#act({ type: "retry_chamber" });
+    }
+    if (pathname.endsWith("/write_note")) {
+      const body = (await request.json()) as { text?: unknown; author?: unknown };
+      // The author is asserted by the client, from `SubmitEvent.agentInvoked`.
+      // Nothing here can verify it, and nothing needs to: the pad is a shared
+      // scratchpad, not a puzzle surface, so the worst a forged author buys is
+      // a line in the wrong colour. Anything unrecognised is attributed to
+      // PILOT, because a human hand is the safer default to show.
+      return this.#act({
+        type: "write_note",
+        text: String(body.text ?? ""),
+        author: body.author === "KEEPER" ? "KEEPER" : "PILOT",
+      });
     }
 
     return new Response("Not found", { status: 404 });
