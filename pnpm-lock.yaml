@@ -30,6 +30,16 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(vite@8.2.2(esbuild@0.28.1))
 
+  apps/game:
+    dependencies:
+      '@semaphore/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
+    devDependencies:
+      vite:
+        specifier: ^8.2.2
+        version: 8.2.2(esbuild@0.28.1)
+
   apps/worker:
     dependencies:
       '@semaphore/protocol':

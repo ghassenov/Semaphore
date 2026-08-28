@@ -15,10 +15,10 @@ The API surface we build against, stated precisely so nothing downstream is gues
 | **There is no `unregisterTool`** — `AbortSignal` teardown is the only removal path | High | Removed from the draft April 2026. This constraint is the mechanism the whole game is built on |
 | Tool shape is `{ name, title?, description, inputSchema, annotations?, execute }` | High | |
 | `annotations` carries `readOnlyHint` and `untrustedContentHint` | High | |
-| **`toolchange`** fires on `document.modelContext` when the tool list changes | High | Verify it fires on **both** register and abort |
-| `exposedTo` gates cross-origin visibility; the `tools` Permissions Policy gates registration in cross-origin iframes | Medium | **Gates §7. Verify first.** |
-| **`execute` receives a single argument; `requestUserInteraction` was removed** | **DISPUTED** | Other readings of the draft have `agent.requestUserInteraction()` reachable via a second argument to `execute`. **Settle empirically in Phase 0.** If it exists it goes on `speak_passphrase` and becomes a Leverage exhibit. |
-| `execute` returns MCP-shaped `{ content: [{ type: "text", text }] }` | **Partial** | In the formal IDL the return value is serialised to a JSON string; the content array is a **passed-through convention**, not an enforced schema. Assume text/JSON only. No images, no binary, no `outputSchema`, no streaming. |
+| **`toolchange`** fires on `document.modelContext` when the tool list changes | **Verified** | Fires on register, on abort, and on the drain to an empty registry. Chrome 151, 2026-08-28, doc 11 section 2. A **declaratively** registered tool leaves only when its form leaves the DOM, not on abort. |
+| `exposedTo` gates cross-origin visibility; the `tools` Permissions Policy gates registration in cross-origin iframes | **Verified in Chrome** | Both gates work, and a default `getTools()` does not include the frame's tools. Chrome 151, 2026-08-28. ChatGPT's in-app browser untested, so `ARCHIVE_ORIGIN` stays `same` (doc 11 section 4). |
+| **`execute` receives a single argument; `requestUserInteraction` was removed** | **Verified, and this row was right** | Chrome 151 calls `execute` with exactly one argument, an input object. There is no second argument, so no `AbortSignal` and no `requestUserInteraction`. This reverses D-007, which had corrected this row off the IDL; the implementation and the IDL disagree and the implementation wins. Doc 11 section 2, D-024. |
+| `execute` returns MCP-shaped `{ content: [{ type: "text", text }] }` | **Verified** | The return value is serialised to a JSON string and the content array is passed through intact: a convention, not an enforced schema. Text and JSON only. Chrome 151, 2026-08-28. |
 
 **The consequence of that last row drives the entire architecture:** all spectacle must be rendered by the *page* and driven by the agent's typed calls. Nothing visual ever travels through a tool return. Our design already works this way; it is worth stating so nobody later tries to return a diagram.
 
@@ -27,14 +27,24 @@ The API surface we build against, stated precisely so nothing downstream is gues
 All contact with this surface is isolated in one module, so spec churn costs one file rather than fifty call sites.
 
 ```ts
-// src/webmcp/adapter.ts
+// src/webmcp/adapter.ts — the shipped version also checks getTools, because a
+// host that exposes the property without the methods would otherwise be taken
+// for a supported browser and lose its gate screen.
 export function getModelContext(): ModelContext | null {
-  const mc = (document as any).modelContext ?? (navigator as any).modelContext;
-  return mc && typeof mc.registerTool === "function" ? mc : null;
+  const candidate =
+    (document as unknown as WebMcpHost).modelContext ??
+    (navigator as unknown as WebMcpHost).modelContext;
+  if (!candidate || typeof candidate !== "object") return null;
+  const mc = candidate as Partial<ModelContext>;
+  return typeof mc.registerTool === "function" && typeof mc.getTools === "function"
+    ? (candidate as ModelContext)
+    : null;
 }
 
 export const isSupported = () => getModelContext() !== null;
 ```
+
+Reading `document` first is not only about the deprecation. In Chrome 151 the two are the *same object*, and touching `navigator.modelContext` logs a deprecation warning, so leading with `document` keeps a clean console on the browser judges will use.
 
 **Graceful degradation is a hard requirement.** If `getModelContext()` returns null the game still loads, still renders, and shows the gate screen (doc 07 §6) — never a throw, never a broken canvas. For some judges that screen *is* the submission, so it carries the pitch, the ablation chart, and a spectate button.
 

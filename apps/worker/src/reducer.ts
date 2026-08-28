@@ -42,10 +42,11 @@ import * as signalRoom from "./chambers/signal_room.js";
 import * as blindPanel from "./chambers/blind_panel.js";
 import * as concordLock from "./chambers/concord_lock.js";
 import * as archive from "./archive/index.js";
-import { projectForKeeper, projectedHash, viewHash } from "./projection.js";
+import { projectedHash, viewHash } from "./projection.js";
+import { describeChamber } from "./views.js";
 import { concordBits, measure, type Ambiguity, type ChamberWorlds } from "./worlds.js";
-import { staminaWindowMs } from "./latency.js";
-import { preservesSeed, transition, type MachineState } from "./machine.js";
+import { percentile, staminaWindowMs } from "./latency.js";
+import { chamberSeed, preservesSeed, transition, type MachineState } from "./machine.js";
 
 /**
  * Everything the reducer needs to remember between calls.
@@ -137,6 +138,9 @@ export type Action =
   // The Archive beat (doc 02 section 4), between Chambers II and III.
   | { readonly type: "read_station_log"; readonly entry: number }
   | { readonly type: "leave_archive" }
+  // The terminal tool (doc 03 section 4.1). The last call of a session, and
+  // the one whose teardown drains the registry to empty.
+  | { readonly type: "open_the_door" }
   // The only way out of DEADLOCK (doc 02 section 5). PILOT's decision, not
   // KEEPER's: an agent cannot restart a chamber it cannot see.
   | { readonly type: "retry_chamber" };
@@ -200,21 +204,6 @@ function ambiguityFor(session: PersistedSession): Ambiguity | null {
     case null:
       return null;
   }
-}
-
-/**
- * The seed a chamber is generated from on entry, and on every retry after a
- * DEADLOCK.
- *
- * Doc 02 section 7: the first retry preserves the seed, because a chamber's
- * hard-won empirical knowledge (Chamber II's dial mapping above all) would be
- * pure punishment to re-roll. A second retry re-randomises. `preservesSeed`
- * is the single definition of which retry that is; a first entry, with no
- * retries at all, trivially uses the base seed.
- */
-function chamberSeed(seed: string, chamber: ChamberId, machine: MachineState): string {
-  const preserved = machine.retries === 0 || preservesSeed(machine);
-  return preserved ? `${seed}:${chamber}` : `${seed}:${chamber}:retry${machine.retries}`;
 }
 
 /**
@@ -377,6 +366,8 @@ function apply(session: PersistedSession, action: Action, nowMs: number): Reduce
       return readStationLog(session, action.entry, nowMs);
     case "leave_archive":
       return leaveArchive(session, nowMs);
+    case "open_the_door":
+      return openTheDoor(session, nowMs);
     case "retry_chamber":
       return retryChamber(session, nowMs);
   }
@@ -598,46 +589,6 @@ function start(
     lastRespondedAtMs: nowMs,
   };
   return { session: next, events: [startEvent, event], toolText: describeChamber(next) };
-}
-
-/**
- * A description of the active chamber, built from `projectForKeeper` rather
- * than hand-written prose, so it cannot say more than the projection allows.
- * This is provisional: the natural-language `describe_chamber` tool text that
- * ships in `apps/game` will read better, but it cannot be more honest than
- * this, because it will be built from the same projection.
- */
-function describeChamber(session: PersistedSession): string {
-  if (session.machine.chamber === "airlock" && session.airlock) {
-    const view = projectForKeeper(airlock.facts(session.airlock));
-    return (
-      `THE AIRLOCK. Levers: ${JSON.stringify(view.leverPositions)}. ` +
-      `Pulled so far: ${JSON.stringify(view.pulled)}. Read the manual before acting.`
-    );
-  }
-  if (session.machine.chamber === "signal_room" && session.signalRoom) {
-    const view = projectForKeeper(signalRoom.facts(session.signalRoom));
-    return (
-      `THE SIGNAL ROOM. Six keys, ids 1-6. Pressed so far: ${JSON.stringify(view.pressedSequence)}. ` +
-      `Strikes: ${view.strikes}. Read the manual before acting.`
-    );
-  }
-  if (session.machine.chamber === "blind_panel" && session.blindPanel) {
-    const view = projectForKeeper(blindPanel.facts(session.blindPanel));
-    return (
-      "THE BLIND PANEL. Four dials, ids 1-4, behind a grate. You cannot see the gauges. " +
-      `Rotations so far: ${view.rotationCount}. Last registered clicks: ${JSON.stringify(view.lastClicks)}. ` +
-      "Ask PILOT what moved."
-    );
-  }
-  if (session.machine.chamber === "concord_lock" && session.concordLock) {
-    const view = projectForKeeper(concordLock.facts(session.concordLock, Date.now()));
-    return (
-      `THE CONCORD LOCK. Bolts aligned: ${view.boltsAligned} of ${concordLock.BOLT_COUNT}. ` +
-      `Armed: ${view.armed}. Ask PILOT to read the cipher wheel, then grip the release bar.`
-    );
-  }
-  return "No chamber is active. Call begin_shift to begin your shift.";
 }
 
 function pullLever(
@@ -1231,6 +1182,85 @@ function readStationLog(session: PersistedSession, entry: number, nowMs: number)
   };
 
   return { session: next, events: [event], toolText: text };
+}
+
+/**
+ * The last tool call of a session (doc 03 section 4.1, doc 08 section 3.2).
+ *
+ * Mechanically it is trivial, and that is deliberate: the Concord Lock's
+ * passphrase already did the work, so this call asks nothing of the pair
+ * beyond agreeing to leave. Its job is structural. It is the only tool in the
+ * terminal controller, so tearing that controller down after it lands drains
+ * the registry to zero and fires the `toolchange` the whole ending is built
+ * on. A finale with no tool of its own would have nothing left to abort.
+ *
+ * It is also where `session_end` is written, which is the log's last line and
+ * the row `Session.#flushToD1` reports on.
+ */
+function openTheDoor(session: PersistedSession, nowMs: number): ReduceResult {
+  if (session.machine.phase === "ENTRY" || session.machine.phase === "LOBBY") {
+    throw errors.noSession();
+  }
+  if (session.machine.phase !== "FINALE") {
+    throw errors.unreachable(
+      "the outer door",
+      "the Concord Lock has not opened yet; call get_status to see where you are",
+    );
+  }
+
+  const latencyMs = nowMs - session.lastRespondedAtMs;
+  const machine = transition(session.machine, { type: "DOOR_OPENED" });
+  const observedLatencyMs = [...session.observedLatencyMs, latencyMs];
+
+  const events: readonly SessionEvent[] = [
+    {
+      t: elapsed(session, nowMs),
+      seq: session.seq,
+      type: "tool_call",
+      tool: "open_the_door",
+      input: {},
+      result: "ok",
+      latencyMs,
+      // No chamber state remains to project: the finale is the machine state
+      // between the last chamber and the door, and it holds no facts of its
+      // own. Hashing the machine is the honest description of what KEEPER
+      // knows at this instant.
+      keeperViewHash: viewHash({ phase: session.machine.phase }),
+      // Nothing is left to disambiguate once the passphrase has landed.
+      concordBits: 0,
+      wasted: false,
+    },
+    {
+      t: elapsed(session, nowMs),
+      seq: session.seq + 1,
+      type: "session_end",
+      outcome: "escaped",
+      // Reaching FINALE is definitionally having cleared every chamber this
+      // session's mode contains, so the count is the mode's own length rather
+      // than a tally kept in parallel with the machine.
+      chambersCleared: MODE_CHAMBERS[session.machine.mode].length,
+      medianLatencyMs: percentile(observedLatencyMs, 50),
+      staminaWindowMs: staminaWindowMs(observedLatencyMs),
+    },
+  ];
+
+  const next: PersistedSession = {
+    ...session,
+    machine,
+    chamberDeadlineMs: null,
+    observedLatencyMs,
+    seq: session.seq + events.length,
+    lastRespondedAtMs: nowMs,
+  };
+
+  return {
+    session: next,
+    events,
+    toolText: [
+      "The door gives. Cold air, and the sound of the sea from the right side of the wall.",
+      `Shift complete, ${session.designation ?? "KEEPER"}. Neither of you got out alone.`,
+    ].join(" "),
+  };
 }
 
 /**
