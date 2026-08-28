@@ -1,0 +1,156 @@
+/*
+ * Greybox styling for the gate screen and the operator console.
+ *
+ * Palette values are the subset of doc 06 section 2 these two surfaces need:
+ * bone-white for what both parties perceive, amber for PILOT, cyan for
+ * KEEPER. That is not decoration, it is the game's information architecture,
+ * so the console uses cyan for the tool manifest and amber for PILOT's own
+ * controls even at this stage - the habit is easier to keep than to retrofit.
+ */
+
+:root {
+  --ink: #0b0d0e;
+  --bone: #e8e4d9;
+  --bone-dim: #8b8878;
+  --amber: #d9973f;
+  --cyan: #4fa8b8;
+  --rule: #2a2f31;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 2rem 1.25rem 4rem;
+  background: var(--ink);
+  color: var(--bone);
+  font:
+    400 16px/1.55 ui-monospace,
+    "SF Mono",
+    Menlo,
+    Consolas,
+    monospace;
+}
+
+main {
+  max-width: 46rem;
+  margin: 0 auto;
+}
+
+.eyebrow {
+  margin: 0 0 1.5rem;
+  color: var(--bone-dim);
+  font-size: 0.75rem;
+  letter-spacing: 0.32em;
+}
+
+h1 {
+  margin: 0 0 1rem;
+  font-size: 1.6rem;
+  font-weight: 400;
+  line-height: 1.25;
+}
+
+h2 {
+  margin: 2rem 0 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 400;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--bone-dim);
+}
+
+.lede {
+  color: var(--bone);
+}
+
+p {
+  margin: 0 0 1rem;
+  color: var(--bone-dim);
+}
+
+.route,
+.card {
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--rule);
+}
+
+.flag,
+.prompt {
+  display: block;
+  margin: 0 0 0.75rem;
+  padding: 0.85rem 1rem;
+  border-left: 2px solid var(--amber);
+  background: #131617;
+  color: var(--bone);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.fallback {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+}
+
+button {
+  margin: 0 0.4rem 0.4rem 0;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--rule);
+  background: transparent;
+  color: var(--amber);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+button:hover,
+button:focus-visible {
+  border-color: var(--amber);
+}
+
+.status {
+  display: grid;
+  grid-template-columns: 10rem 1fr;
+  gap: 0.2rem 1rem;
+  margin: 0;
+}
+
+.status dt {
+  color: var(--bone-dim);
+}
+
+.status dd {
+  margin: 0;
+}
+
+.manifest,
+.log {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.manifest {
+  color: var(--cyan);
+  list-style: square;
+}
+
+.manifest .empty {
+  color: var(--bone-dim);
+  font-style: italic;
+}
+
+.log {
+  color: var(--bone-dim);
+  font-size: 0.85rem;
+  list-style: none;
+  padding-left: 0;
+}
+
+.log li {
+  padding: 0.2rem 0;
+  border-bottom: 1px solid var(--rule);
+}
