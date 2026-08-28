@@ -58,6 +58,18 @@ export function stateSummary(
 const IN_THE_ROOM: readonly Phase[] = ["IN_CHAMBER", "PENALISED", "DEADLOCK"] as const;
 
 /**
+ * Whether the pair is standing in the chamber `machine.chamber` names.
+ *
+ * Exported because the CONCORD meter needs exactly the same gate the frame
+ * does. A meter that keeps reporting the Blind Panel's ambiguity while the
+ * pair is reading a ghost log in the Archive is reporting a room nobody is in,
+ * and the fix for that is one predicate rather than two lists that drift.
+ */
+export function inTheRoom(phase: Phase): boolean {
+  return IN_THE_ROOM.includes(phase);
+}
+
+/**
  * The active chamber's facts as PILOT perceives them.
  *
  * Empty in every phase with no room to draw: the lobby, the transitions, the
@@ -66,7 +78,7 @@ const IN_THE_ROOM: readonly Phase[] = ["IN_CHAMBER", "PENALISED", "DEADLOCK"] as
  */
 function chamberFacts(session: PersistedSession, nowMs: number): Record<string, unknown> {
   const { chamber, phase } = session.machine;
-  if (!IN_THE_ROOM.includes(phase)) return {};
+  if (!inTheRoom(phase)) return {};
   if (chamber === "airlock" && session.airlock) {
     return projectForPilot(airlock.facts(session.airlock));
   }

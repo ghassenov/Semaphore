@@ -22,6 +22,7 @@
 import { GameError, errors } from "@semaphore/protocol";
 import { appendEvent, gzipJsonl, readAllEvents } from "./log.js";
 import {
+  ambiguityFor,
   newSession,
   reduce,
   settleSession,
@@ -30,7 +31,7 @@ import {
 } from "./reducer.js";
 import { ActionSemaphore } from "./semaphore.js";
 import { describeChamber, inspectObject, lockState, readCiphertext } from "./views.js";
-import { pilotView, stateSummary } from "./pilot.js";
+import { inTheRoom, pilotView, stateSummary } from "./pilot.js";
 import { MANUAL_SECTIONS, isManualSection, manualSection } from "./manual.js";
 import { percentile, staminaWindowMs } from "./latency.js";
 import type { LeverId } from "./chambers/airlock.js";
@@ -109,6 +110,7 @@ export class Session {
 
     if (request.method === "GET") {
       if (pathname.endsWith("/status")) return this.#status();
+      if (pathname.endsWith("/concord")) return this.#concord();
       // Every other GET is a read-only tool. They share one handler because
       // they share the property that makes them safe: `views.ts` and
       // `manual.ts` are pure, so none of them can be made to mutate by a
@@ -387,6 +389,30 @@ export class Session {
     await this.#storage.put("meta", settled.session);
     await this.#syncAlarm(settled.session);
     this.#broadcast(settled.session);
+  }
+
+  /**
+   * The CONCORD meter's feed: KEEPER's remaining ambiguity in the active room.
+   *
+   * A route of its own rather than a field on the socket frame, because
+   * measuring it enumerates every world consistent with what KEEPER knows and
+   * replays the rotation history under each. For the Blind Panel that is 384
+   * candidates, which is fine a few times a second on demand and absurd on
+   * every push (D-026). The HUD polls it; the frame stays cheap.
+   *
+   * Null outside a chamber, gated by the same `inTheRoom` predicate the frame
+   * uses, so the meter cannot report a room the pair has already left.
+   */
+  #concord(): Response {
+    const session = this.#session;
+    if (!session) return Response.json(errors.noSession().toToolResult(), { status: 409 });
+    const ambiguity = inTheRoom(session.machine.phase) ? ambiguityFor(session) : null;
+    return Response.json({
+      chamber: session.machine.chamber,
+      bits: ambiguity ? Number(ambiguity.bits.toFixed(2)) : null,
+      worlds: ambiguity?.worlds ?? null,
+      actions: ambiguity?.actions ?? null,
+    });
   }
 
   async #status(): Promise<Response> {

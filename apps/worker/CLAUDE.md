@@ -28,3 +28,4 @@ The Cloudflare Worker and the `Session` Durable Object. One DO per session, hold
 | 2026-08-28 | Ahmed Saad | Archive beat implemented (temporary worker-side placement, D-017); session_start timing bug fixed (D-016). Full mode now completes end to end. |
 | 2026-08-28 | Ahmed Saad | Server-authoritative timer implemented (D-018): stored chamber deadline settled on read, DO alarm as a second caller, time penalties, retry_chamber, Chamber II gauge drift. |
 | 2026-08-28 | Ahmed Saad | Read-only tool surface (views.ts), the station manual (manual.ts) and the terminal open_the_door action added for the client layer (D-019, D-020). |
+| 2026-08-28 | Ahmed Saad | The CONCORD route added (D-027): `GET /concord`, on demand, gated by the exported `pilot.inTheRoom` so the meter and the frame cannot disagree about which room the pair is in. |

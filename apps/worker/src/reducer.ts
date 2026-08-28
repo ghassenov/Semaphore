@@ -191,7 +191,19 @@ const CONCORD_LOCK_CHAMBER: ChamberWorlds<concordLock.ConcordLockState> = {
  * none is. This is what the DEADLOCK failure card reads back, so the run's
  * last line is "you were this many bits short" rather than "you lost".
  */
-function ambiguityFor(session: PersistedSession): Ambiguity | null {
+/**
+ * The ambiguity remaining in the session's active chamber, from KEEPER's side.
+ *
+ * Exported for the CONCORD route, which is the only other caller. It is kept
+ * here rather than moved to `worlds.ts` because the four `ChamberWorlds`
+ * bindings live here, and splitting them from the reducer that maintains the
+ * state they enumerate is how the meter and the log start disagreeing.
+ *
+ * Note this answers for `machine.chamber` without regard to phase. The caller
+ * decides whether the pair is actually in that room; `pilot.inTheRoom` is that
+ * decision, and the route applies it.
+ */
+export function ambiguityFor(session: PersistedSession): Ambiguity | null {
   switch (session.machine.chamber) {
     case "airlock":
       return session.airlock ? measure(AIRLOCK_CHAMBER, session.airlock) : null;
