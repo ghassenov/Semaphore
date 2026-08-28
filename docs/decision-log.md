@@ -441,3 +441,31 @@ It also covers what a lint rule could not reach at all: that exactly the mutatin
 What option 1 costs is a round trip before the front door and a route outside the `/session/:id` pattern the router is built on. What it does not buy is control over the seed, because doc 05 section 9 already requires `?seed=` to reproduce a session exactly, and that is how a bug is reproduced, a demo is rehearsed, and two models are compared on the same four chambers. An id the client cannot choose would have to be overridable anyway.
 
 **Result.** No new route. Doc 03 section 10's wording is the one thing to correct before submission: the guarantee is zero PII, not server-minted ids, and the copy should say what is true.
+
+---
+
+### D-024 The spike has been run: `execute` takes one argument, and the ending needs the notepad form removed
+
+**Decision.** Doc 11 is filled from a real Chrome 151 run (2026-08-28). Three findings change what we believed. `execute` receives **one** argument and no `AbortSignal`, reversing D-007. A **declaratively** registered tool does not leave the registry on abort, only when its form leaves the DOM, which the empty-registry ending depends on. Cross-origin delegation **works**, so `apps/archive` is viable, though `ARCHIVE_ORIGIN` stays `same` until ChatGPT's in-app browser is tested too.
+
+**How it was run.** `apps/spike` served on two ports, Chrome 151 headless with `--enable-features=WebMCPTesting` and a throwaway profile, the report read out of the DOM over the DevTools Protocol. The spike's own checks answered most of it. Two questions its `mc.executeTool` path could not answer honestly - what an *agent* invocation looks like from inside `execute` - were settled by invoking through the CDP `WebMCP` domain (`WebMCP.invokeTool`), which is the closest available stand-in for a host. Both paths agreed on the argument count.
+
+**Finding 1: `execute(input)`, one argument.** D-007 corrected doc 03 off the IDL, which specifies `(object inputObject, ToolExecuteCallbackOptions options)` with a required `AbortSignal`. Chrome 151 does not implement the second parameter. Doc 03's original text, which D-007 overturned, was right about the shape and wrong about the reason.
+
+The input shape resolved a second discrepancy in our favour. Doc 11 section 0 flagged that the IDL says object and our captured hackathon reference says JSON string; both are true of different callers. A host invocation delivers a **plain object**, and the page-side `executeTool` helper requires a **JSON string**. The game's tools are only ever host-invoked, so `apps/game` reading `input.designation` off an object is correct as written. The benchmark harness, when it drives tools directly, will have to serialise.
+
+**Options considered for the now-dead cancellation path.**
+1. Delete it: the `ExecuteContext` type, the `signal` parameter threaded through `GameTool.run` into `fetch`, the director's `cancelled` outcome, and `ToolCancelEvent` in `packages/protocol`.
+2. Keep it, typed optional, documented as unimplemented.
+
+Option 2, on three grounds. The signal is in the IDL, so this is a gap in one implementation rather than a settled answer about the standard. ChatGPT's in-app browser is a required target and has not been tested; deleting on one browser's evidence and restoring on another's is churn. And the cost is genuinely one optional parameter and one `instanceof`: nothing is executed, nothing is slower, and no caller is complicated by it. What was **not** acceptable was leaving the claim standing: `adapter.ts`, `director.ts`, `sessionClient.ts`, the fake registry, the cancellation test and NEXT-STEPS all said or implied the signal was live, and all now say what is true.
+
+`fake-registry.ts` was itself wrong and is fixed. It passed a second argument unconditionally, which would have let a tool reading `context.signal` look supported. It now passes one argument unless a caller explicitly asks for a signal, which is what the browser does.
+
+**Finding 2: the declarative tool and the empty registry.** This is the one that changes a design. The spike's `toolchange.empty` row came back `[info]` rather than `[pass]`: the event fired, but `getTools()` still held one tool, the form-registered `spike_write_note`. Aborting a signal does not remove a declarative tool, because its lifetime is the element's. A follow-up probe confirmed the rest: removing the `<form>` from the DOM removed the tool, fired a second `toolchange`, and left `getTools()` returning **zero**.
+
+So the ending is real and reachable, and it now has a precondition. `ToolDirector.endSession()` aborts controllers, which is sufficient today only because the notepad does not exist yet. When Phase 1.4 lands `write_note` as a form, that method must remove the form from the document as well, or the game's final beat ends on a registry holding one tool. The requirement is recorded in `endSession`'s own docstring, in doc 11, and in NEXT-STEPS, because it is the kind of thing that is invisible until the demo.
+
+**Finding 3: cross-origin works.** Two tools registered from a second origin with `exposedTo` pinned to the parent, embedded with `allow="tools"`, were visible to the parent via `getTools({ fromOrigins })` and absent from a default `getTools()`. This clears the largest architectural risk hanging over `apps/archive` (R9). It also tells the manifest panel something: the default view is not the whole registry, so a panel that wants to show the archive's tools has to ask for them by origin rather than assume.
+
+**Result.** Doc 11 sections 1, 2, 3, 4, 5, 8, 9 and 10 filled; doc 03's spec baseline table updated, with two rows moving from Medium and DISPUTED to Verified. What remains empty in doc 11 is exactly what a browser cannot answer: whether a model discovers a one-tool page, whether `untrustedContentHint` changes its behaviour, its latency distribution, and `SubmitEvent.agentInvoked`, which needs a real agent submission rather than a synthetic one. Those need a model and, for the second browser, ChatGPT.

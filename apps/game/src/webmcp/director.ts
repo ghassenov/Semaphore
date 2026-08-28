@@ -234,6 +234,15 @@ export class ToolDirector {
   /**
    * The last `toolchange`: the registry drains to empty. Synchronous, because
    * abort is synchronous and the ending should not be able to half-happen.
+   *
+   * **Aborting is not sufficient once the notepad exists.** The spike found
+   * that a declaratively registered tool - one a form's `toolname` attribute
+   * created - does not leave the registry when a signal aborts; its lifetime
+   * is the element's (doc 11 section 2, verified 2026-08-28 on Chrome 151).
+   * Removing the form from the DOM does remove it, fires a second
+   * `toolchange`, and leaves `getTools()` genuinely empty. So when Phase 1.4
+   * lands `write_note` as a form, this method must remove that form as well,
+   * or the game's final beat ends on a registry holding one tool.
    */
   endSession(): void {
     this.#entryCtl?.abort();
@@ -270,6 +279,12 @@ export class ToolDirector {
    * model nothing and produces flailing retries; an abort is the one case
    * that is allowed through, because the host cancelling a call in flight is
    * not a failure to describe.
+   *
+   * The cancellation path is currently unreachable in Chrome 151, which calls
+   * `execute` with one argument and no `AbortSignal` (doc 11 section 2,
+   * D-024). It is kept because the IDL specifies the signal, ChatGPT's in-app
+   * browser is untested, and the branch costs one `instanceof`. Its test
+   * drives the branch directly rather than through a browser, and says so.
    */
   #instrument(tool: GameTool): RegisteredTool {
     return {

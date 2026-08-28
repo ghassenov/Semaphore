@@ -128,10 +128,11 @@ export class SessionClient {
    * same envelope a success does. Anything else is the station itself failing,
    * and it gets a message in the same register rather than a stack trace.
    *
-   * An abort is re-thrown, and only an abort. The spec hands `execute` an
-   * `AbortSignal` so a host can cancel a call in flight; swallowing that into
-   * an "ok" response would tell the agent something happened when the host had
-   * already decided it should not.
+   * An abort is re-thrown, and only an abort. Swallowing a cancellation into
+   * an "ok" response would tell the agent something happened when whoever
+   * cancelled had already decided it should not. Note that no signal reaches
+   * a tool in Chrome 151 (doc 11 section 2, D-024), so today this path is
+   * reached only by a caller that passes its own signal.
    */
   async #send(url: string, init: RequestInit): Promise<SessionResponse> {
     let response: Response;
