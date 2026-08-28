@@ -13,10 +13,11 @@ It answers three questions and only three: where the repo is right now, what to 
 | **Last updated** | 2026-08-28, Ahmed Saad |
 | **Spike** | **Run** against Chrome 151, 2026-08-28. Doc 11 filled. Three findings, D-024. ChatGPT's in-app browser still untested. |
 | **Branch** | `feat/phaser-scenes`, off `main` at `3c5b940`, **not pushed** |
-| **Pipeline** | Green: 451 tests, typecheck, lint, format, `vite build` plus the bundle budget, real `wrangler deploy --dry-run` |
+| **Pipeline** | Green: 503 tests, typecheck, lint, format, `vite build` plus the bundle budget, real `wrangler deploy --dry-run` |
+| **Played** | A full session, end to end, in Chrome 151 against a live `wrangler dev`: all four chambers, the Archive, the finale, ~17s. The registry ends genuinely empty. |
 | **Verify with** | `pnpm install && pnpm typecheck && pnpm lint && pnpm test && pnpm build` |
 | **Run it** | `cd apps/worker && npx wrangler dev` in one shell, `cd apps/game && pnpm dev` in another. Vite proxies `/session` to `127.0.0.1:8787`, WebSocket included. |
-| **Bundle** | Entry **10.3KB** gzipped of a 400KB budget. Phaser is a separate 358KB chunk, fetched only when a shift starts (D-026). |
+| **Bundle** | Entry **11.6KB** gzipped of a 400KB budget. Phaser is a separate 358KB chunk, fetched only when a shift starts (D-026). |
 | **Cloudflare** | Logged in. D1 database `semaphore-sessions` provisioned and migrated, local and remote. |
 
 ### What exists
@@ -24,18 +25,19 @@ It answers three questions and only three: where the repo is right now, what to 
 | Path | State |
 |---|---|
 | `docs/design/` | Numbered set 00-12, complete. Plan sections 0.4 and 1.4 ticked. |
-| `docs/` | Decision log at D-027, lessons journal live. |
+| `docs/` | Decision log at D-030, lessons journal live. |
 | `packages/seed`, `packages/protocol` | Done. |
 | `apps/worker/src/chambers/*.ts` | Done. All four chambers: generation, state, facts, world enumeration. |
 | `apps/worker/src/reducer.ts` | Done end to end, ENTRY through **ESCAPED**. `ambiguityFor` is now exported, for the CONCORD route. |
 | `apps/worker/src/views.ts`, `pilot.ts`, `manual.ts` | Done. `pilot.ts` also exports `inTheRoom`, the one phase gate the frame and the meter share. |
-| `apps/worker/src/Session.ts` | Done. Read routes, machine state on every response, `/socket` (D-025) and `/concord` (D-027). |
-| `apps/game/src/webmcp/*` | Done. Adapter, three-tier director, all 12 tools. The director gained `onCallStart`, which lights KEEPER's visor while a call is in flight. |
+| `apps/worker/src/Session.ts` | Done. Read routes, machine state on every response, `/socket` (D-025), `/concord` (D-027) and the notepad's two routes (D-028). |
+| `apps/game/src/webmcp/*` | Done. Adapter (now covering the declarative API too), three-tier director, 14 tools. `tools.notepad.ts` holds both halves of the pad. |
 | `apps/game/src/net/*` | Done. `sessionClient` gained `concord()`; the socket is unchanged. |
 | `apps/game/src/render/palette.ts` | The 14 locked colours, and the one place a channel becomes a colour. |
 | `apps/game/src/render/rooms.ts` | **Pure.** All four rooms as geometry, from one `PilotView`. Takes no other input, by design and by type. |
 | `apps/game/src/render/hud.ts` | **Pure.** Timer, meter fill, truncation, legend, band coordinates. |
 | `apps/game/src/render/scenes.ts` | `LandingScene` and `ChamberScene`. The only file that touches Phaser's API. Paints; decides nothing. |
+| `apps/game/src/render/sprites.ts` | The art: twelve glyphs, both bodies, wall and floor tiles, authored as pixels in source (D-029). |
 | `apps/game/src/render/station.ts` | The boot. Dynamic `import("phaser")`, the scene model, the CONCORD poll. |
 | `apps/game/src/ui.ts` | The DOM shell: gate screen, canvas mount, prompt card, PILOT's buttons. The operator console is gone. |
 | `tests/possible-worlds.test.ts` | Done and passing for all four chambers. The headline proof, honestly scoped. |
@@ -48,33 +50,49 @@ It answers three questions and only three: where the repo is right now, what to 
 
 In order. Each item ends somewhere the pipeline is green and the repo is committable.
 
-### 1. The declarative notepad, and the empty registry it threatens
+### 1. Playtest with humans [needs people]
 
-`write_note` / `read_note` as a real `<form>` in the room (doc 03 section 8). It was deferred out of 1.4 because it is not a rendering problem: it is the one tool registered declaratively, and it interacts with the ending.
+Doc 08 section 0.1 wants six. The greybox is playable and a scripted session
+now runs clean, so what is left is the half a script cannot answer: whether it
+is fun, whether a cold player's description of a glyph reaches the manual's
+canonical name, and whether the vandalised Signal Room page actually fools
+anybody. The glyph vocabulary's `plainNames` are placeholders until this
+happens; doc 07 section 7.2 wants the real corpus gathered here.
 
-**Read D-024 before writing it.** Aborting a signal does not remove a declaratively registered tool; its lifetime is its form element's. `ToolDirector.endSession()` must remove the form from the DOM as well, or the game's final beat lands on a registry holding one tool. That is invisible until the demo.
+Run it with `apps/worker` and `apps/game` locally, one person on the screen and
+one holding the tool descriptions.
 
-### 2. Play a session, and run the spike in ChatGPT's in-app browser [needs a human]
+### 2. Run the spike in ChatGPT's in-app browser, and meet a real model [needs a human]
 
-Everything needed for a real session now exists and has been driven end to end in headless Chrome 151. What is left needs a person and a model.
+**In ChatGPT's in-app browser**, on GPT-5.6 Sol or Terra (Luna has site tools
+disabled), re-run the spike. Two rows decide things: `crossorigin.delegation`,
+which flips `ARCHIVE_ORIGIN` from `same` to `cross`, and
+`declarative.agentinvoked`, which the notepad's per-line authorship depends on
+and which the game now genuinely uses.
 
-**In ChatGPT's in-app browser**, on GPT-5.6 Sol or Terra (Luna has site tools disabled), re-run the spike. Two rows decide things: `crossorigin.delegation`, which flips `ARCHIVE_ORIGIN` from `same` to `cross`, and `declarative.agentinvoked`, which the notepad's per-line authorship depends on.
-
-**With a model, in either browser**, fill doc 11 sections 6 and 7: whether a one-tool page gets discovered unprompted, whether `untrustedContentHint` changes behaviour, and the latency distribution that sizes Chamber III's window.
+**With a model, in either browser**, fill doc 11 sections 6 and 7: whether a
+one-tool page gets discovered unprompted, whether `untrustedContentHint`
+changes behaviour, and the latency distribution that sizes Chamber III's window.
 
 ### 3. `apps/archive`, and moving `read_manual` and `read_station_log` to it
 
-D-017 and D-020 record exactly what moves. One shape to know in advance: the vandalised Signal Room page is drawn from the session seed and the archive origin holds no storage binding, so it will serve static section text and fetch the session-scoped annotation from the worker.
+D-017 and D-020 record exactly what moves. One shape to know in advance: the
+vandalised Signal Room page is drawn from the session seed and the archive
+origin holds no storage binding, so it will serve static section text and fetch
+the session-scoped annotation from the worker.
 
-### 4. Art, once the greybox has been playtested
+### 4. The rest of the art
 
-Not before. Every room is flat rectangles and 8px monospace today, which is the point (doc 06 section 11). The layout constants in `rooms.ts` and `hud.ts` are the whole vertical budget and the tests hold them; a sprite pass changes what is drawn, not where.
-
----
+The glyphs, the bodies and the hull tiles are drawn (D-029). Still greybox
+rectangles: levers, keys, gauges, dials, bolts, the cipher wheel, the door.
+`sprites.ts` is the pattern and `sprites.test.ts` will hold anything new to the
+same checks. Do this after the playtest, not before: the layout constants are
+the whole vertical budget and a sprite pass changes what is drawn, not where.
 
 ## Things that will bite you
 
-- **The registry is not empty at the ending once the notepad exists** (D-024). Aborting a signal does not remove a *declaratively* registered tool. `endSession()` must remove the form from the DOM as well.
+- **A declarative tool leaves the registry only when its element leaves the DOM** (D-024, fixed in D-028). Aborting a signal will not do it. `endSession` and `#enterFinale` both remove the notepad form, and anything that adds a second declarative tool has to do both too. `fake-registry.ts` models this now, so a regression fails a test rather than a demo.
+- **The scripted playthrough is the fastest way to find a rendering bug.** It plays a full session in about seventeen seconds and screenshots every beat. Three of this session's five defects were invisible to unit tests and obvious in a frame.
 - **Never import Phaser statically outside `render/station.ts`** (D-026). One top-level import moves 358KB into the entry chunk, and nothing about the page looks wrong. `apps/game/scripts/check-bundle.mjs` fails the build, which is the only thing that will tell you.
 - **Captions are wider than their pieces.** A caption is centred under its piece and routinely overhangs it, so the caption is what collides with the next piece, runs past the grate, or falls out of the room band. Three separate layout bugs in this phase were all this one thing, and all three were invisible to a test that measured rectangles. The tests now measure caption extents; keep it that way.
 - **The server writes for an agent, not for a 172-pixel panel.** `start full` answers with a paragraph. Anything from a tool response that reaches the HUD goes through `truncate` first, or it draws straight through the panel beside it.
