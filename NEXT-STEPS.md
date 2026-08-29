@@ -12,8 +12,8 @@ It answers three questions and only three: where the repo is right now, what to 
 |---|---|
 | **Last updated** | 2026-08-29, Ahmed Saad |
 | **Spike** | **Run** against Chrome 151, 2026-08-28. Doc 11 filled. Three findings, D-024. ChatGPT's in-app browser still untested. |
-| **Branch** | `bench/ablation`, off `main` at `abbca5f` |
-| **Pipeline** | Green: 625 tests, typecheck, lint, format, both `vite build`s plus the bundle budget and the art check, real `wrangler deploy --dry-run` |
+| **Branch** | `bench/cooperative-benchmark`, off `main` at `eee0c68` |
+| **Pipeline** | Green: 633 tests, typecheck, lint, format, both `vite build`s plus the bundle budget and the art check, real `wrangler deploy --dry-run` |
 | **Played** | A full session, end to end, in Chrome 151 against a live `wrangler dev`: all four chambers, the Archive, the finale. The registry ends genuinely empty. |
 | **Archive** | **Both halves built** (D-039). KEEPER calls `read_station_log`; PILOT watches the same log on a monitor in a room of its own. `pilotTrack` is the mirror of `keeperEntries` and the exclusion is asserted in both directions, on the projection and again on the wire. Looked at in Chrome across the whole recording: the ghost walks into the Signal Room, grips the release bar, and the tape runs out. |
 | **Interface** | **Rebuilt** (D-034 to D-038). Vendored art pack, a three-bay DOM console, and the station drawn as **one connected floor plan**: five rooms and the corridors between them, autotiled in a single pass, each room walled in its own channel colour (D-037, D-038). A camera frames the room the pair is in at 1x, holds the whole building for the walk between chambers, and pulls back whenever PILOT holds **M**. Driven in Chrome 151 against a live worker: the Airlock and the Signal Room framed and lit, the floor plan on M, and the walk between them. **A full session has now been played end to end in Chrome 151 against a live worker**: all four chambers, the Archive, the finale and the ending. It found four rendering bugs no unit test could (see the 2026-08-29 entry in [docs/lessons-learned.md](docs/lessons-learned.md)); all four are fixed. |
@@ -22,6 +22,8 @@ It answers three questions and only three: where the repo is right now, what to 
 | **Run it** | `cd apps/worker && npx wrangler dev` in one shell, `cd apps/game && pnpm dev` in another. Vite proxies `/session` to `127.0.0.1:8787`, WebSocket included. For the cross-origin path, see `apps/archive/CLAUDE.md`. |
 | **Bundle** | Entry **16.8KB** gzipped of a 400KB budget; the archive origin is **2.2KB**. Phaser is a separate 358KB chunk, fetched only when a shift starts (D-026). The art pack is **17KB** of static files, fetched by the scenes and not by the entry. |
 | **Ablation** | **Run and published** (D-040). Three conditions, twenty fixed seeds, no model and no tokens: the solo condition is a uniform draw from `consistentWorlds` at every step, which beats any real agent, so the gap is a lower bound. At a 6s agent rhythm: **together 3.80 of four and 90% escapes, agent alone 1.25 and no escapes, PILOT alone 0.00.** Raw logs, chart and report in `bench/results/`. |
+| **Benchmark** | **Built and published** (D-041). Four scripted PILOTs over the ablation's own twenty seeds: `oracle` clears 3.80 of four, `vague` 2.60 (partner-sensitivity **0.68**), `slow` 2.00, `wrong` 3.80. `wrong` clears what `oracle` clears and pays 54 calls a run against 33, which is the argument for measuring a pair on more than completion. `pnpm --filter @semaphore/bench benchmark`. Still no model in it. |
+| **README** | Carries the ablation chart and table above the fold, and a status that is no longer two months stale. |
 | **Cloudflare** | Logged in. D1 database `semaphore-sessions` provisioned and migrated, local and remote. |
 
 ### What exists
@@ -59,6 +61,10 @@ It answers three questions and only three: where the repo is right now, what to 
 | `tests/cross-origin-delegation.ts` | The browser proof. Node plays a session, Chrome follows, and the registry is read out of the browser at every beat. |
 | `bench/session.ts` | **Pure-ish.** Plays a whole session through `reduce()` against a virtual clock, under one of three conditions. The only thing the conditions vary is the hypothesis the executor acts on. |
 | `bench/ablation.ts` | The run: twenty seeds, three conditions, plus a pacing sweep of the cooperative ceiling. Writes `results/ablation.{jsonl,svg,md}`. `pnpm --filter @semaphore/bench ablation`. |
+| `bench/partners.ts` | The four scripted PILOTs. A partner is a function from the consistent world set to what its description left standing, plus the delay it cost. No sentences (D-041). |
+| `bench/harness.ts` | The Cooperative Benchmark run: the suite times the four partners. `pnpm --filter @semaphore/bench benchmark`. |
+| `bench/report.ts` | **Pure.** Aggregation, markdown and CSV. Also the file that says which four of doc 07's ten metrics are absent, and why. |
+| `bench/suites/standard.json` | The twenty seeds, the difficulty and the pace, as data. The ablation's own list. |
 | `bench/results/` | Committed and regenerated, never hand-edited. |
 
 ---
@@ -125,9 +131,11 @@ decision rather than a task.
 
 **Chamber II falls off a cliff at a slow agent rhythm**: an oracle pair clears
 4.00 of four at 4s between calls, 3.80 at 6s and **2.00 at 9s**, because the
-gauges drift and the win condition is simultaneous. Do not tune the drift rate
-until doc 11 sections 6 and 7 carry measured round trips - the right value is a
-function of the pace, and the pace is still guessed. Then re-run the ablation.
+gauges drift and the win condition is simultaneous. The benchmark measured it a
+second time from the other direction: the `slow` partner runs the session at 12s
+and Chamber II goes to **0%**. Do not tune the drift rate until doc 11 sections
+6 and 7 carry measured round trips - the right value is a function of the pace,
+and the pace is still guessed. Then re-run both the ablation and the benchmark.
 
 **The Signal Room's 1,956 figure holds against blind guessing only.** The
 accepted prefix is `SHARED`, so a wrong key never un-confirms an accepted one and
@@ -135,14 +143,7 @@ the real search is sequential with feedback: a solo guesser clears the chamber
 about a quarter of the time. The tag is correct; whether the chamber should be
 that soft is a design call.
 
-### 5. Place the ablation chart
-
-`bench/results/ablation.svg` exists and nothing points at it. Doc 08 phase 7.1
-wants it on the landing page, the gate screen, the README, Devpost and in the
-video. Dependency-free inline SVG at 520x300. The gate screen is Phase 4 and
-unbuilt, so the README is the cheap one to do first.
-
-### 6. Deploy the archive origin as its own Pages project
+### 5. Deploy the archive origin as its own Pages project
 
 The code is done and proved locally; what is not done is the second Cloudflare
 Pages project and the preview-deploy wiring for it. Until that exists the
@@ -150,8 +151,19 @@ cross-origin path cannot be tested on a URL, which is what a playtester and
 ChatGPT's in-app browser both need. `VITE_ARCHIVE_ORIGIN` and the worker's
 `ALLOWED_ORIGINS` are the only two settings involved.
 
+### 6. Point a model at the benchmark [blocked on step 2]
+
+The harness, the suite, the partner axis and the report all exist and run in
+seconds with zero tokens. What doc 07 section 2.4 actually wants is the same
+run with a model behind the tool surface, across three backends, and that needs
+doc 11 sections 6 and 7 filled first: without a measured latency distribution
+the pace is guessed, and `slow`'s row already shows how much the pace decides.
+Budget the tokens before running, not after.
+
 ## Things that will bite you
 
+- **Adding a condition to `bench/session.ts` will silently move every published ablation number** unless it leaves the run's random stream alone. The stream is keyed on the seed and the condition, so a new suffix reseeds it, and one extra `rng` draw inside `hypothesis()` shifts every draw after it. The partner axis keeps the unsuffixed key for `oracle` and the two partnerless conditions, and skips the draw when a description settles the room, precisely so `ablation.md` came back byte-identical. Diff it after any change here; the tests will not tell you.
+- **A benchmark metric that is constant across the axis reads as a finding.** Grounding latency was built, came back as exactly 1.0 for all four partners, and was deleted rather than reported: a first action in an unexplored room is informative whether or not it was right, so the quantity could never have moved. Check that a new metric actually separates the partners before it goes in a table.
 - **A chamber's solve does not always change `machine.chamber`.** The Blind Panel's solve moves the phase to `ARCHIVE` and leaves the chamber name in place, which is what D-025 means by the chamber outliving the room. Anything watching for "a chamber was cleared" has to watch the phase, not the name; the ablation reported Chamber II at 0% for an afternoon because of it.
 - **Chamber II is solved by aiming ahead of the drift, never at the target.** A greedy solver chases its own tail: it sets a gauge, the gauge falls, it sets it again, forever. `bench/session.ts` plans the whole rotation order and over-shoots each one by the drift due before the last lands, highest target last, because a needle can be aimed early but never above the top of the scale.
 - **A pooled tile image and the graphics object share a depth, so draw order decides.** The pool creates its objects lazily, so an image handed out on frame 40 is appended to the display list after `#paint` and lands on top of it. The Archive's floor plate was drawn straight through the monitor because of this. Do not fix it by raising a depth; the room is what should not have had a plate under a screen.
@@ -206,7 +218,8 @@ ChatGPT's in-app browser both need. `VITE_ARCHIVE_ORIGIN` and the worker's
 | Socket behaviour through Cloudflare's edge | Human | Verified against local `workerd` only. Watch a deployed session through one full chamber before rehearsing the demo on it. |
 | A real agent session | Human | Everything needed exists and has been driven in headless Chrome. Doc 11 sections 6 and 7 stay empty until a model meets the page. |
 | Playtesters | Human | Doc 08 section 0.1 wants six. Every room including the Archive is now playable and looked at, so this unblocks completely. The only task that does not parallelise. |
-| Chamber II's drift rate | Whoever holds the design | Blocked on doc 11 sections 6 and 7. Re-run `pnpm --filter @semaphore/bench ablation` after any change to it. |
+| Chamber II's drift rate | Whoever holds the design | Blocked on doc 11 sections 6 and 7. Re-run both `ablation` and `benchmark` in `@semaphore/bench` after any change to it. |
+| Per-model benchmark numbers | Human | The harness is done and costs nothing to run. A backend behind the tool surface is what turns it into doc 07 section 2.4's instrument, and doc 11 sections 6 and 7 gate the pace it would be run at. |
 | Repo made public | Human | Deliberately deferred to just before the deadline. |
 | Doc 03 section 10 wording fix | Whoever writes submission copy | It claims "server-generated ID"; the real guarantee is zero PII (D-023). Say what is true. |
 

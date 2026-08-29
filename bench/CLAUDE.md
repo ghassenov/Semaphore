@@ -15,6 +15,10 @@ The measurement layer. This is where the Potential Impact argument is paid for w
 - `wasted` calls are computed from `keeperViewHash`, which captures what the agent actually knew at call time. That is what separates a model that reasons from a model that enumerates, and the two produce identical completion rates.
 - **`results/` is committed, and regenerated rather than edited.** `pnpm --filter @semaphore/bench ablation` rewrites all three files from one run. A hand-corrected number in `ablation.md` that no longer matches `ablation.jsonl` is the exact failure the rule about publishing raw logs exists to prevent.
 - **The ablation's solo condition is a ceiling, not a sample** (D-040). It draws uniformly from `consistentWorlds` at every step, so it beats any real model, and the gap it reports is a lower bound. Do not replace it with a sampled backend: add the backend to the Cooperative Benchmark, which is where per-model numbers belong.
+- **A partner is what its description left behind, never a sentence** (D-041). A scripted PILOT is modelled as the subset of the consistent world set the agent still holds afterwards, plus the delay the answer cost. Authoring description strings and parsing them back would measure the parser.
+- **A metric that does not vary across the axis is deleted, not reported.** Grounding latency measured 1.0 for all four partners and was removed rather than dressed up; a metric no agent's judgement can move (caution rate, clarifying questions, token spend) is printed as absent with the reason, because a column of constants reads as a measurement.
+- **Compare a partner against `oracle`, never against another partner.** How often `vague` and `wrong` mislead the agent is set by their own parameters, so their ordering measures those parameters. Only the ratio to `oracle` is partner-sensitivity.
+- **`slow` is a pacing measurement wearing a partner's name.** It degrades nothing informational, so its row is a second reading of Chamber II's drift cliff. Say that wherever its number appears.
 - **Report the agent's pacing with any number that depends on it.** `gapMs` is the one free parameter here and doc 11 sections 6 and 7 have not fixed it yet. Chamber II's cooperative ceiling falls from 4.00 to 2.00 between a four-second and a nine-second rhythm, so a completion figure quoted without its pace is not a figure.
 
 ## Change Log
@@ -23,3 +27,4 @@ The measurement layer. This is where the Potential Impact argument is paid for w
 |---|---|---|
 | 2026-08-27 | Ahmed Saad | Created. Benchmark rules recorded ahead of the build. |
 | 2026-08-29 | Ahmed Saad | The ablation is built (D-040). Added the rules on regenerating `results/`, on keeping the solo condition a possible-worlds ceiling, and on always quoting the agent's pacing. |
+| 2026-08-29 | Ahmed Saad | The Cooperative Benchmark is built (D-041). Added the rules on how a partner is modelled, on deleting a metric that does not vary, on comparing only against `oracle`, and on what `slow` actually measures. |

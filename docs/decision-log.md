@@ -911,3 +911,36 @@ It also makes `bench/` the third consumer of `worlds.ts`, which is the arrangeme
 **The Airlock's solo pass rate is 100 percent and is not a defect.** Three levers, a twenty-second penalty and a three-minute timer. Doc 02 section 3.1 says the chamber is deliberately trivial because the mechanic is the discovery. Reporting the honest number here is what makes the zeros further down the table credible.
 
 **Result.** 625 tests. `bench/results/` carries `ablation.jsonl` (one line per run, nothing aggregated), `ablation.svg` and `ablation.md`. At a six-second rhythm over twenty seeds: together 3.80 chambers of four and 90 percent escapes, agent alone 1.25 and no escapes, PILOT alone 0.00.
+
+---
+
+### D-041 The Cooperative Benchmark models a partner as what a description leaves behind
+
+**Date.** 2026-08-29
+
+**Decision.** `bench/` gains the Semaphore Cooperative Benchmark (doc 07 section 2, doc 08 phase 7.3): `harness.ts` drives the Standard suite, `suites/standard.json` fixes the twenty seeds, `partners.ts` holds the four scripted PILOTs, and `report.ts` aggregates into markdown and CSV. A partner is modelled as a function from the consistent world set to the subset the agent is still holding, plus the delay its answer cost. Nothing in it is a sentence.
+
+**Options considered.**
+1. Author a description string per chamber per partner and have the executor parse it.
+2. Model a partner by its effect on the agent's belief: which worlds the description ruled out.
+3. Put a language model behind the tool surface and script PILOT as chat turns.
+
+Option 2. Option 1 builds a natural-language layer whose only reader is a parser we also wrote, which measures the parser. Option 3 is the real instrument and is what doc 07 section 2.4 wants, but it is gated on doc 11 sections 6 and 7 and on a token budget, and the harness has to exist before a backend can be pointed at it. Option 2 is exactly the part of a description this project can measure without inventing anything: the consistent world set is already enumerated for the possible-worlds proof and for the CONCORD meter, so "how much ambiguity did that sentence remove" is a subtraction. `bitsDelivered` is that subtraction, and it is doc 07 section 2.2's bits-per-question with the one honest change that it counts descriptions rather than questions, because there is no model here to ask one.
+
+**Four of the ten metrics are absent rather than zero.** Clarifying questions, caution rate, injection resistance as a behavioural choice, and token spend are properties of an agent's judgement. The agent here is D-040's possible-worlds ceiling, which has none: it never forgets, never misreads a description, never reads prose at all. A column of constants for those would invite a reader to think they were measured. `report.ts` prints a section saying which are missing and why, because four silently-dropped rows read as inconvenience rather than as impossibility.
+
+**Grounding latency was built, measured at 1.0 for every partner, and removed.** The closest quantity this harness can compute is the first call in a room the server did not mark `wasted`, and a first action in an unexplored room is informative whether or not it was right. What replaced it is calls per chamber cleared, which separates the partners by a factor of two.
+
+**Three findings.**
+
+*A partner who is confidently wrong a quarter of the time clears exactly what a perfect one does, and pays for it in calls.* `wrong` scores 3.80 chambers of four against `oracle`'s 3.80, and needs 54 mutating calls per run against 33, with its descriptions carrying a third of the information. Standard difficulty at a six-second rhythm absorbs the mistakes; a shorter timer or an irreversible chamber would not. This is the argument for measuring a pair on more than its completion rate, produced by the harness against itself, and it is why the report leads the second table with it.
+
+*An imprecise partner is much more expensive than an occasionally wrong one*, at these parameters: `vague` clears 2.60 against `oracle`'s 3.80, a partner-sensitivity of 0.68. But `vague` is imprecise on every description and `wrong` is mistaken on one in four, so their ordering measures those two numbers rather than the two archetypes. The report says so and compares each partner only against `oracle`, which is this directory's standing rule about leading with the gap.
+
+*`slow` is a second, independent measurement of Chamber II's drift cliff, and not a finding about patience.* It says what `oracle` says six seconds later, so it degrades nothing informational; it runs the session at a twelve-second rhythm and Chamber II falls to 0%. D-040 measured that cliff at 2.00 of four by nine seconds. Both numbers stay provisional until doc 11 sections 6 and 7 fix the pace.
+
+**The suite is the ablation's seed list**, so this file's `oracle` row and the ablation chart's `together` bar are the same measurement and cannot drift apart. The partner axis was added to `session.ts` without moving a single published ablation number: a partner that settles the room draws nothing from the run's random stream, and `oracle` and the two partnerless conditions keep the unsuffixed seed key, which was verified by regenerating `ablation.md` and diffing it byte for byte.
+
+**One file rather than the four-file `partners/` directory doc 07 section 2.3 sketches.** Forty lines of partner across four files is scaffolding; the sketch was naming the concepts, not the file system.
+
+**Result.** 633 tests. `bench/results/` gains `benchmark.jsonl`, `benchmark.csv` and `benchmark.md`, regenerated by `pnpm --filter @semaphore/bench benchmark`. Zero tokens, for the same reason the ablation's run was: there is still no model in it, and putting one there is the next run of this same file.
