@@ -72,6 +72,18 @@ importers:
         specifier: ^4.126.0
         version: 4.126.0(@cloudflare/workers-types@5.20260826.1)
 
+  bench:
+    devDependencies:
+      '@semaphore/protocol':
+        specifier: workspace:*
+        version: link:../packages/protocol
+      '@semaphore/seed':
+        specifier: workspace:*
+        version: link:../packages/seed
+      '@semaphore/worker':
+        specifier: workspace:*
+        version: link:../apps/worker
+
   packages/protocol: {}
 
   packages/seed: {}
