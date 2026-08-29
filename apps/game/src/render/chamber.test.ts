@@ -24,7 +24,9 @@ import {
   ROOM_SIZES,
   arc,
   facingCentre,
+  BODY_RADIUS,
   LAMP_REACH,
+  clearOf,
   interlude,
   lampReveal,
   nearestFixture,
@@ -326,6 +328,61 @@ describe("PILOT's lamp", () => {
     const grate = plan.fixtures.find((f) => f.id === "grate");
     if (!grate) throw new Error("the blind panel has a grate");
     expect(nearestFixture(plan, grate.at.x, grate.at.z)?.id).not.toBe("grate");
+  });
+});
+
+describe("walking into things", () => {
+  it("pushes a body out of a fixture it is standing in", () => {
+    const plan = roomPlan(CHAMBERS[0]?.view ?? viewOf({}));
+    if (!plan) throw new Error("the airlock has a room");
+    const lever = plan.fixtures.find((f) => f.id === "lever_a");
+    if (!lever) throw new Error("the airlock has lever_a");
+    const clear = clearOf(plan, lever.at.x, lever.at.z);
+    expect(Math.hypot(clear.x - lever.at.x, clear.z - lever.at.z)).toBeGreaterThan(BODY_RADIUS);
+  });
+
+  it("leaves a body alone where nothing is in the way", () => {
+    const plan = roomPlan(CHAMBERS[0]?.view ?? viewOf({}));
+    if (!plan) throw new Error("the airlock has a room");
+    // The middle of the floor, well clear of the back wall's levers.
+    const clear = clearOf(plan, 0, 2.6);
+    expect(clear.x).toBeCloseTo(0);
+    expect(clear.z).toBeCloseTo(2.6);
+  });
+
+  it("stops a body walking through the Signal Room's rail", () => {
+    // The rail is *dressing*, and dressing had no collision at all: a body
+    // strolled through a waist-high barrier, which is the clearest way a room
+    // stops reading as a place. It is also a run rather than a post, so both
+    // ends have to block as well as the middle.
+    const plan = roomPlan(CHAMBERS[1]?.view ?? viewOf({}));
+    if (!plan) throw new Error("the signal room has a room");
+    const rail = plan.dressing.find((item) => item.kind === "rail");
+    if (!rail) throw new Error("the signal room has a rail");
+    const half = (rail.length ?? 0) / 2;
+    for (const offset of [-half + 0.3, 0, half - 0.3]) {
+      const clear = clearOf(plan, rail.at.x + offset, rail.at.z);
+      expect(
+        Math.hypot(clear.x - (rail.at.x + offset), clear.z - rail.at.z),
+        `the rail is walkable at offset ${String(offset)}`,
+      ).toBeGreaterThan(0.1);
+    }
+    // And past its end it is not a wall: a rail that fenced off the whole room
+    // would be worse than one you could walk through.
+    const beyond = clearOf(plan, rail.at.x + half + 2, rail.at.z);
+    expect(beyond.x).toBeCloseTo(rail.at.x + half + 2);
+  });
+
+  it("lets a body walk through what it should: puddles, pipes, beams", () => {
+    const plan = roomPlan(CHAMBERS[0]?.view ?? viewOf({}));
+    if (!plan) throw new Error("the airlock has a room");
+    for (const kind of ["puddle", "pipe", "beam"] as const) {
+      const item = plan.dressing.find((d) => d.kind === kind);
+      if (!item) continue;
+      const clear = clearOf(plan, item.at.x, item.at.z);
+      // A puddle is something you walk in; a pipe and a beam are above you.
+      expect(clear.x, `${kind} blocks`).toBeCloseTo(item.at.x);
+    }
   });
 });
 
