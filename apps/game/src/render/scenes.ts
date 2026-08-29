@@ -34,7 +34,6 @@ import {
 } from "./room.js";
 import { LOAD, TILE, textureKey } from "./atlas.js";
 import {
-  WIDE_ZOOM,
   centreOf,
   centreOfStation,
   floorsOf,
@@ -509,12 +508,29 @@ export class ChamberScene extends Phaser.Scene {
       if (floor === lit) continue;
       const centre = centreOf(mode, floor);
       if (centre === null) continue;
-      // Written at double size and scaled back down by the wide zoom, so the
-      // label is the same size on screen as an 8px caption is close up.
       const text = this.#write(centre.x, centre.y, labelOf(floor), PALETTE.boneDim, 0.5);
-      text.setScale(1 / WIDE_ZOOM);
+      text.setScale(this.#textScale);
       text.setOrigin(0.5, 0.5);
     }
+  }
+
+  /**
+   * A sprite from the pool, with every property a caller can set reset.
+   *
+   * The same discipline `#write` needs, and for the same reason: these objects
+   * are pooled, so the sprite that drew a glyph in the Signal Room is the
+   * sprite that draws a laser segment in the Concord Lock two chambers later.
+   * `#drawGlyph` tints its sprite with the channel colour, and without this the
+   * tint rode along: the Concord Lock's beam came out with two amber segments
+   * in it and two of its three bolts wearing PILOT's colour.
+   *
+   * That is not a cosmetic bug. **Colour is which party perceives the thing**,
+   * so a bone-white shared bolt drawn amber is the renderer telling the human
+   * that only they can see something both parties can. Every sprite goes
+   * through here.
+   */
+  #sprite(): Phaser.GameObjects.Image {
+    return this.#sprites.next().clearTint().setAlpha(1).setScale(1).setOrigin(0, 0);
   }
 
   /**
@@ -529,8 +545,7 @@ export class ChamberScene extends Phaser.Scene {
     const colour = PALETTE[CHANNEL_COLOUR[device.channel]];
     const motion = this.#stepFrame(device, now);
 
-    this.#sprites
-      .next()
+    this.#sprite()
       .setTexture(textureKey(device.channel, device.sheet))
       .setFrame(motion.shown)
       .setPosition(x, y)
@@ -540,8 +555,7 @@ export class ChamberScene extends Phaser.Scene {
     // The pad's flourish, over the pad, for the four frames after it lights.
     const since = now - motion.vfx;
     if (motion.vfx >= 0 && since < VFX_FRAMES * MOTION_MS) {
-      this.#sprites
-        .next()
+      this.#sprite()
         .setTexture(textureKey(device.channel, "pad-vfx"))
         .setFrame(Math.floor(since / MOTION_MS))
         .setPosition(x, y)
@@ -638,14 +652,7 @@ export class ChamberScene extends Phaser.Scene {
     this.#paint.fillRect(x, y, TILE, TILE);
     this.#paint.lineStyle(1, colour, 0.7);
     this.#paint.strokeRect(x + 0.5, y + 0.5, TILE - 1, TILE - 1);
-    this.#sprites
-      .next()
-      .setTexture(key)
-      .setFrame(0)
-      .setPosition(x, y)
-      .setTint(colour)
-      .setAlpha(1)
-      .setVisible(true);
+    this.#sprite().setTexture(key).setFrame(0).setPosition(x, y).setTint(colour).setVisible(true);
   }
 
   /**
@@ -691,14 +698,46 @@ export class ChamberScene extends Phaser.Scene {
     const [headline, instruction] = interlude(view);
     const centre = floor === null ? null : centreOf(mode, floor);
     const at = centre ?? centreOfStation(mode);
-    // In the wide shot the text is drawn at half size by the camera, so it is
-    // scaled up to land at the same size on screen as it does close up.
-    const scale = centre === null ? 1 / WIDE_ZOOM : 1;
-    const top = this.#write(at.x, at.y - 8 * scale, headline, PALETTE.bone, 0.5);
+    // Scaled against the camera so the words are the same size on screen
+    // wherever it is, including part-way through a zoom.
+    const scale = this.#textScale;
+    const headY = at.y - 8 * scale;
+    const underY = at.y + 4 * scale;
+    const top = this.#write(at.x, headY, headline, PALETTE.bone, 0.5);
     top.setScale(scale);
-    if (!instruction) return;
-    const under = this.#write(at.x, at.y + 4 * scale, instruction, PALETTE.boneDim, 0.5);
-    under.setScale(scale);
+    const under = instruction ? this.#write(at.x, underY, instruction, PALETTE.boneDim, 0.5) : null;
+    under?.setScale(scale);
+
+    // `displayWidth`, not `width`: Phaser reports `width` unscaled, so a band
+    // measured with it is exactly right close up and half the size it needs to
+    // be in the wide shot, where the text is drawn at double.
+    const width = Math.max(top.displayWidth, under?.displayWidth ?? 0) + 12 * scale;
+    const height = (under ? 24 : 14) * scale;
+
+    // Kept inside what the camera can see, not inside the room.
+    //
+    // These lines are longer than the rooms they are written in - "COLD AIR,
+    // AND THE SOUND OF THE SEA" is wider than the Concord Lock, which sits in
+    // the corner of the building - so clamping to the room would not save
+    // them; centred on a room at the edge of the wide shot, the sentence runs
+    // off the canvas and the last line of the game loses its first two
+    // letters. The camera is the only boundary that always holds. Measured
+    // from the text object rather than estimated, for the same reason
+    // `#caption` is: the browser is the only thing that knows how wide 8px
+    // monospace actually is.
+    const seen = this.cameras.main.worldView;
+    const left = seen.x + width / 2;
+    const right = seen.right - width / 2;
+    const x = left > right ? (left + right) / 2 : Math.min(Math.max(at.x, left), right);
+    top.setPosition(Math.round(x), Math.round(headY));
+    under?.setPosition(Math.round(x), Math.round(underY));
+
+    // A band behind the words, so the overflow reads as a card laid over the
+    // building rather than as text that missed its box.
+    this.#paint.fillStyle(PALETTE.void, 0.82);
+    this.#paint.fillRect(x - width / 2, at.y - 11 * scale, width, height);
+    this.#paint.lineStyle(1, PALETTE.boneDim, 0.35);
+    this.#paint.strokeRect(x - width / 2, at.y - 11 * scale, width, height);
   }
 
   /**
@@ -713,6 +752,18 @@ export class ChamberScene extends Phaser.Scene {
     this.#paint.fillRect(px(origin.col), px(origin.row), plan.cols * TILE, plan.rows * TILE);
   }
 
+  /**
+   * One line of text from the pool.
+   *
+   * **Every property a caller can set has to be reset here.** These objects are
+   * pooled, so the text drawing a room's name in the wide shot is the same
+   * object that draws a device caption two frames later, and anything left on
+   * it carries over. That is not hypothetical: the labels scale themselves up
+   * to stay legible under the camera, and the first version of this left the
+   * scale on, so the Blind Panel rendered DIAL 1 and DIAL 2 at normal size and
+   * DIAL 3 and DIAL 4 at double, depending on which pooled objects a label had
+   * touched. It looked like a font bug.
+   */
   #write(
     x: number,
     y: number,
@@ -726,7 +777,21 @@ export class ChamberScene extends Phaser.Scene {
       .setText(content)
       .setColor(`#${colour.toString(16).padStart(6, "0")}`)
       .setOrigin(originX, 0)
+      .setScale(1)
       .setVisible(true);
+  }
+
+  /**
+   * How much to scale text so it stays the same size on screen.
+   *
+   * Read from the camera rather than from `WIDE_ZOOM`, because the zoom is
+   * animating for most of the second after a room changes and a constant is
+   * only right at the two ends of it. With the constant, every label doubled
+   * the instant the walk began and shrank back when it finished.
+   */
+  get #textScale(): number {
+    const zoom = this.cameras.main.zoom;
+    return zoom > 0 ? 1 / zoom : 1;
   }
 
   /**
