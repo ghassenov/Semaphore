@@ -604,6 +604,44 @@ const FIXTURE_RADIUS: Readonly<Record<FixtureKind, number>> = {
 };
 
 /**
+ * How much floor a piece of dressing takes up, in metres of radius.
+ *
+ * Zero means a body walks through it, and most of the list is zero on purpose:
+ * a pipe is high on a wall, a beam is at the ceiling, a cable hangs above head
+ * height, and a puddle is something you walk *in*. What blocks is what stands
+ * on the floor in front of you.
+ */
+const DRESSING_RADIUS: Readonly<Record<DressingKind, number>> = {
+  pipe: 0,
+  valve: 0,
+  cable: 0,
+  puddle: 0,
+  vent: 0,
+  beam: 0,
+  shelf: 0.4,
+  column: 0.55,
+  // A rail is a barrier at waist height, and being able to stroll through one
+  // is the single clearest way a room stops reading as a place.
+  rail: 0.3,
+};
+
+/** The closest point to `(x, z)` on a horizontal segment, as a distance. */
+function alongSegment(
+  item: Dressing,
+  x: number,
+  z: number,
+): { readonly x: number; readonly z: number } {
+  const half = (item.length ?? 0) / 2;
+  const yaw = item.facing ?? 0;
+  // The segment runs along the item's own local x, turned by its facing.
+  const dirX = Math.cos(yaw);
+  const dirZ = -Math.sin(yaw);
+  const alongTo = (x - item.at.x) * dirX + (z - item.at.z) * dirZ;
+  const clamped = Math.max(-half, Math.min(half, alongTo));
+  return { x: item.at.x + dirX * clamped, z: item.at.z + dirZ * clamped };
+}
+
+/**
  * Slide a body to a position it is allowed to occupy.
  *
  * Pushed out of anything it overlaps rather than stopped dead, so walking into
@@ -615,6 +653,10 @@ const FIXTURE_RADIUS: Readonly<Record<FixtureKind, number>> = {
  * The walls are not here: the walkable box is already inset from them
  * (`WALK_SPAN` in `stage.ts`), which is a cheaper and more reliable way of
  * keeping a body out of masonry than pushing it back out afterwards.
+ *
+ * **Dressing blocks too**, and it has to: the Signal Room's gallery rail is
+ * dressing, and being able to stroll through a waist-high barrier is the single
+ * clearest way a room stops reading as a place.
  */
 export function clearOf(
   plan: RoomPlan,
@@ -623,24 +665,43 @@ export function clearOf(
 ): { readonly x: number; readonly z: number } {
   let atX = x;
   let atZ = z;
+
+  /** Push the body out of a circle, if it is inside one. */
+  const pushOut = (centreX: number, centreZ: number, radius: number): void => {
+    const dx = atX - centreX;
+    const dz = atZ - centreZ;
+    const distance = Math.hypot(dx, dz);
+    if (distance >= radius) return;
+    if (distance < 1e-4) {
+      // Exactly on top of it, which has no direction to be pushed along. Out
+      // toward the front of the room, which is where PILOT came from.
+      atZ = centreZ + radius;
+      return;
+    }
+    atX = centreX + (dx / distance) * radius;
+    atZ = centreZ + (dz / distance) * radius;
+  };
+
+  for (const item of plan.dressing) {
+    const radius = DRESSING_RADIUS[item.kind];
+    if (radius <= 0) continue;
+    // A rail and a shelf are runs rather than posts, so the body is pushed off
+    // the nearest point *on the run*: treating a six-metre rail as one circle
+    // would either leave both ends walkable or fence off half the room.
+    const near =
+      item.length !== undefined && item.length > 1
+        ? alongSegment(item, atX, atZ)
+        : { x: item.at.x, z: item.at.z };
+    pushOut(near.x, near.z, radius + BODY_RADIUS);
+  }
+
   for (const fixture of plan.fixtures) {
     const radius = FIXTURE_RADIUS[fixture.kind] + BODY_RADIUS;
     if (radius <= BODY_RADIUS) continue;
     // Only things standing on the floor block a body. A gauge two metres up a
     // wall is above head height and a bolt is on a door.
     if (fixture.at.y > 1.4) continue;
-    const dx = atX - fixture.at.x;
-    const dz = atZ - fixture.at.z;
-    const distance = Math.hypot(dx, dz);
-    if (distance >= radius) continue;
-    if (distance < 1e-4) {
-      // Exactly on top of it, which has no direction to be pushed along. Out
-      // toward the front of the room, which is where PILOT came from.
-      atZ = fixture.at.z + radius;
-      continue;
-    }
-    atX = fixture.at.x + (dx / distance) * radius;
-    atZ = fixture.at.z + (dz / distance) * radius;
+    pushOut(fixture.at.x, fixture.at.z, radius);
   }
   return { x: atX, z: atZ };
 }

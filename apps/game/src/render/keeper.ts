@@ -620,14 +620,16 @@ export function buildPilot(kit: Kit): {
   neck.position.y = SHOULDER_Y + 0.09;
   const head = add(root, new Mesh(new SphereGeometry(HEAD, 14, 12), kit.skin));
   head.position.y = SHOULDER_Y + 0.2;
-  // The hood, pushed back off the head. It gives the head a dark ground to
-  // read against and says what the weather is.
-  const hood = add(
-    root,
-    new Mesh(new SphereGeometry(0.135, 12, 10, 0, Math.PI * 2, 0, 1.5), kit.coat),
-  );
-  hood.position.set(0, SHOULDER_Y + 0.12, -0.16);
-  hood.rotation.x = -1.05;
+  // The hood, cupping the back of the head.
+  //
+  // **It has to be concentric with the head, not beside it.** The first pass
+  // put it lower and further back as a half-shell, which from any angle read as
+  // a separate object floating near the ear rather than as something worn. A
+  // sphere slightly larger than the head, offset back by less than the
+  // difference in radius, leaves the face protruding through the front - which
+  // is what a hood is.
+  const hood = add(root, new Mesh(new SphereGeometry(0.152, 14, 12), kit.coat));
+  hood.position.set(0, SHOULDER_Y + 0.2, -0.09);
 
   // ---- Arms. One hanging and swinging, one raised holding the lamp. The
   // raised arm is the whole read of the character: this is someone whose job
