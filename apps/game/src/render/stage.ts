@@ -53,7 +53,6 @@ import {
   Matrix4,
   Mesh,
   MeshBasicMaterial,
-  MeshStandardMaterial,
   PCFShadowMap,
   PerspectiveCamera,
   PlaneGeometry,
@@ -96,7 +95,7 @@ import {
 } from "./plan.js";
 import { activeFloor, stationFloors, type FloorId } from "./floors.js";
 import { ghostFrame } from "./ghost.js";
-import { FixtureView } from "./fixtures.js";
+import { FixtureView, buildDressing } from "./fixtures.js";
 import { KeeperBody, buildPilot } from "./keeper.js";
 import { CHANNEL, PALETTE, hex } from "./palette.js";
 import { Kit } from "./kit.js";
@@ -276,6 +275,33 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
     wall.instanceMatrix.needsUpdate = true;
     building.add(wall);
 
+    // Panelling: a skirting band at the foot of every wall and a rail at
+    // shoulder height. Two instanced meshes over the same block list, which
+    // costs two draw calls for the whole station and is the difference between
+    // a wall and an extruded rectangle. Iron rather than stone, so the bands
+    // catch a highlight the wall behind them does not.
+    for (const [y, thickness] of [
+      [0.28, 0.36],
+      [1.95, 0.16],
+    ] as const) {
+      const band = new InstancedMesh(
+        new BoxGeometry(1.06, thickness, 1.06),
+        kit.iron,
+        blocks.length,
+      );
+      band.receiveShadow = true;
+      blocks.forEach((block, index) => {
+        // A band only where the wall is tall enough to carry it, which keeps
+        // the low corridor walls plain and the room walls detailed.
+        const visible = block.height > y + thickness;
+        matrix.makeScale(1, visible ? 1 : 0.0001, 1);
+        matrix.setPosition(block.x + 0.5, y, block.z + 0.5);
+        band.setMatrixAt(index, matrix);
+      });
+      band.instanceMatrix.needsUpdate = true;
+      building.add(band);
+    }
+
     // One halo per room, standing in for a light. Free, and it is what makes
     // the wide shot read as a building with rooms in it rather than as a plan.
     for (const floor of floorsOf(mode)) {
@@ -293,17 +319,22 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
   const roomGroup = new Group();
   scene.add(roomGroup);
   const fixtures = new Map<string, FixtureView>();
+  /**
+   * The room's dressing, rebuilt only when the room changes.
+   *
+   * Separate from the fixture pool because dressing has no state: nothing here
+   * animates, nothing is read, and nothing needs to survive a repaint. Building
+   * it once per room rather than diffing it per frame is the whole difference.
+   */
+  const dressing = new Group();
+  roomGroup.add(dressing);
   let fixtureRoom: FloorId | null = null;
 
-  /** Water, for the Airlock's escalation. It has no mechanical effect ever. */
-  const waterMaterial = new MeshStandardMaterial({
-    color: PALETTE.glass,
-    roughness: 0.08,
-    metalness: 0.65,
-    transparent: true,
-    opacity: 0.62,
-  });
-  const water = new Mesh(new PlaneGeometry(1, 1), waterMaterial);
+  // Water, for the Airlock's escalation. It has no mechanical effect ever, and
+  // it is the same substance as the puddles standing in every other room, so
+  // the chamber flooding reads as more of what is already there rather than as
+  // a different effect switching on.
+  const water = new Mesh(new PlaneGeometry(1, 1), kit.water);
   water.rotation.x = -Math.PI / 2;
   water.visible = false;
   roomGroup.add(water);
@@ -370,8 +401,13 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
    * lamp could not reach any of them from the only line a body was allowed to
    * stand on. Walking existed and could not do the one thing walking is for.
    */
-  let walk = 0.35;
-  let walkZ = 0.7;
+  let walk = 0.5;
+  // Mid-room rather than at the back wall, and that is a teaching decision.
+  // From here the nearest mechanism is inside the lamp's reach and the ones to
+  // either side are visibly dimmer, so the first thing a player sees is the
+  // mechanic working. Starting at the front opens the game on three blank
+  // plates and no reason to suspect walking would change them.
+  let walkZ = 0.5;
 
   /**
    * Where PILOT is standing, in station metres.
@@ -427,6 +463,7 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
       fixtureRoom = plan.id;
       const at = placementOf(mode, floor);
       roomGroup.position.set(at?.x ?? 0, 0, at?.z ?? 0);
+      for (const item of plan.dressing) dressing.add(buildDressing(kit, item));
     }
 
     const seen = new Set<string>();
@@ -454,6 +491,10 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
   function clearFixtures(): void {
     for (const view of fixtures.values()) view.dispose();
     fixtures.clear();
+    dressing.traverse((object) => {
+      if (object instanceof Mesh) object.geometry.dispose();
+    });
+    dressing.clear();
     fixtureRoom = null;
   }
 
@@ -794,6 +835,10 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
     keeper.step(deltaMs, now);
 
     if (view !== null && plan?.id === "archive") paintScreen(view, now);
+
+    // The water, everywhere it appears. Suppressed under reduced motion along
+    // with everything else that moves on its own.
+    if (!reduceMotion) kit.tideStep(now);
 
     if (!reduceMotion) {
       dust.rotation.y = now / 42000;
