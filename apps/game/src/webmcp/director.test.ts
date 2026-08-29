@@ -72,6 +72,40 @@ describe("the entry tier", () => {
     await d.applyState(state("IN_CHAMBER", "airlock"));
     expect(registry.names()).not.toContain("begin_shift");
   });
+
+  it("does not open the front door onto a session the server says has ended", async () => {
+    // The page's real startup order, and it is a race the page loses without
+    // this guard. `main.ts` opens the view socket and then awaits the renderer,
+    // which fetches an engine over the network; a frame for an already-finished
+    // session arrives during that await, drains the registry as the ending
+    // requires, and only then does `mountEntry` run.
+    //
+    // Reloading a finished session therefore showed `begin_shift` on a shift
+    // that had ended - the ending un-happening, on the one beat doc 08 says may
+    // never be cut. `mountEntry` is the client guessing that a fresh page is a
+    // fresh session, and D-021's rule is that a guess loses to an observation.
+    const { director: d } = director();
+    await d.applyState(state("ESCAPED"));
+    expect(registry.names()).toEqual([]);
+
+    await d.mountEntry();
+    expect(registry.names()).toEqual([]);
+  });
+
+  it("still opens the front door when the server itself says ENTRY", async () => {
+    // The guard must not swallow the ordinary case: a page that hears ENTRY
+    // before it mounts anything is a page at the front door.
+    const { director: d } = director();
+    await d.applyState(state("ENTRY"));
+    await d.mountEntry();
+    expect(registry.names()).toEqual(["begin_shift"]);
+  });
+
+  it("opens the front door when nothing has been heard from the server yet", async () => {
+    const { director: d } = director();
+    await d.mountEntry();
+    expect(registry.names()).toEqual(["begin_shift"]);
+  });
 });
 
 describe("the session tier", () => {
