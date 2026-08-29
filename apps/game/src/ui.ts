@@ -313,6 +313,16 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
     });
     controls.body.append(button);
   }
+  // The two things PILOT does with the keyboard rather than with a button.
+  // Both belong in this panel for the same reason the buttons do: they are
+  // the human's body, and no tool in the manifest reaches them.
+  controls.body.append(
+    el(
+      "p",
+      { class: "note" },
+      "A and D walk you across the room. Hold M to step back and see the whole station.",
+    ),
+  );
   middle.append(stageFrame, audible, begin.section, controls.section);
 
   // ---- Right bay: KEEPER's surface, and the one surface they share. -------

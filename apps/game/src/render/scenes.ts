@@ -30,11 +30,26 @@ import {
   tilesFor,
   type Device,
   type RoomPlan,
+  type Tile,
 } from "./room.js";
 import { LOAD, TILE, textureKey } from "./atlas.js";
+import {
+  WIDE_ZOOM,
+  centreOf,
+  centreOfStation,
+  floorsOf,
+  labelOf,
+  placementOf,
+  shapeOf,
+  shotFor,
+  stationTiles,
+  type Shot,
+} from "./plan.js";
+import { activeFloor, type FloorId } from "./floors.js";
 import { CHANNEL_COLOUR, PALETTE } from "./palette.js";
 import { TEXTURE, allSprites, toCanvas } from "./sprites.js";
 import type { StationModel } from "./station.js";
+import type { SessionMode } from "@semaphore/protocol";
 
 /** Captions only. The room says everything else with sprites. */
 const FONT = { fontFamily: "monospace", fontSize: "8px" } as const;
@@ -52,6 +67,29 @@ const MOTION_MS = 1000 / 12;
 
 /** How many frames the teleporter pad's flourish runs for. */
 const VFX_FRAMES = 4;
+
+/**
+ * How long the camera takes to move between two shots.
+ *
+ * Long enough to read as walking rather than cutting, short enough that a pair
+ * under a chamber clock is not waiting on a camera. The pan and the zoom share
+ * it so the two finish together.
+ */
+const SHOT_MS = 700;
+
+/** Alpha for a room the pair is not standing in, and for the corridors. */
+const UNLIT = 0.42;
+
+/**
+ * How long the camera holds the whole building when the pair changes room.
+ *
+ * The walk between chambers. It is timed here rather than driven by a phase
+ * because the phase that would have driven it, `TRANSITIONING`, is settled
+ * server-side inside the call that solved the chamber and never arrives as a
+ * frame (doc 05 section 4). The pair's room changing is the same event and it
+ * is one the client can actually see.
+ */
+const WALK_MS = 1600;
 
 /**
  * Load the art pack, and build the sprites that are still authored in source.
@@ -167,7 +205,7 @@ export class LandingScene extends Phaser.Scene {
 
     const plan: RoomPlan = { ...INTERLUDE_PLAN, cols: 12, rows: 9, tiles: tilesFor(12, 9, []) };
     const origin = originFor(plan);
-    paintTiles(this, plan, origin, 0.7);
+    paintTiles(this, plan.tiles, origin, 0.7);
 
     // The door they have not gone through yet, and the lamp above it.
     const doorCol = origin.col + Math.floor(plan.cols / 2) - 1;
@@ -235,6 +273,29 @@ export class ChamberScene extends Phaser.Scene {
   readonly #motion = new Map<string, { shown: number; at: number; vfx: number }>();
   /** The room the motion table describes, so a new one starts from rest. */
   #motionRoom: string | null = null;
+  /**
+   * The building, built once and never rebuilt.
+   *
+   * The station's tiles are the same for every frame of a session: which rooms
+   * exist and where they are is fixed by the mode, and nothing that happens in
+   * a chamber moves a wall. So these are plain images rather than a pool. The
+   * pool exists to stop per-frame allocation for things that change every
+   * frame, and re-sorting fourteen hundred tiles sixty times a second to
+   * arrive at the same picture would be the exact cost it was built to avoid.
+   */
+  #station: Phaser.GameObjects.Image[] = [];
+  /** The mode the building was built for, so a change rebuilds it. */
+  #built: SessionMode | null = null;
+  /** The floor currently lit. The rest of the building is drawn back. */
+  #lit: FloorId | null | undefined = undefined;
+  /** The shot the camera is on, so a pan is started once and not every frame. */
+  #shot: string | null = null;
+  /** The floor last drawn, so a change can start the walk. */
+  #wasOn: FloorId | null | undefined = undefined;
+  /** Scene time until which the camera holds the building. */
+  #walkUntil = 0;
+  /** Held to look at the station. PILOT's, and no tool of KEEPER's does it. */
+  #map?: Phaser.Input.Keyboard.Key;
 
   constructor(model: StationModel) {
     super("chamber");
@@ -249,7 +310,7 @@ export class ChamberScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor(PALETTE.void);
     installSprites(this);
 
-    this.#tiles = new Pool(() => this.add.image(0, 0, "").setOrigin(0, 0).setDepth(0));
+    this.#tiles = new Pool(() => this.add.image(0, 0, "").setOrigin(0, 0).setDepth(1));
     this.#paint = this.add.graphics().setDepth(1);
     this.#sprites = new Pool(() => this.add.image(0, 0, "").setOrigin(0, 0).setDepth(2));
     this.#text = new Pool(() => this.add.text(0, 0, "", FONT).setDepth(4));
@@ -259,21 +320,50 @@ export class ChamberScene extends Phaser.Scene {
     const keyboard = this.input.keyboard;
     if (!keyboard) throw new Error("The station needs a keyboard to move PILOT");
     keyboard.addKeys("A,D,LEFT,RIGHT");
+    // Hold M for the floor plan. It is on the human's side of the split on
+    // purpose: PILOT can step back and look at the building, and there is no
+    // tool that lets KEEPER do the same.
+    this.#map = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.M);
   }
 
   override update(time: number, deltaMs: number): void {
     const view = this.#model.view;
-    const plan = view ? (roomPlan(view) ?? INTERLUDE_PLAN) : INTERLUDE_PLAN;
-    const origin = originFor(plan);
+
+    // Nothing has arrived yet: there is no mode, so there is no building to
+    // draw. The waiting room is a room on its own, centred, exactly as the
+    // landing screen draws one.
+    if (view === null) {
+      this.#drawWaiting();
+      return;
+    }
+
+    this.#build(view.mode);
+    const floor = activeFloor(view);
+    const plan = roomPlan(view);
+    const at = floor === null ? null : placementOf(view.mode, floor);
+    const origin: Origin = at ?? { col: 0, row: 0 };
 
     // A device that has left the room has no state worth keeping, and a new
     // chamber that happens to put the same kind of device on the same tile
     // would otherwise inherit the old one's position and animate out of it.
-    const room = view?.chamber ?? null;
-    if (room !== this.#motionRoom) {
+    if (view.chamber !== this.#motionRoom) {
       this.#motion.clear();
-      this.#motionRoom = room;
+      this.#motionRoom = view.chamber;
     }
+
+    // Changing room starts the walk: the camera holds the whole building for a
+    // moment before settling into the next chamber. Not on the first room of a
+    // session, because there is nowhere to have walked from.
+    if (floor !== this.#wasOn) {
+      if (this.#wasOn !== undefined) this.#walkUntil = time + WALK_MS;
+      this.#wasOn = floor;
+    }
+    const wide = this.#map?.isDown === true || time < this.#walkUntil;
+    const shot = shotFor(view.mode, view.phase, floor, wide);
+    this.#frame(shot);
+    // The room the pair is in stays lit even in the wide shot, because that is
+    // what makes the wide shot a map: the building, and where you are in it.
+    this.#light(floor);
 
     this.#movePilot(deltaMs);
     this.#paint.clear();
@@ -281,25 +371,150 @@ export class ChamberScene extends Phaser.Scene {
     this.#sprites.begin();
     this.#text.begin();
 
-    paintTiles(this, plan, origin, 1, this.#tiles);
-    for (const plate of plan.plates) {
-      this.#tiles
-        .next()
-        .setTexture(textureKey("shared", "ground-special"))
-        .setFrame(plate.frame)
-        .setPosition(px(origin.col + plate.col), px(origin.row + plate.row))
-        .setAlpha(0.85)
-        .setVisible(true);
+    if (plan !== null) {
+      for (const plate of plan.plates) {
+        this.#tiles
+          .next()
+          .setTexture(textureKey("shared", "ground-special"))
+          .setFrame(plate.frame)
+          .setPosition(px(origin.col + plate.col), px(origin.row + plate.row))
+          .setAlpha(0.85)
+          .setVisible(true);
+      }
+      for (const device of plan.devices) this.#drawDevice(device, origin, plan, time);
+      if (plan.solved) this.#flash(plan, origin);
     }
 
-    for (const device of plan.devices) this.#drawDevice(device, origin, plan, time);
-    this.#drawBodies(plan, origin);
-    if (!view || roomPlan(view) === null) this.#drawInterlude(plan, origin);
-    if (plan.solved) this.#flash(plan, origin);
+    if (floor !== null && at !== null) this.#drawBodies(floor, at);
+    if (plan === null) this.#drawInterlude(view.mode, floor);
+    // Room names, but only from far enough away that the rooms themselves say
+    // nothing. Close up the console already names the room, and a caption
+    // across the floor would be one more thing over the mechanism.
+    if (shot.floor === null) this.#drawLabels(view.mode, floor);
 
     this.#tiles.end();
     this.#sprites.end();
     this.#text.end();
+  }
+
+  /**
+   * The screen before the first frame arrives.
+   *
+   * A room rather than a blank canvas, and a room on its own rather than the
+   * station, because until a view lands there is no mode and therefore no
+   * building: guessing FULL would show a station the session may not have.
+   */
+  #drawWaiting(): void {
+    this.#tiles.begin();
+    this.#sprites.begin();
+    this.#text.begin();
+    this.#paint.clear();
+
+    const origin = originFor(INTERLUDE_PLAN);
+    paintTiles(this, INTERLUDE_PLAN.tiles, origin, 1, this.#tiles);
+    const midX = px(origin.col) + (INTERLUDE_PLAN.cols * TILE) / 2;
+    const midY = px(origin.row) + (INTERLUDE_PLAN.rows * TILE) / 2;
+    this.#write(midX, midY - 4, "CONNECTING", PALETTE.bone, 0.5);
+
+    this.#tiles.end();
+    this.#sprites.end();
+    this.#text.end();
+  }
+
+  /**
+   * Build the station, once per mode.
+   *
+   * Rebuilt rather than adjusted when the mode changes, because BRIEF is a
+   * genuinely different building rather than the same one with a room hidden,
+   * and a session never changes mode in flight. The rebuild path exists so
+   * that a reconnect into a different session cannot leave the previous
+   * building's rooms standing.
+   */
+  #build(mode: SessionMode): void {
+    if (this.#built === mode) return;
+    for (const image of this.#station) image.destroy();
+    this.#station = [];
+    for (const tile of stationTiles(mode)) {
+      const key = tile.wall
+        ? textureKey(tile.channel, "walls-out")
+        : textureKey("shared", "ground");
+      const image = this.add
+        .image(px(tile.col), px(tile.row), key)
+        .setFrame(tile.frame)
+        .setOrigin(0, 0)
+        .setDepth(0);
+      // The owner rides on the object so `#light` does not have to hold a
+      // parallel array the two could get out of step on.
+      image.setData("owner", tile.owner);
+      this.#station.push(image);
+    }
+    this.#built = mode;
+    // Force the next `#light` to do the work, whatever it was showing before.
+    this.#lit = undefined;
+  }
+
+  /**
+   * Light one floor and draw the rest of the building back.
+   *
+   * Only on a change, because it walks every tile in the station and the
+   * answer is the same for every frame the pair spends in a room. The
+   * corridors are never lit: they are the space between rooms, and drawing
+   * them back is what makes the building read as somewhere with rooms in it
+   * rather than as one large floor with furniture on it.
+   */
+  #light(floor: FloorId | null): void {
+    if (this.#lit === floor) return;
+    this.#lit = floor;
+    for (const image of this.#station) {
+      const owner = image.getData("owner") as string | null;
+      image.setAlpha(owner !== null && owner === floor ? 1 : UNLIT);
+    }
+  }
+
+  /**
+   * Move the camera to a shot, if it is not already on it.
+   *
+   * Compared as a key rather than by distance, so a pan is started once and a
+   * frame in the middle of one does not restart it. The first shot of a
+   * session is a cut rather than a pan: there is nothing to move from, and
+   * sliding in from wherever the camera happened to start reads as a glitch.
+   */
+  #frame(shot: Shot): void {
+    const key = `${String(shot.x)},${String(shot.y)},${String(shot.zoom)}`;
+    if (key === this.#shot) return;
+    const first = this.#shot === null;
+    this.#shot = key;
+    const camera = this.cameras.main;
+    if (first) {
+      camera.setZoom(shot.zoom);
+      camera.centerOn(shot.x, shot.y);
+      return;
+    }
+    camera.pan(shot.x, shot.y, SHOT_MS, "Sine.easeInOut");
+    camera.zoomTo(shot.zoom, SHOT_MS, "Sine.easeInOut");
+  }
+
+  /**
+   * Every room's name, written across it, in the wide shot only.
+   *
+   * The wide shot is the only view in which the station is a building, and a
+   * building whose rooms are unlabelled is a floor plan nobody can read. These
+   * are names the console already shows and both parties already know, so they
+   * carry nothing `projectForPilot` did not.
+   */
+  #drawLabels(mode: SessionMode, lit: FloorId | null): void {
+    for (const floor of floorsOf(mode)) {
+      // Not the room the pair is in. The console's header already names it,
+      // and the label would land across the mechanism that room is lit for.
+      if (floor === lit) continue;
+      const centre = centreOf(mode, floor);
+      if (centre === null) continue;
+      // Written at double size and scaled back down by the wide zoom, so the
+      // label is the same size on screen as an 8px caption is close up.
+      const text = this.#write(centre.x, centre.y, labelOf(floor), PALETTE.boneDim, 0.5);
+      text.setScale(1 / WIDE_ZOOM);
+      text.setOrigin(0.5, 0.5);
+    }
   }
 
   /**
@@ -441,13 +656,15 @@ export class ChamberScene extends Phaser.Scene {
    * every cavity at once. They can see each other and reach each other
    * nowhere, and putting the frame in the wall is the drawing that says so.
    */
-  #drawBodies(plan: RoomPlan, origin: Origin): void {
-    const col = origin.col + Math.round(this.#walk * (plan.cols - 1));
-    this.#pilot.setPosition(px(col), px(origin.row + plan.rows - 1)).setVisible(true);
+  #drawBodies(floor: FloorId, at: Origin): void {
+    const shape = shapeOf(floor);
+    const col = at.col + Math.round(this.#walk * (shape.cols - 1));
+    this.#pilot.setPosition(px(col), px(at.row + shape.rows - 1)).setVisible(true);
 
     const busy = performance.now() < this.#model.busyUntilMs;
+    const wallCol = at.col + shape.cols;
     this.#keeper
-      .setPosition(px(origin.col + plan.cols), px(origin.row + Math.floor(plan.rows / 2)))
+      .setPosition(px(wallCol), px(at.row + Math.floor(shape.rows / 2)))
       .setTint(busy ? PALETTE.cyanBright : PALETTE.bone)
       .setVisible(true);
 
@@ -456,20 +673,32 @@ export class ChamberScene extends Phaser.Scene {
     // so a registration that silently failed costs KEEPER a visible limb.
     this.#paint.fillStyle(PALETTE.brass, 1);
     this.#model.tools.forEach((_tool, index) => {
-      this.#paint.fillRect(px(origin.col + plan.cols) + 13, px(origin.row) + 2 + index * 4, 3, 2);
+      this.#paint.fillRect(px(wallCol) + 13, px(at.row) + 2 + index * 4, 3, 2);
     });
   }
 
-  /** What the room says when there is no chamber in it. */
-  #drawInterlude(plan: RoomPlan, origin: Origin): void {
+  /**
+   * What the station says when there is no chamber to stand in.
+   *
+   * Written at the centre of the floor the pair is on when they are on one -
+   * the Archive is a real room in the building now, not a caption over a blank
+   * canvas - and at the centre of the whole station when they are between
+   * rooms, which is the wide shot and is where the words belong.
+   */
+  #drawInterlude(mode: SessionMode, floor: FloorId | null): void {
     const view = this.#model.view;
-    const [headline, instruction] = view
-      ? interlude(view)
-      : (["CONNECTING", ""] as readonly [string, string]);
-    const midX = px(origin.col) + (plan.cols * TILE) / 2;
-    const midY = px(origin.row) + (plan.rows * TILE) / 2;
-    this.#write(midX, midY - 8, headline, PALETTE.bone, 0.5);
-    if (instruction) this.#write(midX, midY + 4, instruction, PALETTE.boneDim, 0.5);
+    if (view === null) return;
+    const [headline, instruction] = interlude(view);
+    const centre = floor === null ? null : centreOf(mode, floor);
+    const at = centre ?? centreOfStation(mode);
+    // In the wide shot the text is drawn at half size by the camera, so it is
+    // scaled up to land at the same size on screen as it does close up.
+    const scale = centre === null ? 1 / WIDE_ZOOM : 1;
+    const top = this.#write(at.x, at.y - 8 * scale, headline, PALETTE.bone, 0.5);
+    top.setScale(scale);
+    if (!instruction) return;
+    const under = this.#write(at.x, at.y + 4 * scale, instruction, PALETTE.boneDim, 0.5);
+    under.setScale(scale);
   }
 
   /**
@@ -527,30 +756,32 @@ function px(tile: number): number {
 }
 
 /**
- * The building: the room's floor and the wall around it, in one pass.
+ * A set of tiles: floor, and the wall around it.
  *
  * This was `paintFloor` plus `paintWalls`, one flat tile repeated inside a
- * nine-slice ring. Both are gone because both assumed the room was a
- * rectangle. `room.ts` resolves every tile from its neighbours now, so this
- * function no longer knows or cares what shape it is drawing, and a chamber
- * can be notched into an L without a line changing here.
+ * nine-slice ring, and both assumed the room was a rectangle. It takes a
+ * resolved tile list now and knows nothing about shape at all: a room, a
+ * corridor and the whole station are the same call.
  *
- * The floor is always neutral and the wall always wears the room's accent.
- * That is the channel law applied to the building rather than to a device: a
- * room only PILOT can read is walled in amber, and the floor stays out of it
- * because a floor is not a fact.
+ * The floor is always neutral and each wall tile wears the channel it was
+ * resolved with. That is the channel law applied to the building rather than
+ * to a device, and it is carried on the tile because in the station one wall
+ * run can have an amber room on one side and a corridor on the other.
+ *
+ * Used for the rooms drawn on their own - the landing screen, and the wait
+ * before the first frame. The station itself is built once by `ChamberScene`
+ * and is not painted per frame.
  */
 function paintTiles(
   scene: Phaser.Scene,
-  plan: RoomPlan,
+  tiles: readonly Tile[],
   origin: Origin,
   alpha: number,
   pool?: Pool<Phaser.GameObjects.Image>,
 ): void {
   const floorKey = textureKey("shared", "ground");
-  const wallKey = textureKey(plan.accent, "walls-out");
-  for (const tile of plan.tiles) {
-    const key = tile.wall ? wallKey : floorKey;
+  for (const tile of tiles) {
+    const key = tile.wall ? textureKey(tile.channel, "walls-out") : floorKey;
     const image = pool?.next() ?? scene.add.image(0, 0, key).setOrigin(0, 0).setDepth(0);
     image
       .setTexture(key)
