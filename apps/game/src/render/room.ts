@@ -161,6 +161,52 @@ export function spread(count: number, span: number, start = 0): readonly number[
 }
 
 /**
+ * A door: three leaves side by side in the top wall, centred.
+ *
+ * Contiguous, which is why this is not `spread`. A door is one object three
+ * tiles wide, and spreading three leaves evenly across four tiles leaves a gap
+ * in the middle of it - a doorway with a pillar in it, which reads as a
+ * rendering fault rather than as a door.
+ *
+ * The caption rides on a second draw of the middle leaf so the bank reads as
+ * one door rather than as three narrow ones, and it lands on the row below,
+ * which is why nothing else may be placed on row 1.
+ */
+function doorway(
+  cols: number,
+  sheet: "door" | "door-locked",
+  frame: number,
+  label: string,
+): { readonly cols: readonly number[]; readonly devices: Device[] } {
+  const start = Math.floor((cols - DOOR_WIDTH) / 2);
+  const leaves = Array.from({ length: DOOR_WIDTH }, (_, i) => start + i);
+  const devices: Device[] = leaves.map((col) => ({
+    col,
+    row: 0,
+    sheet,
+    channel: "shared" as const,
+    frame,
+  }));
+  const middle = leaves[1];
+  if (middle !== undefined) {
+    devices.push({ col: middle, row: 0, sheet, channel: "shared", frame, label });
+  }
+  return { cols: leaves, devices };
+}
+
+/** How many tiles wide a door is. Three reads as a doorway; one reads as a hatch. */
+export const DOOR_WIDTH = 3;
+
+/**
+ * The row a door's threshold plate sits on.
+ *
+ * Two rather than one, because the door's caption is drawn under its tile and
+ * therefore occupies row 1. A plate there would have the words sitting on the
+ * chequer, which at 8px is two patterns competing rather than one label.
+ */
+const THRESHOLD_ROW = 2;
+
+/**
  * The Airlock: three levers and the door they open.
  *
  * The levers are PILOT's channel because their identity is the lit glyph and
@@ -173,42 +219,27 @@ export function spread(count: number, span: number, start = 0): readonly number[
  * way out.
  */
 function airlock(facts: Readonly<Record<string, unknown>>): RoomPlan {
-  const cols = 14;
-  const rows = 8;
+  const cols = 16;
+  const rows = 12;
   const glyphByLever = record(facts, "glyphByLever");
   const pulled = new Set(list(facts, "pulled").map(String));
   const doorOpen = bool(facts, "doorOpen");
   const levers = Object.keys(glyphByLever).sort();
 
-  const devices: Device[] = [];
-  const door = spread(3, 4, Math.floor((cols - 4) / 2));
-  for (const col of door) {
-    devices.push({
-      col,
-      row: 0,
-      sheet: "door",
-      channel: "shared",
-      frame: doorOpen ? FRAMES.door.open : FRAMES.door.shut,
-    });
-  }
-  // One caption for the bank of three, under the middle leaf, so the door
-  // reads as one door rather than as three narrow ones.
-  const middle = door[1];
-  if (middle !== undefined) {
-    devices.push({
-      col: middle,
-      row: 0,
-      sheet: "door",
-      channel: "shared",
-      frame: doorOpen ? FRAMES.door.open : FRAMES.door.shut,
-      label: doorOpen ? "DOOR OPEN" : "DOOR SEALED",
-    });
-  }
+  const door = doorway(
+    cols,
+    "door",
+    doorOpen ? FRAMES.door.open : FRAMES.door.shut,
+    doorOpen ? "DOOR OPEN" : "DOOR SEALED",
+  );
+  const devices: Device[] = [...door.devices];
 
-  // The levers sit on the row below the glyph plates, which is why they are
-  // not on the last row: the plate needs the tile above each one.
-  const leverRow = rows - 3;
-  spread(levers.length, cols - 4, 2).forEach((col, index) => {
+  // The levers sit on the row below their glyph plates, which is why they are
+  // not on the last row: each one needs the tile above it.
+  const leverRow = rows - 4;
+  // An odd span, so three levers land on even centres rather than on the 4-3
+  // split an even one rounds to.
+  spread(levers.length, cols - 5, 2).forEach((col, index) => {
     const lever = levers[index];
     if (lever === undefined) return;
     const thrown = pulled.has(lever);
@@ -230,9 +261,11 @@ function airlock(facts: Readonly<Record<string, unknown>>): RoomPlan {
     cols,
     rows,
     devices,
-    // A chequered threshold in front of the door: the room saying which way
-    // out is, without a caption doing it.
-    plates: door.map((col) => ({ col, row: 1, frame: PLATE.chequer })),
+    // A chequered threshold in front of the door, and nothing else. The floor
+    // carries meaning only where it says "this is the way out"; in a game
+    // whose whole task is finding the channel-coded object, decoration that
+    // competes with it is not decoration, it is noise.
+    plates: door.cols.map((col) => ({ col, row: THRESHOLD_ROW, frame: PLATE.chequer })),
     sound: text(facts, "lastSound"),
     solved: doorOpen,
   };
@@ -248,7 +281,7 @@ function airlock(facts: Readonly<Record<string, unknown>>): RoomPlan {
  */
 function signalRoom(facts: Readonly<Record<string, unknown>>): RoomPlan {
   const cols = 16;
-  const rows = 11;
+  const rows = 14;
   const glyphByKey = record(facts, "glyphByKey");
   const pressed = new Set(list(facts, "pressedSequence").map(String));
   const strikes = num(facts, "strikes");
@@ -256,14 +289,14 @@ function signalRoom(facts: Readonly<Record<string, unknown>>): RoomPlan {
 
   const devices: Device[] = [];
   // Two rows of three, each key with its glyph plate on the tile above it.
-  const columns = spread(3, 8, 2);
+  const columns = spread(3, 9, 2);
   keys.forEach((key, index) => {
     const col = columns[index % 3];
     if (col === undefined) return;
     const down = pressed.has(key);
     devices.push({
       col,
-      row: 3 + Math.floor(index / 3) * 4,
+      row: 3 + Math.floor(index / 3) * 5,
       sheet: "button",
       channel: "pilot",
       frame: down ? FRAMES.button.pressed : FRAMES.button.up,
@@ -291,12 +324,14 @@ function signalRoom(facts: Readonly<Record<string, unknown>>): RoomPlan {
   }
 
   const page = text(facts, "manualPageState");
-  const plates: Plate[] = columns.map((col) => ({ col, row: 8, frame: PLATE.rivets }));
+  // No decorative plates. The six keys are what the room is for, and a floor
+  // pattern near them is one more rectangle for the eye to check.
+  const plates: Plate[] = [];
   if (page !== null) {
     const marked = page === "vandalised";
     devices.push({
-      col: cols - 3,
-      row: rows - 2,
+      col: 2,
+      row: rows - 3,
       sheet: "pad",
       channel: "pilot",
       frame: marked ? FRAMES.pad.lit : FRAMES.pad.dark,
@@ -340,7 +375,7 @@ export const GAUGE_MAX = 8;
  */
 function blindPanel(facts: Readonly<Record<string, unknown>>): RoomPlan {
   const cols = 16;
-  const rows = 12;
+  const rows = 14;
   const values = record(facts, "gaugeValues");
   const targets = record(facts, "targets");
   const gauges = Object.keys(values).sort((a, b) => Number(a) - Number(b));
@@ -348,7 +383,12 @@ function blindPanel(facts: Readonly<Record<string, unknown>>): RoomPlan {
 
   const devices: Device[] = [];
   const plates: Plate[] = [];
-  const columns = spread(gauges.length, cols - 4, 2);
+  /** The row the top lamp of every gauge sits on. */
+  const top = 1;
+  const dialRow = rows - 2;
+  // A span of thirteen for four gauges: the steps come out at exactly four
+  // tiles rather than at the 4-4-5 an even span would round to.
+  const columns = spread(gauges.length, 13, 1);
   gauges.forEach((gauge, index) => {
     const col = columns[index];
     if (col === undefined) return;
@@ -363,7 +403,7 @@ function blindPanel(facts: Readonly<Record<string, unknown>>): RoomPlan {
       const lit = step < value;
       devices.push({
         col,
-        row: GAUGE_MAX - 1 - step,
+        row: top + (GAUGE_MAX - 1 - step),
         sheet: "led",
         channel: "pilot",
         frame: lit ? FRAMES.led.on : FRAMES.led.off,
@@ -375,13 +415,12 @@ function blindPanel(facts: Readonly<Record<string, unknown>>): RoomPlan {
     // KEEPER's dial, under the gauge it does not necessarily drive.
     devices.push({
       col,
-      row: rows - 2,
+      row: dialRow,
       sheet: "switch",
       channel: "keeper",
       frame: value === target ? FRAMES.switch.on : FRAMES.switch.off,
       label: `DIAL ${String(index + 1)}`,
     });
-    plates.push({ col, row: rows - 3, frame: PLATE.rivets });
   });
 
   const clicks = facts.lastClicks;
@@ -402,7 +441,7 @@ function blindPanel(facts: Readonly<Record<string, unknown>>): RoomPlan {
 }
 
 /** How many tiles of beam the grip clock runs across at full stamina. */
-export const GRIP_TILES = 10;
+export const GRIP_TILES = 11;
 
 /**
  * The Concord Lock: the cipher wheel, the bolts, the grip clock and the door.
@@ -413,8 +452,8 @@ export const GRIP_TILES = 10;
  * glance from anywhere in the room, which a bar in a corner was not.
  */
 function concordLock(facts: Readonly<Record<string, unknown>>): RoomPlan {
-  const cols = 15;
-  const rows = 12;
+  const cols = 16;
+  const rows = 14;
   const offset = num(facts, "cipherOffset");
   const bolts = num(facts, "boltsAligned");
   const armed = bool(facts, "armed");
@@ -422,38 +461,34 @@ function concordLock(facts: Readonly<Record<string, unknown>>): RoomPlan {
   const remaining = num(facts, "staminaRemainingMs");
   const attempts = list(facts, "attemptedPhrases").length;
 
-  const devices: Device[] = [];
-
-  // The outer door, three leaves in the top wall. Locked until the bolts are
-  // aligned, and then it is simply a door.
-  const door = spread(3, 4, Math.floor((cols - 4) / 2));
+  // The outer door. Locked until the bolts are aligned, and then it is simply
+  // a door: the last sprite change of the session.
   const open = bolts >= 3;
-  for (const col of door) {
-    devices.push({
-      col,
-      row: 0,
-      sheet: open ? "door" : "door-locked",
-      channel: "shared",
-      frame: open ? FRAMES.door.open : FRAMES.doorLocked.shut,
-    });
-  }
+  const door = doorway(
+    cols,
+    open ? "door" : "door-locked",
+    open ? FRAMES.door.open : FRAMES.doorLocked.shut,
+    open ? "THE DOOR IS OPEN" : "DOOR LOCKED",
+  );
+  const devices: Device[] = [...door.devices];
 
   // The cipher wheel: PILOT's, because the offset is on its face and KEEPER
   // has only the phrase.
   devices.push({
     col: 2,
-    row: 3,
+    row: 5,
     sheet: "pad",
     channel: "pilot",
     frame: FRAMES.pad.lit,
     label: `WHEEL ${String(offset)}`,
   });
 
-  // Three bolts, shared, because both parties are told how far along the lock is.
+  // Three bolts, shared, because both parties are told how far along the lock
+  // is. A span of five puts them exactly two tiles apart.
   spread(3, 5, cols - 8).forEach((col, index) => {
     devices.push({
       col,
-      row: 3,
+      row: 5,
       sheet: "led",
       channel: "shared",
       frame: index < bolts ? FRAMES.led.on : FRAMES.led.off,
@@ -464,7 +499,7 @@ function concordLock(facts: Readonly<Record<string, unknown>>): RoomPlan {
 
   // The release bar, as a turret, and the grip clock as its beam. PILOT holds
   // the bar; the beam is how long they have left to hold it.
-  const gripRow = rows - 3;
+  const gripRow = rows - 4;
   devices.push({
     col: 1,
     row: gripRow,
@@ -498,7 +533,7 @@ function concordLock(facts: Readonly<Record<string, unknown>>): RoomPlan {
     cols,
     rows,
     devices,
-    plates: door.map((col) => ({ col, row: 1, frame: PLATE.chequer })),
+    plates: door.cols.map((col) => ({ col, row: THRESHOLD_ROW, frame: PLATE.chequer })),
     sound: text(facts, "lastSound"),
     solved: open,
   };

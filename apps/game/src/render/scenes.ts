@@ -260,7 +260,7 @@ export class ChamberScene extends Phaser.Scene {
         .setVisible(true);
     }
 
-    for (const device of plan.devices) this.#drawDevice(device, origin);
+    for (const device of plan.devices) this.#drawDevice(device, origin, plan);
     this.#drawBodies(plan, origin);
     if (!view || roomPlan(view) === null) this.#drawInterlude(plan, origin);
     if (plan.solved) this.#flash(plan, origin);
@@ -276,7 +276,7 @@ export class ChamberScene extends Phaser.Scene {
    * The channel picks the directory the sprite is loaded from, so the colour
    * and the meaning arrive together and cannot be made to disagree.
    */
-  #drawDevice(device: Device, origin: Origin): void {
+  #drawDevice(device: Device, origin: Origin, plan: RoomPlan): void {
     const x = px(origin.col + device.col);
     const y = px(origin.row + device.row);
     const colour = PALETTE[CHANNEL_COLOUR[device.channel]];
@@ -291,8 +291,37 @@ export class ChamberScene extends Phaser.Scene {
 
     if (device.glyph) this.#drawGlyph(device.glyph, x, y - TILE, colour);
     if (device.label !== undefined) {
-      this.#write(x + TILE / 2, y + TILE + CAPTION_DROP, device.label, colour, 0.5);
+      this.#caption(device.label, x + TILE / 2, y + TILE + CAPTION_DROP, colour, origin, plan);
     }
+  }
+
+  /**
+   * A device's caption, kept inside the room.
+   *
+   * Captions are centred under their tile and are routinely wider than it: a
+   * lamp one tile from the wall wearing the word STRIKES puts half of it
+   * through the wall and onto whatever is beyond. Clamping here rather than
+   * choosing safer columns per chamber is the fix that holds for the next
+   * caption too, and it is measured from the text object rather than estimated,
+   * because the browser is the only thing that knows how wide 8px monospace
+   * actually is.
+   */
+  #caption(
+    label: string,
+    centreX: number,
+    y: number,
+    colour: number,
+    origin: Origin,
+    plan: RoomPlan,
+  ): void {
+    const text = this.#write(centreX, y, label, colour, 0.5);
+    const half = text.width / 2;
+    const left = px(origin.col) + half;
+    const right = px(origin.col + plan.cols) - half;
+    // A caption wider than the room itself cannot be clamped into it, so it is
+    // centred and allowed to overhang equally rather than pinned to one side.
+    const x = left > right ? (left + right) / 2 : Math.min(Math.max(centreX, left), right);
+    text.setPosition(Math.round(x), Math.round(y));
   }
 
   /**
@@ -376,8 +405,14 @@ export class ChamberScene extends Phaser.Scene {
     this.#paint.fillRect(px(origin.col), px(origin.row), plan.cols * TILE, plan.rows * TILE);
   }
 
-  #write(x: number, y: number, content: string, colour: number, originX = 0): void {
-    this.#text
+  #write(
+    x: number,
+    y: number,
+    content: string,
+    colour: number,
+    originX = 0,
+  ): Phaser.GameObjects.Text {
+    return this.#text
       .next()
       .setPosition(Math.round(x), Math.round(y))
       .setText(content)

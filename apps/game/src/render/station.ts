@@ -101,6 +101,15 @@ export async function startStation(
    * single-origin fallback, one entry when the archive origin is embedded.
    */
   toolOrigins: readonly string[] = [],
+  /**
+   * Called after every change to the model, so the DOM console can repaint.
+   *
+   * A callback rather than the console polling, because the model changes a
+   * few times a minute and a repaint per animation frame would be several
+   * hundred pointless DOM writes a second. The scenes still read the model
+   * every frame; they are drawing a canvas, where that is what drawing is.
+   */
+  onChange: (model: StationModel) => void = () => {},
 ): Promise<StationHandle> {
   const model: StationModel = {
     view: null,
@@ -151,6 +160,7 @@ export async function startStation(
   const refreshTools = (): void => {
     void listToolNames(toolOrigins).then((names) => {
       model.tools = names;
+      onChange(model);
     });
   };
   const stopWatchingTools = onToolChange(refreshTools);
@@ -163,6 +173,7 @@ export async function startStation(
     if (model.state === null && model.view === null) return;
     void client.concord().then((report) => {
       model.concord = report;
+      onChange(model);
     });
   }, CONCORD_POLL_MS);
 
@@ -178,6 +189,7 @@ export async function startStation(
     setState(state: StateSummary) {
       model.state = state;
       if (state.phase !== "LOBBY") showChamber();
+      onChange(model);
     },
     setView(view: PilotView) {
       // A new room resets the derived clock, so a long chamber following a
@@ -189,9 +201,11 @@ export async function startStation(
       }
       model.view = view;
       if (view.phase !== "LOBBY") showChamber();
+      onChange(model);
     },
     note(line: string) {
       model.log = pushLine(model.log, line);
+      onChange(model);
     },
     callStarted(_tool: string) {
       // Held rather than set true and cleared, so a call that returns in four
@@ -202,6 +216,7 @@ export async function startStation(
     recordCall(call: CallRecord) {
       model.busyUntilMs = performance.now() + VISOR_HOLD_MS;
       model.log = pushLine(model.log, formatCall(call.tool, call.outcome, call.durationMs));
+      onChange(model);
     },
     refreshTools,
     dispose() {

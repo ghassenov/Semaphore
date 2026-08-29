@@ -1,23 +1,49 @@
 /*
- * Greybox styling for the gate screen and the station page.
+ * The station console.
  *
- * Palette values are the subset of doc 06 section 2 these two surfaces need:
- * bone-white for what both parties perceive, amber for PILOT, cyan for
- * KEEPER. That is not decoration, it is the game's information architecture,
- * so amber is reserved for PILOT's own controls even at this stage - the habit
- * is easier to keep than to retrofit.
+ * The page is not a document with a game in it. It is the inside of a piece of
+ * salvaged equipment, and the canvas is the window in the middle of it. That is
+ * why almost nothing here is styled like web furniture: panels are plates,
+ * headings are stencilled, and the frames around things are the art pack's own
+ * wall tiles used as CSS nine-slices (D-036).
  *
- * The canvas is the game. Everything here is the frame around it, so the stage
- * gets the width and the controls below it get whatever is left.
+ * Three things are load-bearing rather than decorative.
+ *
+ * **The palette is the same fourteen colours the canvas uses** (doc 06 section
+ * 2), restated here as custom properties. A fifteenth colour arriving through
+ * a stylesheet would be exactly as much of a problem as one arriving through an
+ * image editor, and this is the file where that is easiest to do by accident.
+ *
+ * **Amber is PILOT, cyan is KEEPER, bone is both.** Colour is the game's
+ * information architecture and it does not bend for a nice frame. Amber is
+ * reserved for the human's own controls and the human's own notes; cyan for the
+ * agent's. Nothing else may take either.
+ *
+ * **`image-rendering: pixelated` is not optional.** Every border image here is
+ * a 16px tile scaled up. Without it the browser resamples, and the crisp pixel
+ * edges the canvas goes to the trouble of preserving are undone by the frame
+ * around it.
  */
 
 :root {
-  --ink: #0b0d0e;
-  --bone: #e8e4d9;
-  --bone-dim: #8b8878;
-  --amber: #d9973f;
-  --cyan: #4fa8b8;
-  --rule: #2a2f31;
+  /* The fourteen, as they are in render/palette.ts. */
+  --void: #0d0f14;
+  --hull: #1a1f2b;
+  --hull-light: #2e3646;
+  --rust: #4a3b32;
+  --amber-deep: #8c5a1b;
+  --amber: #f0a830;
+  --amber-bright: #ffd98e;
+  --cyan-deep: #14606e;
+  --cyan: #3bc9db;
+  --cyan-bright: #a5f3fc;
+  --bone: #f2efe6;
+  --bone-dim: #a8a296;
+  --alarm: #e5484d;
+  --brass: #c9a227;
+
+  --frame: url("../public/art/shared/walls-out.png");
+  --gap: 0.75rem;
   color-scheme: dark;
 }
 
@@ -25,121 +51,222 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  min-height: 100%;
+}
+
 body {
   margin: 0;
-  padding: 2rem 1.25rem 4rem;
-  background: var(--ink);
+  padding: var(--gap);
+  background:
+    /* A cold vignette, so the console reads as lit from its own panels. */
+    radial-gradient(120% 90% at 50% 0%, #131824 0%, var(--void) 70%),
+    var(--void);
   color: var(--bone);
   font:
-    400 16px/1.55 ui-monospace,
+    400 15px/1.5 ui-monospace,
     "SF Mono",
     Menlo,
     Consolas,
     monospace;
 }
 
-main {
-  max-width: 46rem;
+/* ---------------------------------------------------------------- layout -- */
+
+/*
+ * Three bays and a rail across the top.
+ *
+ * The station's own state on the left, the room in the middle, KEEPER's
+ * surface on the right. That is the game's thesis as furniture: what the human
+ * perceives and what the agent can do are two different surfaces, side by
+ * side, with the room between them.
+ */
+.console {
+  display: grid;
+  grid-template-columns: minmax(13rem, 1fr) minmax(0, 2.4fr) minmax(14rem, 1.15fr);
+  grid-template-rows: auto 1fr;
+  gap: var(--gap);
+  align-items: start;
+  max-width: 96rem;
   margin: 0 auto;
 }
 
-.eyebrow {
-  margin: 0 0 1.5rem;
+.rail {
+  grid-column: 1 / -1;
+}
+
+.bay {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-width: 0;
+}
+
+/* One column under a laptop's width, room first: the game before its readouts. */
+@media (max-width: 68rem) {
+  .console {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bay-stage {
+    order: -1;
+  }
+}
+
+/* ------------------------------------------------------------------ rail -- */
+
+.rail {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--rust);
+  background: linear-gradient(var(--hull), var(--void));
+  box-shadow: inset 0 1px 0 #ffffff14;
+}
+
+.mark {
+  color: var(--brass);
+  font-size: 0.75rem;
+  letter-spacing: 0.34em;
+}
+
+.rail .room {
+  flex: 1;
+  color: var(--bone);
+  font-size: 0.95rem;
+  letter-spacing: 0.16em;
+}
+
+.rail .resets {
+  color: var(--alarm);
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+}
+
+.rail .clock {
+  min-width: 4.5ch;
+  color: var(--bone);
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* The last fifteen percent of a chamber's clock. Alarm, and it pulses. */
+.rail .clock.urgent {
+  color: var(--alarm);
+  animation: pulse 1s steps(2, end) infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* ---------------------------------------------------------------- panels -- */
+
+/*
+ * A panel is a plate bolted to the hull.
+ *
+ * The bevel is drawn with two inset shadows rather than an image, because a
+ * plate is the most repeated element on the page and thirty nine-sliced border
+ * images would be thirty decodes of the same tile. The nine-slice is spent
+ * where it earns its keep: the stage, and the prompt card.
+ */
+.panel {
+  border: 1px solid var(--rust);
+  background: linear-gradient(180deg, #171c27, #10141c);
+  box-shadow:
+    inset 0 1px 0 #ffffff10,
+    inset 0 -1px 0 #00000060;
+}
+
+.panel h2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0;
+  padding: 0.4rem 0.7rem;
+  border-bottom: 1px solid var(--rust);
+  background: #0f131b;
   color: var(--bone-dim);
-  font-size: 0.75rem;
-  letter-spacing: 0.32em;
-}
-
-h1 {
-  margin: 0 0 1rem;
-  font-size: 1.6rem;
+  font-size: 0.65rem;
   font-weight: 400;
-  line-height: 1.25;
-}
-
-h2 {
-  margin: 2rem 0 0.6rem;
-  font-size: 0.75rem;
-  font-weight: 400;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.24em;
   text-transform: uppercase;
+}
+
+.panel h2 .count {
+  color: var(--brass);
+  letter-spacing: 0.1em;
+}
+
+.panel-body {
+  padding: 0.7rem;
+}
+
+.panel-body > :last-child {
+  margin-bottom: 0;
+}
+
+.panel p {
+  margin: 0 0 0.6rem;
   color: var(--bone-dim);
+  font-size: 0.8rem;
 }
 
-.lede {
-  color: var(--bone);
+/* The quiet aside under a panel's contents: what the thing is for. */
+.panel .note {
+  margin-top: 0.6rem;
+  color: #6e6a60;
+  font-size: 0.68rem;
+  line-height: 1.45;
 }
 
-p {
-  margin: 0 0 1rem;
-  color: var(--bone-dim);
-}
+/* ----------------------------------------------------------------- stage -- */
 
-.route,
-.card {
-  margin-top: 1.75rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--rule);
-}
-
-.flag,
-.prompt {
-  display: block;
-  margin: 0 0 0.75rem;
-  padding: 0.85rem 1rem;
-  border-left: 2px solid var(--amber);
-  background: #131617;
-  color: var(--bone);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.fallback {
-  margin-top: 0.75rem;
-  font-size: 0.85rem;
-}
-
-button {
-  margin: 0 0.4rem 0.4rem 0;
-  padding: 0.5rem 0.9rem;
-  border: 1px solid var(--rule);
-  background: transparent;
-  color: var(--amber);
-  font: inherit;
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-
-button:hover,
-button:focus-visible {
-  border-color: var(--amber);
+/*
+ * The canvas, in a machined frame.
+ *
+ * The frame is `walls-out.png`, the same wall the rooms inside the canvas are
+ * built from, used as a nine-slice. The room on the canvas and the frame around
+ * it are therefore literally the same material, which is the one place on this
+ * page where a decorative choice is also a continuity one.
+ *
+ * **The frame and the mount point are two elements and must stay two.** Phaser
+ * measures its parent with `getBoundingClientRect`, which is the border box, so
+ * a border on the element it mounts into is a border it cannot see: it sizes
+ * the canvas to the full outer width, overflows the frame, and lands on a
+ * fractional scale. Fractional scaling produces the half-pixel shimmer D-031
+ * exists to prevent, and it arrives here looking like a styling choice.
+ */
+.stage-frame {
+  width: min(672px, 100%);
+  margin: 0 auto;
+  border: 16px solid transparent;
+  border-image: var(--frame) 16 repeat;
+  background: var(--void);
+  image-rendering: pixelated;
 }
 
 /*
- * The canvas stage.
+ * The mount point: a bare square, and 640 is the budget rather than a taste.
  *
- * Sized in `aspect-ratio` rather than fixed pixels so the browser hands Phaser
- * a box of the right shape and its own integer snapping picks the multiple.
- * `image-rendering: pixelated` matters on the CSS side as well as the WebGL
- * one: without it the browser resamples the upscale and the integer snapping
- * we went to the trouble of configuring is undone at the last step.
+ * The scale manager snaps to whole multiples of the 320 native size, so a box
+ * one pixel narrower than 640 falls back to x1 and the room renders
+ * quarter-size in the middle of a large empty canvas.
+ *
+ * `min-height: 0` because a flex item's automatic minimum size is its content,
+ * and Phaser centres its canvas with a margin: left alone the two feed each
+ * other, the margin making the box taller and the taller box needing a bigger
+ * margin to centre in.
  */
 .stage {
   width: 100%;
-  /*
-   * 640px, which is exactly two native pixels per drawn pixel.
-   *
-   * The scale manager snaps to whole multiples of 320, so a box one pixel
-   * narrower than 640 falls back to x1 and the station renders postage-stamp
-   * sized in the middle of a large empty box. The number is the budget, not a
-   * preference.
-   */
-  max-width: 640px;
-  margin: 0 auto 1.5rem;
-  /* Square, because the station is drawn as a section rather than a strip. */
   aspect-ratio: 1 / 1;
-  background: #0d0f14;
-  border: 1px solid var(--rule);
+  min-height: 0;
 }
 
 .stage canvas {
@@ -148,23 +275,257 @@ button:focus-visible {
 }
 
 /*
+ * The `AUDIBLE` channel: the one fact PILOT never has to describe.
+ *
+ * A double rule, which is the marker the legend teaches for "both of you
+ * perceive this". It keeps its height when empty so the column below it does
+ * not jump every time a room falls silent.
+ */
+.audible {
+  min-height: 2.4rem;
+  margin: 0;
+  padding: 0.55rem;
+  border: 1px solid var(--bone);
+  outline: 1px solid var(--bone);
+  outline-offset: 2px;
+  color: var(--bone);
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-align: center;
+}
+
+.audible:empty {
+  border-color: var(--rust);
+  outline-color: var(--rust);
+}
+
+/* -------------------------------------------------------------- controls -- */
+
+.controls .panel-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.controls .note {
+  flex-basis: 100%;
+  margin: 0 0 0.2rem;
+}
+
+/*
+ * Amber, because these are the things only the human can do.
+ *
+ * A button here is the asymmetry seen from PILOT's side: an agent cannot grip
+ * a bar it has no body for. Colouring them in the agent's cyan, or in a
+ * neutral, would quietly undo the one visual statement the control panel
+ * makes.
+ */
+button {
+  padding: 0.45rem 0.8rem;
+  border: 1px solid var(--amber-deep);
+  background: linear-gradient(180deg, #241a0d, #17110a);
+  color: var(--amber);
+  font: inherit;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--amber);
+  color: var(--amber-bright);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--amber-bright);
+  outline-offset: 2px;
+}
+
+button:active {
+  background: #0e0a06;
+}
+
+/* ----------------------------------------------------------------- lists -- */
+
+.panel ol,
+.panel ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.76rem;
+}
+
+.panel li {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+  border-bottom: 1px solid #ffffff08;
+  overflow-wrap: anywhere;
+}
+
+.panel li:last-child {
+  border-bottom: 0;
+}
+
+/*
+ * An empty list says so.
+ *
+ * A blank plate reads as a panel that failed to render, and on a page whose
+ * whole job is to report the registry honestly that is the worst possible
+ * ambiguity. Every running list gets a resting state instead.
+ */
+.panel ol:empty::after,
+.panel ul:empty::after {
+  content: attr(data-empty);
+  color: #565248;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+}
+
+/*
+ * The station's floors: the only progress display the game has.
+ *
+ * Every floor is listed from the first minute, including the ones not reached
+ * yet, because knowing the station has a Concord Lock in it is part of knowing
+ * what you are in for.
+ */
+.floors .floor {
+  color: #565248;
+  letter-spacing: 0.1em;
+}
+
+.floors .cleared {
+  color: var(--bone-dim);
+}
+
+.floors .cleared .pip {
+  color: var(--brass);
+}
+
+.floors .here {
+  color: var(--bone);
+}
+
+.floors .here .pip {
+  color: var(--amber);
+}
+
+.floors .pip {
+  width: 1ch;
+  color: inherit;
+}
+
+.manifest .tool {
+  color: var(--cyan);
+}
+
+.log li {
+  color: var(--bone-dim);
+  font-size: 0.72rem;
+}
+
+/* The pad is the one surface both parties write to, so both colours appear. */
+.notes .who {
+  width: 1ch;
+  opacity: 0.75;
+}
+
+.chan-pilot {
+  color: var(--amber);
+}
+
+.chan-keeper {
+  color: var(--cyan);
+}
+
+.chan-shared {
+  color: var(--bone);
+}
+
+.legend li {
+  align-items: center;
+  letter-spacing: 0.1em;
+}
+
+.legend .marker {
+  width: 1.2ch;
+  font-size: 0.95rem;
+}
+
+/* ----------------------------------------------------------------- meter -- */
+
+.meter {
+  height: 8px;
+  border: 1px solid var(--rust);
+  background: var(--hull);
+}
+
+.meter i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--brass), #e6c34a);
+  transition: width 400ms ease-out;
+}
+
+.bits {
+  margin: 0.4rem 0 0;
+  color: var(--brass);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.12em;
+}
+
+/* ------------------------------------------------------- prompt and pad --- */
+
+/*
+ * The starter prompt.
+ *
+ * The single most important element on the page (doc 04 section 2): a session
+ * begins when this text reaches an agent. It gets the nine-slice frame and the
+ * amber rule because it is the human's line to speak, and it is selectable
+ * because a canvas is not, which is the whole reason it lives in the DOM.
+ */
+.prompt {
+  margin: 0 0 0.6rem;
+  padding: 0.7rem 0.8rem;
+  border-left: 2px solid var(--amber);
+  background: #0b0e14;
+  color: var(--bone);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.flag {
+  display: block;
+  margin: 0 0 0.6rem;
+  padding: 0.6rem 0.7rem;
+  border-left: 2px solid var(--amber);
+  background: #0b0e14;
+  color: var(--bone);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+/*
  * The notepad form.
  *
- * Styled as a control rather than as a panel, because it is one: the canvas
- * draws the pad, this is the pen. Amber because PILOT is the one typing here;
+ * Styled as a control rather than a panel, because it is one: the canvas draws
+ * the room, this is the pen. Amber because PILOT is the one typing here;
  * KEEPER reaches the same form through the host and never sees this styling.
  */
 .notepad-host textarea {
   display: block;
   width: 100%;
-  margin: 0 0 0.5rem;
-  padding: 0.6rem 0.75rem;
-  border: 1px solid var(--rule);
+  margin: 0.5rem 0;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--rust);
   border-left: 2px solid var(--amber);
-  background: #131617;
+  background: #0b0e14;
   color: var(--bone);
   font: inherit;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   resize: vertical;
 }
 
@@ -175,9 +536,83 @@ button:focus-visible {
 
 .notepad-host label {
   display: block;
-  margin-bottom: 0.4rem;
-  font-size: 0.75rem;
+  color: var(--bone-dim);
+  font-size: 0.66rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
+}
+
+.notes {
+  margin-bottom: 0.4rem;
+}
+
+/* The archive origin's frame. Present, registering tools, and never seen. */
+.archive-host {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------------------ gate -- */
+
+/*
+ * The screen a browser without WebMCP gets.
+ *
+ * For some judges this is the entire submission, so it is laid out as a page
+ * that can be read rather than as a console that cannot be operated. It gets
+ * the same materials so that arriving at the real thing later feels like the
+ * same building.
+ */
+.gate {
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: 2rem 0 4rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.eyebrow {
+  margin: 0 0 1.2rem;
+  color: var(--brass);
+  font-size: 0.72rem;
+  letter-spacing: 0.34em;
+}
+
+.gate h1 {
+  margin: 0 0 1rem;
+  font-size: 1.5rem;
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+.gate .lede {
+  color: var(--bone);
+  font-size: 0.95rem;
+}
+
+.gate p {
+  margin: 0 0 1rem;
   color: var(--bone-dim);
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+.hero {
+  padding: 1.6rem;
+  border: 16px solid transparent;
+  border-image: var(--frame) 16 repeat;
+  background: linear-gradient(180deg, #171c27, #10141c);
+  image-rendering: pixelated;
+}
+
+.hero > * {
+  image-rendering: auto;
+}
+
+.routes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: var(--gap);
 }

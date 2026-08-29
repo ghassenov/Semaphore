@@ -15,6 +15,7 @@ import { describe, expect, it } from "vitest";
 import type { PilotView } from "@semaphore/protocol";
 import {
   CANVAS_TILES,
+  DOOR_WIDTH,
   GAUGE_MAX,
   MAX_INTERIOR,
   interlude,
@@ -165,6 +166,52 @@ describe("roomPlan", () => {
         if (existing !== undefined) expect(existing, `${chamber} at ${at}`).toBe(device.sheet);
         seen.set(at, device.sheet);
       }
+    }
+  });
+
+  it("draws every door as one unbroken opening", () => {
+    // Spreading three leaves evenly across four tiles leaves a gap in the
+    // middle of the doorway, which reads as a rendering fault rather than as
+    // a door. A door is one object three tiles wide.
+    for (const [chamber, facts] of EVERY_CHAMBER) {
+      const plan = roomPlan(view({ chamber, facts }));
+      const leaves = (plan?.devices ?? []).filter(
+        (device) => device.sheet === "door" || device.sheet === "door-locked",
+      );
+      if (leaves.length === 0) continue;
+      const cols = [...new Set(leaves.map((leaf) => leaf.col))].sort((a, b) => a - b);
+      expect(cols, `${chamber} door width`).toHaveLength(DOOR_WIDTH);
+      for (let i = 1; i < cols.length; i += 1) {
+        expect(cols[i]! - cols[i - 1]!, `${chamber} gap in the doorway`).toBe(1);
+      }
+    }
+  });
+
+  it("leaves the row under a door clear for its caption", () => {
+    // The caption is drawn beneath its tile, so row 1 belongs to the door's
+    // label. A threshold plate there puts words on a chequer, which at 8px is
+    // two patterns competing rather than one legible label.
+    for (const [chamber, facts] of EVERY_CHAMBER) {
+      const plan = roomPlan(view({ chamber, facts }));
+      const hasDoor = (plan?.devices ?? []).some((device) => device.sheet.startsWith("door"));
+      if (!hasDoor) continue;
+      for (const plate of plan?.plates ?? []) {
+        expect(plate.row, `${chamber} plate on the caption row`).not.toBe(1);
+      }
+      for (const device of plan?.devices ?? []) {
+        expect(device.row, `${chamber} device on the caption row`).not.toBe(1);
+      }
+    }
+  });
+
+  it("gives every room enough of the canvas to be worth looking at", () => {
+    // A room much smaller than the square it is drawn on is a room floating in
+    // void. The canvas is twenty tiles; a chamber using half of them vertically
+    // was what the side-on bands did, and is the thing this rewrite is for.
+    for (const [chamber, facts] of EVERY_CHAMBER) {
+      const plan = roomPlan(view({ chamber, facts }));
+      expect(plan?.rows ?? 0, `${chamber} is short`).toBeGreaterThanOrEqual(12);
+      expect(plan?.cols ?? 0, `${chamber} is narrow`).toBeGreaterThanOrEqual(12);
     }
   });
 
