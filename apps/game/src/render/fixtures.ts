@@ -62,8 +62,18 @@ const CONVERGENCE_PER_SECOND = 4;
 /** How high above a fixture its glyph plate hangs, in metres. */
 const GLYPH_HEIGHT = 1.75;
 
-/** How far below a fixture its caption sits, in metres. */
+/** How far below a fixture's anchor its caption sits, in metres. */
 const CAPTION_DROP = 0.34;
+
+/**
+ * The lowest a caption may hang, in metres above the floor.
+ *
+ * A fixture anchored on the floor - a lever, a key, a door - would otherwise
+ * put its caption a third of a metre *underground*, where it stands up through
+ * the floor as a pale card sitting on top of the mechanism it belongs to. Every
+ * key in the Signal Room did exactly that.
+ */
+const CAPTION_FLOOR = 0.24;
 
 /** What every builder returns: how to animate what it built. */
 type Animator = (progress: number, elapsedMs: number, fixture: Fixture) => void;
@@ -77,17 +87,25 @@ export class FixtureView {
   #progress = 0;
   #fixture: Fixture;
   /**
-   * The parts PILOT's lamp resolves: the glyph, its plate glow, the caption.
+   * The parts PILOT's lamp resolves, each with the opacity it was built at.
    *
-   * Held rather than looked up each frame, and deliberately *not* the device
-   * itself. A lever that faded out with distance would make the room
-   * unnavigable; what fades is the detail you would have to walk over to read
-   * anyway. See `LAMP_REACH` in `chamber.ts`.
+   * Deliberately *not* the device itself. A lever that faded out with distance
+   * would make the room unnavigable; what fades is the detail you would have to
+   * walk over to read anyway. See `LAMP_REACH` in `chamber.ts`.
+   *
+   * **The base opacity is stored, and the lamp assigns rather than multiplies.**
+   * The first pass multiplied in place every frame, which is a decay: a caption
+   * one step outside the lamp did not settle at nine tenths, it fell to nothing
+   * over a couple of seconds and then stayed there even after PILOT walked
+   * back. None of these are touched by an animator, so assignment is safe and
+   * multiplication never was.
    */
-  readonly #readable: { opacity: number }[] = [];
+  readonly #readable: { readonly material: { opacity: number }; readonly base: number }[] = [];
   /** How near the lamp is, 0 to 1, eased so walking does not strobe. */
   #reveal = 1;
   #wantedReveal = 1;
+  /** Whether a lamp reading has ever been applied, so the first one snaps. */
+  #lit = false;
 
   constructor(kit: Kit, fixture: Fixture) {
     this.#fixture = fixture;
@@ -112,20 +130,23 @@ export class FixtureView {
         const mark = kit.glyphPlane(glyphCanvas(rows), fixture.channel, 0.62);
         mark.position.set(0, GLYPH_HEIGHT, 0.05);
         this.root.add(mark);
-        this.#readable.push(mark.material);
+        this.#readable.push({ material: mark.material, base: mark.material.opacity });
 
         const halo = kit.halo(fixture.channel, 1.5, 0.4);
         halo.position.set(0, GLYPH_HEIGHT, 0.12);
         this.root.add(halo);
-        this.#readable.push(halo.material);
+        this.#readable.push({ material: halo.material, base: halo.material.opacity });
       }
     }
 
     if (fixture.label !== undefined) {
       const caption = kit.label(fixture.label, CHANNEL[fixture.channel].key);
-      caption.position.set(0, -CAPTION_DROP, 0.2);
+      // Clamped in world height, not in the fixture's own frame: the anchor is
+      // what varies between a floor-standing lever and a gauge up a wall.
+      const drop = Math.max(-CAPTION_DROP, CAPTION_FLOOR - fixture.at.y);
+      caption.position.set(0, drop, 0.3);
       this.root.add(caption);
-      this.#readable.push(caption.material);
+      this.#readable.push({ material: caption.material, base: caption.material.opacity });
     }
 
     // Placed at its true state rather than animated up to it.
@@ -149,6 +170,14 @@ export class FixtureView {
    */
   reveal(amount: number): void {
     this.#wantedReveal = amount;
+    // The first reading snaps rather than easing. A fixture built at full
+    // brightness and then eased down flashes its glyph on arrival and hides it
+    // again a moment later, which is what a page load looked like: every sign
+    // in the room appeared for a split second and went out.
+    if (!this.#lit) {
+      this.#lit = true;
+      this.#reveal = amount;
+    }
   }
 
   /** Where this fixture stands, so the stage can measure the lamp against it. */
@@ -164,7 +193,7 @@ export class FixtureView {
     this.#animate(this.#progress, elapsedMs, this.#fixture);
     // After the animator, never before: an animator sets its own opacities and
     // would otherwise overwrite the lamp on the same frame.
-    for (const material of this.#readable) material.opacity *= this.#reveal;
+    for (const part of this.#readable) part.material.opacity = part.base * this.#reveal;
   }
 
   /** Free the geometry this view owns. Materials belong to the kit. */

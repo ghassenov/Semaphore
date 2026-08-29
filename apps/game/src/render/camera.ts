@@ -34,7 +34,7 @@
  */
 
 import type { SessionMode } from "@semaphore/protocol";
-import type { Vec3 } from "./chamber.js";
+import type { RoomSize, Vec3 } from "./chamber.js";
 import { centreOf, centreOfStation, footprintOf, stationBounds } from "./plan.js";
 import type { FloorId } from "./floors.js";
 
@@ -204,6 +204,14 @@ export function fitBox(
 const FOLLOW = 0.34;
 
 /**
+ * How far the lean-in camera is tilted down.
+ *
+ * Shallower than the room shot: this is how you look at something you are
+ * holding a lamp up to, roughly level with it rather than down onto it.
+ */
+const INSPECT_PITCH = 0.34;
+
+/**
  * The shot that leans in on one fixture.
  *
  * PILOT holding a key near a mechanism. It is the only camera move the human
@@ -214,7 +222,20 @@ const FOLLOW = 0.34;
  * The framing is deliberately tight and slightly above, which is how you look
  * at something you are holding a lamp up to.
  */
-export function inspectShot(at: Vec3, aspect: number): Shot {
+export function inspectShot(
+  at: Vec3,
+  aspect: number,
+  /**
+   * The room the fixture is in, so the camera cannot leave it.
+   *
+   * Without it the lean-in stands wherever the fit puts it, which for anything
+   * against the back or side wall is *outside the building*: the shot ends up
+   * behind masonry that was never built to be seen from behind, and the room
+   * turns inside out. That is not a rare case, it is most of the fixtures in
+   * the game, because most of them are on a wall.
+   */
+  room?: { readonly centre: { x: number; z: number }; readonly size: RoomSize },
+): Shot {
   const target: Vec3 = { x: at.x, y: at.y + 0.9, z: at.z };
   const distance = fitBox(
     target,
@@ -222,11 +243,25 @@ export function inspectShot(at: Vec3, aspect: number): Shot {
     { x: at.x, y: at.y + 0.9, z: at.z },
     ROOM_FOV,
     aspect,
-    0.34,
+    INSPECT_PITCH,
     ROOM_YAW,
   );
+  const eye = orbit(target, distance, INSPECT_PITCH, ROOM_YAW);
+  if (room === undefined) return { eye, target, fov: ROOM_FOV, floor: null };
+
+  // Held inside the room's own box, with a margin off each wall. The camera
+  // may come no closer to a wall than it would let a body stand.
+  const inset = 0.8;
+  const minX = room.centre.x - room.size.width / 2 + inset;
+  const maxX = room.centre.x + room.size.width / 2 - inset;
+  const minZ = room.centre.z - room.size.depth / 2 + inset;
+  const maxZ = room.centre.z + room.size.depth / 2 - inset;
   return {
-    eye: orbit(target, distance, 0.34, ROOM_YAW),
+    eye: {
+      x: Math.min(Math.max(eye.x, minX), maxX),
+      y: Math.min(eye.y, room.size.height - 0.4),
+      z: Math.min(Math.max(eye.z, minZ), maxZ),
+    },
     target,
     fov: ROOM_FOV,
     floor: null,

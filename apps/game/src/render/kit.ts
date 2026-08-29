@@ -235,6 +235,16 @@ export class Kit {
   readonly brass: MeshStandardMaterial;
   /** Corroded pipework and the wear on everything. */
   readonly copper: MeshStandardMaterial;
+  /**
+   * PILOT's coat, and PILOT's face.
+   *
+   * Neither is lamplight-coloured, and that is a rule rather than a palette
+   * choice (doc 06 section 4): warm means "only PILOT can perceive this", and
+   * the human is not a fact only the human can perceive. The lamp is the one
+   * warm thing on the figure, and it is a lamp.
+   */
+  readonly coat: MeshStandardMaterial;
+  readonly skin: MeshStandardMaterial;
   /** A dead screen, and anything glazed. */
   readonly glass: MeshStandardMaterial;
   /**
@@ -290,6 +300,12 @@ export class Kit {
     );
     this.glass = this.#keep(
       new MeshStandardMaterial({ color: PALETTE.glass, roughness: 0.14, metalness: 0.3 }),
+    );
+    this.coat = this.#keep(
+      new MeshStandardMaterial({ color: PALETTE.stone, roughness: 0.9, metalness: 0.02 }),
+    );
+    this.skin = this.#keep(
+      new MeshStandardMaterial({ color: PALETTE.pearlDim, roughness: 0.72, metalness: 0 }),
     );
 
     this.ripple = new CanvasTexture(rippleCanvas());
@@ -390,15 +406,30 @@ export class Kit {
    * access can scrape. The console beside the canvas may hold public copy and
    * things KEEPER can obtain for itself; it may not hold these.
    */
-  label(text: string, colour: number, height = 0.52): Sprite {
+  label(text: string, colour: number, height = 0.42): Sprite {
     const canvas = labelCanvas(text, colour);
     const texture = this.#keep(new CanvasTexture(canvas));
     texture.colorSpace = SRGBColorSpace;
     texture.minFilter = LinearFilter;
     const material = this.#keep(
-      new SpriteMaterial({ map: texture, transparent: true, depthWrite: false }),
+      new SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthWrite: false,
+        // **Never depth-tested.** A caption is a flat card that always faces
+        // the camera, so any caption near a wall intersects it and is sliced in
+        // half by it - "PAGE MARKED" went straight through the Signal Room's
+        // west wall, and every caption beside a mechanism had the same problem
+        // waiting. Drawing it over everything is safe here for a reason
+        // specific to this game: captions belong to the room the pair is
+        // standing in, and PILOT's lamp has already faded the distant ones to
+        // nothing, so there is never a caption in front of you that belongs
+        // behind you.
+        depthTest: false,
+      }),
     );
     const sprite = new Sprite(material);
+    sprite.renderOrder = 10;
     sprite.scale.set((height * canvas.width) / canvas.height, height, 1);
     return sprite;
   }
