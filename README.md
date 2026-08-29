@@ -40,19 +40,20 @@ proposal for an instrument, with its raw data, not as an established one.
 
 ## Status
 
-Playable end to end in Chrome 151 against a live worker: four chambers, the Archive, the finale
-and the ending. Not yet deployed, and not yet played by a model.
+Playable end to end in Chrome 152 against a live worker: four chambers, the Archive, the finale
+and the ending, rendered in real-time 3D. Not yet deployed, and not yet played by a model.
 
 | Component | State |
 |---|---|
 | Design documents (00-12) | Complete |
 | `packages/seed`, `packages/protocol` | Built and tested |
 | `apps/worker` - Durable Object, reducer, four chambers, tool surface | Built |
-| `apps/game` - Phaser client, WebMCP tool director, the station console | Built |
+| `apps/game` - Three.js client, WebMCP tool director, the station console | Built |
 | `apps/archive` - the cross-origin tool provider | Built, proved on Chrome 151 |
 | `tests/` - possible-worlds proof, cross-origin delegation | Green across all four chambers |
 | `bench/` - the ablation and the Cooperative Benchmark | Built and published |
-| Art, audio, accessibility, the replay viewer | Not started |
+| Art - the station, both bodies, KEEPER's anatomy | Built, procedural, no asset files |
+| Audio, full accessibility, the replay viewer | Not started |
 
 [NEXT-STEPS.md](NEXT-STEPS.md) is the live handoff and says what is next and what will bite you.
 
