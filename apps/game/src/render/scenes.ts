@@ -23,6 +23,7 @@
 
 import Phaser from "phaser";
 import {
+  ARCHIVE_SCREEN,
   CANVAS_TILES,
   INTERLUDE_PLAN,
   interlude,
@@ -45,6 +46,7 @@ import {
   type Shot,
 } from "./plan.js";
 import { activeFloor, type FloorId } from "./floors.js";
+import { ghostFrame } from "./ghost.js";
 import { CHANNEL_COLOUR, PALETTE } from "./palette.js";
 import { TEXTURE, allSprites, toCanvas } from "./sprites.js";
 import type { StationModel } from "./station.js";
@@ -52,6 +54,9 @@ import type { SessionMode } from "@semaphore/protocol";
 
 /** Captions only. The room says everything else with sprites. */
 const FONT = { fontFamily: "monospace", fontSize: "8px" } as const;
+
+/** One line of `FONT`, with the leading that keeps two of them apart. */
+const LINE = 10;
 
 /** How far a device's caption sits below its tile. */
 const CAPTION_DROP = 1;
@@ -295,6 +300,16 @@ export class ChamberScene extends Phaser.Scene {
   #walkUntil = 0;
   /** Held to look at the station. PILOT's, and no tool of KEEPER's does it. */
   #map?: Phaser.Input.Keyboard.Key;
+  /**
+   * Scene time at which the Archive's monitor started playing.
+   *
+   * Set on the first frame the monitor is drawn rather than when the session
+   * starts, so the recording begins at its beginning for whoever walks in.
+   * Never cleared: the Archive is entered once per session, and a pair who
+   * leave and somehow return should find the tape where they left it rather
+   * than watching the first ten seconds again.
+   */
+  #ghostFrom: number | null = null;
 
   constructor(model: StationModel) {
     super("chamber");
@@ -385,6 +400,7 @@ export class ChamberScene extends Phaser.Scene {
     }
 
     if (floor !== null && at !== null) this.#drawBodies(floor, at);
+    if (floor === "archive") this.#drawGhost(origin, time);
     if (plan === null) this.#drawInterlude(view.mode, floor);
     // Room names, but only from far enough away that the rooms themselves say
     // nothing. Close up the console already names the room, and a caption
@@ -682,6 +698,117 @@ export class ChamberScene extends Phaser.Scene {
     this.#model.tools.forEach((_tool, index) => {
       this.#paint.fillRect(px(wallCol) + 13, px(at.row) + 2 + index * 4, 3, 2);
     });
+  }
+
+  /**
+   * The Archive's monitor, playing the ghost.
+   *
+   * Painted rather than drawn from the pack, and that is the cheap answer to a
+   * real problem: a recording of a room is a room at a quarter of its size,
+   * and the pack's sprites are 16px tiles that can only be shrunk by a
+   * fractional scale, which is exactly the half-pixel shimmer D-031 exists to
+   * forbid. A schematic in flat colour has no such constraint, it is what a
+   * decade-old station monitor would actually show, and it costs no art.
+   *
+   * The scale is computed and floored to whole pixels for the same reason.
+   * With the chambers as they are it lands on three pixels a tile, near enough
+   * the 1:4 doc 08 asks for and integer by construction, so it cannot shimmer
+   * however the rooms are resized later.
+   *
+   * `#paint` for the schematic and `#write` for the two lines of text. Nothing
+   * here reads `view.facts`: the monitor shows a prior session, and the room
+   * the pair is standing in has nothing to do with it.
+   */
+  #drawGhost(origin: Origin, now: number): void {
+    const track = this.#model.view?.ghost ?? null;
+    const left = px(origin.col + ARCHIVE_SCREEN.col);
+    const top = px(origin.row + ARCHIVE_SCREEN.row);
+    const width = ARCHIVE_SCREEN.cols * TILE;
+    const height = ARCHIVE_SCREEN.rows * TILE;
+
+    // The tube itself, whether or not there is anything to play on it.
+    this.#paint.fillStyle(PALETTE.void, 1);
+    this.#paint.fillRect(left, top, width, height);
+    this.#paint.lineStyle(1, PALETTE.amber, 0.8);
+    this.#paint.strokeRect(left + 0.5, top + 0.5, width - 1, height - 1);
+
+    if (track === null) {
+      this.#write(left + width / 2, top + height / 2 - 4, "NO TAPE", PALETTE.amberDeep, 0.5);
+      return;
+    }
+
+    // The clock starts when the monitor is first drawn, so both parties see
+    // the recording from its beginning however long the walk in took.
+    this.#ghostFrom ??= now;
+    const frame = ghostFrame(track, now - this.#ghostFrom);
+
+    // Three bands inside the glass, top to bottom: whose recording it is, the
+    // room it was recorded in, and what is happening. Everything is laid out
+    // from the tube's own edges rather than from constants, so the monitor
+    // survives the room being resized under it.
+    const headY = top + 3;
+    const scrubY = top + height - 4;
+    const captionY = scrubY - 10;
+    const roomTop = headY + LINE;
+    const roomBand = captionY - roomTop - 2;
+
+    // Whose recording it is. A designation is the only name a session log
+    // carries, and it is the reason the beat lands at all: the pair are
+    // watching somebody.
+    this.#write(left + 3, headY, track.designation, PALETTE.amberDeep, 0);
+
+    // The room, at whole pixels a tile. Floored rather than fitted exactly,
+    // because a fractional scale here is the same half-pixel shimmer D-031
+    // forbids on the canvas, arriving on a smaller surface. With the chambers
+    // as they are it lands at two pixels a tile, so this is nearer 1:8 than
+    // the 1:4 doc 08 imagined; a schematic is what the tube can hold, and a
+    // 1:4 chamber would not fit in the room the monitor is standing in.
+    const scale = Math.max(
+      2,
+      Math.floor(Math.min((width - 8) / frame.cols, roomBand / frame.rows)),
+    );
+    const roomW = frame.cols * scale;
+    const roomH = frame.rows * scale;
+    const roomX = Math.round(left + (width - roomW) / 2);
+    const roomY = Math.round(roomTop + (roomBand - roomH) / 2);
+
+    this.#paint.lineStyle(1, PALETTE.amberDeep, frame.ended ? 0.35 : 0.7);
+    this.#paint.strokeRect(roomX + 0.5, roomY + 0.5, roomW - 1, roomH - 1);
+
+    // The ghost, on the floor of the room they were in, at the position the
+    // beats interpolate to. One tile of the recording, so a body is the same
+    // size on the schematic as a body is in the room being recorded.
+    const bodyX = Math.round(roomX + frame.walk * (roomW - scale));
+    const bodyY = roomY + roomH - scale - 1;
+    this.#paint.fillStyle(frame.ended ? PALETTE.amberDeep : PALETTE.amber, 1);
+    this.#paint.fillRect(bodyX, bodyY, scale, scale);
+    // Gripping is the one posture worth drawing: the ghost is holding the bar,
+    // and the reason the recording stops is that they could not hold it long
+    // enough. A second cell above the body is the arm on the bar.
+    if (frame.gripping) this.#paint.fillRect(bodyX, bodyY - scale, scale, scale);
+
+    // The scrub bar along the bottom of the glass, so a pair who arrive part
+    // way through can see there is a beginning to wait for.
+    this.#paint.fillStyle(PALETTE.amberDeep, 0.45);
+    this.#paint.fillRect(left + 4, scrubY, width - 8, 1);
+    this.#paint.fillStyle(PALETTE.amber, 1);
+    this.#paint.fillRect(left + 4, scrubY, Math.round((width - 8) * frame.progress), 1);
+
+    // One line, clamped to the glass exactly as a device caption is clamped to
+    // its room, and measured rather than estimated for the same reason: the
+    // browser is the only thing that knows how wide 8px monospace really is.
+    const caption = this.#write(
+      left + width / 2,
+      captionY,
+      frame.caption,
+      frame.ended ? PALETTE.bone : PALETTE.amber,
+      0.5,
+    );
+    const half = caption.width / 2;
+    const lo = left + half;
+    const hi = left + width - half;
+    const x = lo > hi ? (lo + hi) / 2 : Math.min(Math.max(left + width / 2, lo), hi);
+    caption.setPosition(Math.round(x), Math.round(captionY));
   }
 
   /**

@@ -33,6 +33,7 @@ import { MODE_CHAMBERS, type SessionMode } from "@semaphore/protocol";
 import {
   CANVAS,
   CHAMBER_ACCENT,
+  ARCHIVE_PLAN,
   CHAMBER_NOTCHES,
   INTERLUDE_PLAN,
   cellKey,
@@ -69,11 +70,17 @@ export interface StationLayout {
  * The Archive's own outline.
  *
  * It is not a chamber, so it has no entry in `CHAMBER_NOTCHES`, but it is a
- * room PILOT stands in and it needs a floor. Ten by six because the interlude
- * writes two lines of 8px text across the middle of it and a narrower room
- * would put "A DEAD MONITOR, STILL WARM" through both walls.
+ * room PILOT stands in and it needs a floor. The size comes from the room's
+ * own plan rather than being repeated here, for the same reason a chamber's
+ * does: a room that grew to fit its monitor and left the station laying it out
+ * against a stale width would put half of it through a wall. No notches, so
+ * the monitor has a flat wall to hang on.
  */
-export const ARCHIVE_SHAPE = { cols: 10, rows: 6, notches: [] as readonly Rect[] } as const;
+export const ARCHIVE_SHAPE = {
+  cols: ARCHIVE_PLAN.cols,
+  rows: ARCHIVE_PLAN.rows,
+  notches: [] as readonly Rect[],
+} as const;
 
 /** The channel each floor's walls wear. The Archive is nobody's room. */
 export const FLOOR_ACCENT: Readonly<Record<FloorId, RenderChannel>> = {

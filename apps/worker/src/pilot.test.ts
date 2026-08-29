@@ -19,6 +19,7 @@ import * as blindPanel from "./chambers/blind_panel.js";
 import * as concordLock from "./chambers/concord_lock.js";
 import { newSession, reduce, settleSession, type PersistedSession } from "./reducer.js";
 import { pilotView, stateSummary } from "./pilot.js";
+import { GHOST_LOG, keeperEntries } from "./archive/index.js";
 
 const NOW = 1_000_000;
 
@@ -174,5 +175,27 @@ describe("the machine fields beside the facts", () => {
   it("shares its machine fields with the tool responses, so the two cannot drift", () => {
     const session = begun();
     expect(pilotView(session, NOW)).toMatchObject(stateSummary(session, NOW));
+  });
+
+  it("puts a ghost on the wire in the Archive and nowhere else", () => {
+    // The monitor is in one room. Shipping the track on every frame would put
+    // a prior session's movements on the wire for the whole shift to be drawn
+    // for three minutes of it.
+    expect(pilotView(begun(), NOW).ghost).toBeNull();
+    expect(pilotView(at("blind_panel"), NOW).ghost).toBeNull();
+    const archive = pilotView(at("archive"), NOW);
+    expect(archive.ghost).not.toBeNull();
+    expect(archive.ghost?.beats.length).toBeGreaterThan(0);
+  });
+
+  it("sends PILOT a ghost with none of the ghost KEEPER's calls in it", () => {
+    // The same wall `archive.test.ts` proves over the projection, asserted
+    // here over the wire, because this is the surface that actually reaches a
+    // browser and the projection could be right while the view reached past
+    // it.
+    const rendered = JSON.stringify(pilotView(at("archive"), NOW).ghost);
+    for (const call of keeperEntries(GHOST_LOG)) {
+      expect(rendered, `tool ${call.tool}`).not.toContain(call.tool);
+    }
   });
 });

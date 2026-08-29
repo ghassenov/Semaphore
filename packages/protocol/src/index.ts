@@ -44,6 +44,8 @@ export type {
   Difficulty,
   DifficultySettings,
   FailureState,
+  GhostBeat,
+  GhostTrack,
   Note,
   NoteAuthor,
   Phase,

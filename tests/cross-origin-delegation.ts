@@ -49,6 +49,7 @@
  * Ports are arguments rather than constants: on localhost a second origin is
  * a second port, and in production it is a second hostname.
  */
+import { mkdirSync, writeFileSync } from "node:fs";
 import { GLYPHS, PRIME_STROKE_GLYPHS, type GlyphId } from "@semaphore/worker/chambers/glyphs";
 
 /**
@@ -76,6 +77,17 @@ const GAME = process.env.GAME ?? "http://localhost:5173";
  * with `VITE_ARCHIVE_ORIGIN` set on the game's dev server, and once without.
  */
 const ARCHIVE = process.env.ARCHIVE ?? "http://localhost:5175";
+/**
+ * Where to write a screenshot at each beat, or empty to write none.
+ *
+ * The tour, and the reason it is bolted to this file rather than to one of its
+ * own: getting to the Archive means solving the Blind Panel, and the solvers
+ * that do it are already here. Four rendering bugs in one pass were invisible
+ * to six hundred unit tests and obvious in a frame, and three of them needed
+ * two chambers of history to appear at all, so the only honest way to look at
+ * a room is to play the session that reaches it.
+ */
+const SHOTS = process.env.SHOTS ?? "";
 const DELEGATED = ARCHIVE.length > 0;
 const SEED = `e2e-${String(Date.now())}`;
 
@@ -198,6 +210,31 @@ async function evaluate<T>(expression: string): Promise<T> {
   return result?.result?.value as T;
 }
 
+/**
+ * A screenshot of the page as it is, named for the beat it was taken at.
+ *
+ * A no-op unless `SHOTS` names a directory, so the assertion run is unchanged
+ * and costs nothing, the wait included. The default wait is the camera's, and
+ * it is the sum of two of them: the scene holds the whole building for 1600ms
+ * on the walk between rooms and then pans and zooms into the next one over
+ * 700ms. A frame grabbed before both have finished is a picture of the
+ * previous room with the next room's name over it, which is exactly what the
+ * first run of this tour produced. A longer one is
+ * how the Archive gets looked at, because that room's contents change on their
+ * own clock and there is nothing to wait for but time.
+ */
+let shotIndex = 0;
+async function shot(name: string, waitMs = 2600): Promise<void> {
+  if (SHOTS.length === 0) return;
+  await sleep(waitMs);
+  const res = await send("Page.captureScreenshot", { format: "png" });
+  const data = (res.result as { data?: string } | undefined)?.data ?? "";
+  const file = `${SHOTS}/${String(++shotIndex).padStart(2, "0")}-${name}.png`;
+  mkdirSync(SHOTS, { recursive: true });
+  writeFileSync(file, data, "base64");
+  console.log(`[shot] ${file}`);
+}
+
 await send("Page.enable");
 await send("Runtime.enable");
 await send("Log.enable");
@@ -284,6 +321,7 @@ check(
 await post("begin_shift", { designation: "KEEPER" });
 await post("start", { difficulty: "practice", mode: "full" });
 await until((v) => v.chamber === "airlock", "the airlock");
+await shot("airlock");
 await sleep(600);
 
 check(
@@ -319,6 +357,7 @@ const glyphByLever = view.facts.glyphByLever as Record<string, GlyphId>;
 const spiralLever = Object.keys(glyphByLever).find((lever) => glyphByLever[lever] === "spiral");
 await post("pull_lever", { lever_id: spiralLever });
 await until((v) => v.chamber === "signal_room", "the signal room");
+await shot("signal-room");
 await sleep(400);
 
 // ---- Chamber I: ascending stroke count, primes omitted.
@@ -330,6 +369,7 @@ const keys = Object.keys(glyphByKey)
   );
 for (const key of keys) await post("press_key", { key_id: Number(key) });
 await until((v) => v.chamber === "blind_panel", "the blind panel");
+await shot("blind-panel");
 await sleep(400);
 
 // ---- Chamber II: the dial-to-gauge mapping is HIDDEN, so probe it. One
@@ -425,6 +465,12 @@ console.log(
   view.facts.solved,
 );
 await until((v) => v.phase === "ARCHIVE", "the archive beat");
+// Three, spread across the recording, because the Archive is the one room
+// whose contents change while nobody touches anything: the ghost walks, grips
+// the bar, and the tape runs out.
+await shot("archive-early", 2000);
+await shot("archive-middle", 12_000);
+await shot("archive-late", 13_000);
 await sleep(700);
 
 check(
@@ -453,6 +499,7 @@ check(
 const beforeLeaving = await get("status");
 await post("leave_archive");
 await until((v) => v.chamber === "concord_lock", "the concord lock");
+await shot("concord-lock");
 check(
   DELEGATED
     ? "the cross-origin call recorded itself, so the Archive could be left"
@@ -491,6 +538,7 @@ await post("grip_bar");
 for (const bolt of [1, 2, 3]) await post("align_bolt", { bolt_id: bolt });
 await post("speak_passphrase", { phrase });
 await until((v) => v.phase === "FINALE", "the finale");
+await shot("finale");
 await sleep(600);
 
 check(
@@ -501,6 +549,7 @@ check(
 
 await invoke(mainFrameId, "open_the_door", {});
 await until((v) => v.phase === "ESCAPED", "the ending");
+await shot("ending");
 await sleep(600);
 
 const ending = await all();

@@ -264,6 +264,7 @@ describe("instrumentation", () => {
       designation: "KEEPER",
       remainingMs: 0,
       retries: 0,
+      ghost: null,
       facts: {},
       notes: [],
       mode: "full",
