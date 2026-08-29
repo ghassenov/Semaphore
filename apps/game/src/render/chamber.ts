@@ -100,6 +100,32 @@ export interface Fixture {
   readonly dim?: boolean;
 }
 
+/**
+ * A piece of the room that carries no fact.
+ *
+ * Pipework, cabling, beams, rails, puddles, shelving. **Dressing is a separate
+ * type from `Fixture` on purpose, and the reason is the colour law rather than
+ * tidiness: dressing has no channel, so it structurally cannot take one of the
+ * two colours that mean "only this party perceives it".** In a game whose whole
+ * task is finding the channel-coded object, a pipe that could be lit amber is a
+ * pipe that could be mistaken for a fact.
+ *
+ * It also has no state and no id: nothing here animates, nothing here is read,
+ * and nothing here needs to survive a repaint.
+ */
+export type DressingKind =
+  "pipe" | "valve" | "cable" | "puddle" | "shelf" | "beam" | "column" | "rail" | "vent";
+
+/** One piece of dressing, in room-local metres. */
+export interface Dressing {
+  readonly kind: DressingKind;
+  readonly at: Vec3;
+  /** Yaw in radians. Zero runs along the room's width. */
+  readonly facing?: number;
+  /** How long, for the things that run: pipes, beams, rails. */
+  readonly length?: number;
+}
+
 /** The interior of a room, in metres. */
 export interface RoomSize {
   readonly width: number;
@@ -112,6 +138,8 @@ export interface RoomPlan {
   readonly id: FloorId;
   readonly size: RoomSize;
   readonly fixtures: readonly Fixture[];
+  /** Everything in the room that carries no fact. Never channel-coloured. */
+  readonly dressing: readonly Dressing[];
   /**
    * The channel the room's own light and its wall trim wear.
    *
@@ -266,6 +294,45 @@ export function facingCentre(at: Vec3): number {
 }
 
 /**
+ * A run of pipe along a wall, at a height, with valves spaced along it.
+ *
+ * The single most useful piece of dressing in the station: a bare wall reads as
+ * a computer drawing, and a wall with a pipe on it reads as somewhere that was
+ * built for a purpose by people who are no longer here. It is horizontal, so it
+ * never competes with the vertical mechanisms, and it is material-coloured, so
+ * it can never be mistaken for a fact.
+ */
+function pipeRun(
+  y: number,
+  z: number,
+  width: number,
+  valves: readonly number[] = [],
+): readonly Dressing[] {
+  const run: Dressing[] = [{ kind: "pipe", at: { x: 0, y, z }, length: width }];
+  for (const x of valves) run.push({ kind: "valve", at: { x, y, z }, facing: 0 });
+  return run;
+}
+
+/**
+ * Beams across the open top of a room, over its back half only.
+ *
+ * **Never over the front half**, and that is the cutaway rule reaching one more
+ * thing. The camera stands to the south and looks down, so a beam near the
+ * south edge is a bar drawn between the viewer and the mechanism: the first
+ * pass spanned the whole depth and put a girder across the levers. The back
+ * half gives the room a ceiling to have without giving it one to look through.
+ */
+function beams(size: RoomSize, count: number): readonly Dressing[] {
+  const back = -size.depth / 2 + 0.9;
+  const span = size.depth * 0.34;
+  return spread(count, span).map((offset) => ({
+    kind: "beam" as const,
+    at: { x: 0, y: size.height - 0.35, z: back + span / 2 + offset },
+    length: size.width,
+  }));
+}
+
+/**
  * The Airlock: three levers, the door they open, and the rising water.
  *
  * The levers are PILOT's channel because their identity is the lit glyph and
@@ -314,6 +381,18 @@ function airlock(facts: Readonly<Record<string, unknown>>): RoomPlan {
     id: "airlock",
     size,
     fixtures,
+    // Cramped, low and wet: pipework low on the back wall behind the levers,
+    // a vent, and standing water in the corners even before anything goes
+    // wrong. Doc 06 section 6 calls this room cramped and low, and pipes at
+    // shoulder height in a 3.6m room are what make it feel it.
+    dressing: [
+      ...pipeRun(2.5, -size.depth / 2 + 0.35, size.width - 1.2, [-4.2, 1.4]),
+      ...pipeRun(2.9, -size.depth / 2 + 0.35, size.width - 1.2),
+      { kind: "vent", at: { x: size.width / 2 - 0.4, y: 2.2, z: 0 }, facing: -Math.PI / 2 },
+      { kind: "puddle", at: { x: -3.6, y: 0, z: 1.6 }, length: 2.4 },
+      { kind: "puddle", at: { x: 2.8, y: 0, z: 2.2 }, length: 1.8 },
+      ...beams(size, 3),
+    ],
     accent: CHAMBER_ACCENT.airlock,
     sound: text(facts, "lastSound"),
     solved: doorOpen,
@@ -409,6 +488,18 @@ function signalRoom(facts: Readonly<Record<string, unknown>>): RoomPlan {
     id: "signal_room",
     size,
     fixtures,
+    // A lamp gallery: a rail around the beacon's plinth, cable dropping to it
+    // from the beams, and the room's height used rather than merely declared.
+    // Doc 06 section 6 calls this room tall and vertiginous, and a rail at
+    // waist height with seven metres of air above it is what says so.
+    dressing: [
+      { kind: "rail", at: { x: 0, y: 1.05, z: 2.1 }, length: 6.5 },
+      { kind: "cable", at: { x: -1.5, y: size.height, z: -1 }, length: 3.4 },
+      { kind: "cable", at: { x: 2.1, y: size.height, z: 0.4 }, length: 4.2 },
+      ...pipeRun(5.4, -size.depth / 2 + 0.35, size.width - 2, [-3.5, 3.5]),
+      { kind: "puddle", at: { x: -4.4, y: 0, z: 3.4 }, length: 2.2 },
+      ...beams(size, 4),
+    ],
     accent: CHAMBER_ACCENT.signal_room,
     sound: text(facts, "lastSound"),
     // No `solved` fact reaches PILOT here, and the correct sequence is a subset
@@ -567,6 +658,18 @@ function blindPanel(facts: Readonly<Record<string, unknown>>): RoomPlan {
     id: "blind_panel",
     size,
     fixtures,
+    // Industrial: pipework feeding the gauge bank from above and below, valves
+    // between the columns, and a vent at each end. This is the room doc 06
+    // section 6 calls wide, shallow and industrial, and the pipes are what make
+    // the gauge wall read as plumbing rather than as a scoreboard.
+    dressing: [
+      ...pipeRun(3.5, -size.depth / 2 + 0.4, size.width - 1, [-3.4, 0, 3.4]),
+      ...pipeRun(0.15, -size.depth / 2 + 0.9, size.width - 2),
+      { kind: "vent", at: { x: -size.width / 2 + 0.4, y: 2.4, z: 1 }, facing: Math.PI / 2 },
+      { kind: "vent", at: { x: size.width / 2 - 0.4, y: 2.4, z: 1 }, facing: -Math.PI / 2 },
+      { kind: "puddle", at: { x: 4.2, y: 0, z: 1.4 }, length: 2.6 },
+      ...beams(size, 3),
+    ],
     accent: CHAMBER_ACCENT.blind_panel,
     // Singular at one. The count is puzzle-critical in this room - it is how
     // KEEPER learns a linkage hit its bound - so the line that carries it
@@ -685,6 +788,20 @@ function concordLock(facts: Readonly<Record<string, unknown>>): RoomPlan {
     id: "concord_lock",
     size,
     fixtures,
+    // A cathedral. Columns down both sides carrying the height, cable falling
+    // from the dark above the door, and nothing on the floor between PILOT and
+    // the door: the room's whole job is to make the last twelve metres feel
+    // like a walk.
+    dressing: [
+      ...spread(3, size.depth * 0.55).flatMap((z) => [
+        { kind: "column" as const, at: { x: -size.width / 2 + 0.6, y: 0, z }, length: size.height },
+        { kind: "column" as const, at: { x: size.width / 2 - 0.6, y: 0, z }, length: size.height },
+      ]),
+      { kind: "cable", at: { x: -2.4, y: size.height, z: -size.depth / 2 + 1.4 }, length: 4.6 },
+      { kind: "cable", at: { x: 2.9, y: size.height, z: -size.depth / 2 + 1.1 }, length: 3.8 },
+      { kind: "puddle", at: { x: 0, y: 0, z: 2.4 }, length: 4.5 },
+      ...beams(size, 4),
+    ],
     accent: CHAMBER_ACCENT.concord_lock,
     sound: text(facts, "lastSound"),
     solved: open,
@@ -764,6 +881,27 @@ export const ARCHIVE_PLAN: RoomPlan = {
       on: true,
       facing: Math.PI / 2,
     },
+  ],
+  // Small, cluttered and close (doc 06 section 6): shelving down both walls,
+  // cable hanging over the monitor, a puddle under it. This is the one room in
+  // the station whose dressing is the point rather than the frame - it is a
+  // records room, and it should look like one nobody has filed in for years.
+  dressing: [
+    {
+      kind: "shelf",
+      at: { x: -ROOM_SIZES.archive.width / 2 + 0.45, y: 0, z: 0.4 },
+      facing: Math.PI / 2,
+      length: 3.6,
+    },
+    {
+      kind: "shelf",
+      at: { x: ROOM_SIZES.archive.width / 2 - 0.45, y: 0, z: 0.2 },
+      facing: -Math.PI / 2,
+      length: 3.2,
+    },
+    { kind: "cable", at: { x: 1.4, y: ROOM_SIZES.archive.height, z: -2.2 }, length: 1.4 },
+    { kind: "puddle", at: { x: -0.6, y: 0, z: 1.2 }, length: 2.2 },
+    ...beams(ROOM_SIZES.archive, 3),
   ],
   accent: "shared",
   sound: null,

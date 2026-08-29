@@ -38,11 +38,13 @@ import {
   Mesh,
   MeshStandardMaterial,
   Object3D,
+  PlaneGeometry,
   SphereGeometry,
   TorusGeometry,
 } from "three";
 import type { Fixture } from "./chamber.js";
 import { GAUGE_MAX, MONITOR_DEPTH } from "./chamber.js";
+import type { Dressing } from "./chamber.js";
 import { GLYPHS, glyphCanvas } from "./glyphs.js";
 import { CHANNEL, PALETTE } from "./palette.js";
 import type { Kit } from "./kit.js";
@@ -652,3 +654,125 @@ const BUILDERS: Readonly<Record<Fixture["kind"], (kit: Kit, f: Fixture, root: Gr
     crate: buildCrate,
     lamp: buildLamp,
   };
+
+/**
+ * One piece of dressing, built.
+ *
+ * Separate from `FixtureView` and deliberately much simpler: dressing has no
+ * state, no id, no caption and no channel, so it is built once and never
+ * touched again. It is also **never channel-coloured** - everything here is
+ * iron, brass, copper or water. In a game whose whole task is finding the
+ * channel-coded object, a pipe that could be lit warm is a pipe that could be
+ * mistaken for a fact.
+ */
+export function buildDressing(kit: Kit, item: Dressing): Group {
+  const root = new Group();
+  root.position.set(item.at.x, item.at.y, item.at.z);
+  root.rotation.y = item.facing ?? 0;
+  const length = item.length ?? 1;
+
+  switch (item.kind) {
+    case "pipe": {
+      const pipe = solid(root, new Mesh(new CylinderGeometry(0.11, 0.11, length, 10), kit.copper));
+      pipe.rotation.z = Math.PI / 2;
+      // Flanges at each end, so the run reads as bolted rather than extruded.
+      for (const side of [-1, 1]) {
+        const flange = solid(root, new Mesh(new CylinderGeometry(0.15, 0.15, 0.1, 10), kit.brass));
+        flange.rotation.z = Math.PI / 2;
+        flange.position.x = (side * length) / 2;
+      }
+      break;
+    }
+    case "valve": {
+      solid(root, new Mesh(new CylinderGeometry(0.16, 0.16, 0.26, 10), kit.brass)).rotation.z =
+        Math.PI / 2;
+      const wheel = solid(root, new Mesh(new TorusGeometry(0.22, 0.035, 6, 14), kit.iron));
+      wheel.position.y = 0.32;
+      wheel.rotation.y = Math.PI / 2;
+      solid(root, new Mesh(new CylinderGeometry(0.04, 0.04, 0.3, 6), kit.iron)).position.y = 0.2;
+      break;
+    }
+    case "cable": {
+      // A hanging run with a slight sag, drawn as three shortening segments
+      // rather than a curve: at this distance a catenary and a kinked line are
+      // the same picture, and one of them needs no curve sampling.
+      let y = 0;
+      for (let piece = 0; piece < 3; piece += 1) {
+        const drop = length / 3;
+        const segment = solid(
+          root,
+          new Mesh(new CylinderGeometry(0.035, 0.035, drop, 5), kit.iron),
+        );
+        segment.position.set(piece * 0.09, y - drop / 2, piece * 0.05);
+        segment.rotation.z = piece * 0.12;
+        y -= drop * 0.94;
+      }
+      break;
+    }
+    case "puddle": {
+      // Standing water. Flat, dark and very smooth, so it does nothing at all
+      // until a light crosses it and then it does everything.
+      const pool = new Mesh(new PlaneGeometry(length, length * 0.7), kit.water);
+      pool.rotation.x = -Math.PI / 2;
+      pool.position.y = 0.012;
+      pool.receiveShadow = true;
+      root.add(pool);
+      break;
+    }
+    case "shelf": {
+      for (let level = 0; level < 3; level += 1) {
+        solid(root, new Mesh(new BoxGeometry(0.5, 0.07, length), kit.iron)).position.y =
+          0.5 + level * 0.62;
+      }
+      for (const side of [-1, 1]) {
+        solid(root, new Mesh(new BoxGeometry(0.08, 1.9, 0.08), kit.iron)).position.set(
+          0,
+          0.95,
+          (side * length) / 2,
+        );
+      }
+      // Spools on the middle shelf, which is what an archive is full of.
+      for (const z of [-length / 3, 0, length / 3]) {
+        const spool = solid(root, new Mesh(new TorusGeometry(0.16, 0.06, 5, 12), kit.copper));
+        spool.position.set(0, 1.22, z);
+        spool.rotation.y = Math.PI / 2;
+      }
+      break;
+    }
+    case "beam": {
+      solid(root, new Mesh(new BoxGeometry(length, 0.22, 0.3), kit.iron));
+      break;
+    }
+    case "column": {
+      solid(root, new Mesh(new BoxGeometry(0.7, length, 0.7), kit.stone)).position.y = length / 2;
+      // A brass band near the base and another near the top, which is what
+      // stops a column reading as an extruded rectangle.
+      for (const y of [0.9, length - 1.1]) {
+        solid(root, new Mesh(new BoxGeometry(0.82, 0.16, 0.82), kit.brass)).position.y = y;
+      }
+      break;
+    }
+    case "rail": {
+      solid(root, new Mesh(new CylinderGeometry(0.05, 0.05, length, 8), kit.brass)).rotation.z =
+        Math.PI / 2;
+      for (const x of [-length / 2, 0, length / 2]) {
+        solid(root, new Mesh(new CylinderGeometry(0.05, 0.06, 1.05, 6), kit.iron)).position.set(
+          x,
+          -0.52,
+          0,
+        );
+      }
+      break;
+    }
+    case "vent": {
+      solid(root, new Mesh(new BoxGeometry(0.12, 1, 1), kit.iron));
+      for (let slat = 0; slat < 5; slat += 1) {
+        const bar = solid(root, new Mesh(new BoxGeometry(0.16, 0.1, 0.86), kit.copper));
+        bar.position.set(0.02, 0.36 - slat * 0.18, 0);
+        bar.rotation.z = 0.22;
+      }
+      break;
+    }
+  }
+  return root;
+}

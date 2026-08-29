@@ -36,6 +36,7 @@ import {
   Sprite,
   SpriteMaterial,
   SRGBColorSpace,
+  Vector2,
   type Texture,
 } from "three";
 import { CHANNEL, PALETTE, hex, type RenderChannel } from "./palette.js";
@@ -184,6 +185,42 @@ function labelCanvas(text: string, colour: number): HTMLCanvasElement {
  * resources: a session that ends has to be able to hand them back, and a set of
  * loose `const`s cannot be disposed.
  */
+/**
+ * A normal map of shallow overlapping waves.
+ *
+ * Encoded the way a normal map is - the surface's tilt as a colour, with flat
+ * as the pale blue at (0.5, 0.5, 1) - so a stock material can use it with no
+ * shader of our own. Two wave trains at different angles and wavelengths,
+ * because one is a corrugated roof and two is water.
+ */
+function rippleCanvas(size = 128): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("A 2D context is needed to draw the water");
+
+  const image = context.createImageData(size, size);
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const u = (x / size) * Math.PI * 2;
+      const v = (y / size) * Math.PI * 2;
+      // The height field's slope in each direction. Kept shallow: a steep
+      // normal map on a near-mirror surface scatters every reflection into
+      // noise, which is exactly what water does not look like.
+      const slopeX = Math.cos(u * 3 + v) * 0.5 + Math.cos(u * 5 - v * 2) * 0.25;
+      const slopeY = Math.cos(v * 4 - u) * 0.5 + Math.cos(v * 6 + u * 3) * 0.2;
+      const at = (y * size + x) * 4;
+      image.data[at] = Math.round(128 + slopeX * 42);
+      image.data[at + 1] = Math.round(128 + slopeY * 42);
+      image.data[at + 2] = 255;
+      image.data[at + 3] = 255;
+    }
+  }
+  context.putImageData(image, 0, 0);
+  return canvas;
+}
+
 export class Kit {
   readonly grain: Texture;
   readonly glow: Texture;
@@ -198,8 +235,19 @@ export class Kit {
   readonly brass: MeshStandardMaterial;
   /** Corroded pipework and the wear on everything. */
   readonly copper: MeshStandardMaterial;
-  /** A dead screen, and standing water when nothing is lighting it. */
+  /** A dead screen, and anything glazed. */
   readonly glass: MeshStandardMaterial;
+  /**
+   * Standing water.
+   *
+   * Nearly a mirror and nearly black, so it does nothing at all until a light
+   * crosses it and then it does everything. The normal map scrolls, which is
+   * the whole of the animation: a still puddle in a room with a moving lamp
+   * reads as painted-on floor, and a moving one reads as somewhere the sea gets
+   * in.
+   */
+  readonly water: MeshStandardMaterial;
+  readonly ripple: Texture;
 
   /** Every material this kit has handed out, so all of them can be disposed. */
   readonly #owned: { dispose(): void }[] = [];
@@ -243,6 +291,41 @@ export class Kit {
     this.glass = this.#keep(
       new MeshStandardMaterial({ color: PALETTE.glass, roughness: 0.14, metalness: 0.3 }),
     );
+
+    this.ripple = new CanvasTexture(rippleCanvas());
+    this.ripple.wrapS = RepeatWrapping;
+    this.ripple.wrapT = RepeatWrapping;
+    this.ripple.repeat.set(3, 3);
+    this.water = this.#keep(
+      new MeshStandardMaterial({
+        // Lighter than the floor it lies on, not darker. Water over a wet floor
+        // is shinier than the floor, and the first pass made every puddle read
+        // as a hole cut in it.
+        color: PALETTE.slate,
+        // Low metalness, deliberately. A near-mirror metal with no environment
+        // map to reflect renders **black**, which is what the first pass did:
+        // every puddle in the station came out as a hole in the floor. A dark
+        // dielectric with a tight specular highlight catches the room's own
+        // lamps instead, which is the only thing there is here to catch.
+        roughness: 0.07,
+        metalness: 0.1,
+        normalMap: this.ripple,
+        normalScale: new Vector2(0.6, 0.6),
+        transparent: true,
+        opacity: 0.58,
+      }),
+    );
+  }
+
+  /**
+   * Advance the water.
+   *
+   * Two scrolls at different rates rather than one, because a single scrolling
+   * normal map reads as a sheet of plastic being dragged across the floor; two
+   * that disagree read as a surface.
+   */
+  tideStep(elapsedMs: number): void {
+    this.ripple.offset.set((elapsedMs / 26000) % 1, (elapsedMs / 41000) % 1);
   }
 
   #keep<T extends { dispose(): void }>(item: T): T {
@@ -366,5 +449,6 @@ export class Kit {
     this.#owned.length = 0;
     this.grain.dispose();
     this.glow.dispose();
+    this.ripple.dispose();
   }
 }
