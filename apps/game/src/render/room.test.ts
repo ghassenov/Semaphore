@@ -22,8 +22,10 @@ import {
   roomPlan,
   roomTitle,
   spread,
+  tilesFor,
+  CHAMBER_NOTCHES,
 } from "./room.js";
-import { CHANNEL_SHEETS, FRAMES } from "./atlas.js";
+import { CHANNEL_SHEETS, FRAMES, SLICE } from "./atlas.js";
 
 /** A view in a chamber, with whatever facts a test wants in it. */
 function view(over: Partial<PilotView> = {}): PilotView {
@@ -423,5 +425,163 @@ describe("roomTitle and interlude", () => {
 describe("the canvas", () => {
   it("leaves a whole tile of wall on every side", () => {
     expect(MAX_INTERIOR).toBe(CANVAS_TILES - 2);
+  });
+
+  describe("the shape of a room", () => {
+    /** Every chamber, with facts real enough to lay its devices out. */
+    const ROOMS = [
+      view({ chamber: "airlock", facts: AIRLOCK_FACTS }),
+      view({ chamber: "signal_room", facts: SIGNAL_FACTS }),
+      view({ chamber: "blind_panel", facts: BLIND_FACTS }),
+      view({ chamber: "concord_lock", facts: CONCORD_FACTS }),
+    ];
+
+    /** The floor tiles of a plan, as "col,row" keys. */
+    function floorOf(plan: NonNullable<ReturnType<typeof roomPlan>>): Set<string> {
+      return new Set(
+        plan.tiles.filter((t) => !t.wall).map((t) => `${String(t.col)},${String(t.row)}`),
+      );
+    }
+
+    it("stands every device, caption and plate on floor, in every chamber", () => {
+      // The one thing a notch can break. A chamber's device layout is written
+      // against its full box, so cutting a corner out of the box can leave a
+      // lever standing in the void with nothing to say it went wrong.
+      for (const v of ROOMS) {
+        const plan = roomPlan(v);
+        expect(plan, v.chamber ?? "?").not.toBeNull();
+        if (!plan) continue;
+        const floor = floorOf(plan);
+        for (const device of plan.devices) {
+          expect(floor, `${String(v.chamber)} device ${device.sheet}`).toContain(
+            `${String(device.col)},${String(device.row)}`,
+          );
+          // A caption is drawn on the row below its device and must land on
+          // floor too, or it prints over the wall.
+          expect(
+            device.label === undefined ||
+              floor.has(`${String(device.col)},${String(device.row + 1)}`),
+            `${String(v.chamber)} caption under ${device.sheet}`,
+          ).toBe(true);
+        }
+        for (const plate of plan.plates) {
+          expect(floor, `${String(v.chamber)} plate`).toContain(
+            `${String(plate.col)},${String(plate.row)}`,
+          );
+        }
+      }
+    });
+
+    it("keeps the bottom row whole, because PILOT walks it", () => {
+      // `scenes.ts` puts PILOT anywhere on the last row. A notch there would
+      // let the human walk out of the building.
+      for (const v of ROOMS) {
+        const plan = roomPlan(v);
+        if (!plan) continue;
+        const floor = floorOf(plan);
+        for (let col = 0; col < plan.cols; col += 1) {
+          expect(floor, `${String(v.chamber)} col ${String(col)}`).toContain(
+            `${String(col)},${String(plan.rows - 1)}`,
+          );
+        }
+      }
+    });
+
+    it("walls every floor tile that has void beside it", () => {
+      // The proof that the outline closes. Any floor cell with a non-floor
+      // orthogonal neighbour must have a wall tile on that neighbour, or the
+      // room has a hole in it and you can see the canvas through the gap.
+      const tiles = tilesFor(6, 4, [{ col: 0, row: 0, cols: 2, rows: 2 }]);
+      const floor = new Set(
+        tiles.filter((t) => !t.wall).map((t) => `${String(t.col)},${String(t.row)}`),
+      );
+      const wall = new Set(
+        tiles.filter((t) => t.wall).map((t) => `${String(t.col)},${String(t.row)}`),
+      );
+      expect(floor.size).toBe(6 * 4 - 4);
+      for (const cell of floor) {
+        const [col, row] = cell.split(",").map(Number) as [number, number];
+        for (const [dc, dr] of [
+          [0, -1],
+          [0, 1],
+          [-1, 0],
+          [1, 0],
+        ] as const) {
+          const side = `${String(col + dc)},${String(row + dr)}`;
+          expect(floor.has(side) || wall.has(side), `${cell} -> ${side}`).toBe(true);
+        }
+      }
+    });
+
+    it("leaves no wall tile stranded away from the room", () => {
+      // Wall is emitted only where it touches floor, which is what keeps the
+      // notch reading as outside the building rather than as a grey block.
+      const tiles = tilesFor(8, 8, [{ col: 0, row: 0, cols: 4, rows: 4 }]);
+      const floor = new Set(
+        tiles.filter((t) => !t.wall).map((t) => `${String(t.col)},${String(t.row)}`),
+      );
+      for (const tile of tiles.filter((t) => t.wall)) {
+        const touching = [-1, 0, 1].some((dc) =>
+          [-1, 0, 1].some((dr) => floor.has(`${String(tile.col + dc)},${String(tile.row + dr)}`)),
+        );
+        expect(touching, `${String(tile.col)},${String(tile.row)}`).toBe(true);
+      }
+      // The middle of the notch is outside the building and drawn as nothing.
+      expect(tiles.some((t) => t.col === 0 && t.row === 0)).toBe(false);
+    });
+
+    it("gives each chamber the wall colour of the channel that owns it", () => {
+      // The channel law, applied to the building. Amber is the room only PILOT
+      // can read, cyan the room only KEEPER can act in.
+      const accent = (v: PilotView) => roomPlan(v)?.accent;
+      expect(accent(ROOMS[1] as PilotView)).toBe("pilot");
+      expect(accent(ROOMS[2] as PilotView)).toBe("keeper");
+      expect(accent(ROOMS[0] as PilotView)).toBe("shared");
+      expect(accent(ROOMS[3] as PilotView)).toBe("shared");
+    });
+  });
+
+  describe("the rule the wall art imposes on a shape", () => {
+    it("cuts every notch from a corner of its box", () => {
+      // `walls-out` is a nine-slice of convex corners and the pack ships no
+      // concave one. A notch in the middle of an edge turns the wall in and
+      // back out with two convex corners butted together, which draws the
+      // border twice and reads as a crack in the building. This is the rule
+      // that keeps a future chamber from shipping that artifact.
+      for (const [id, shape] of Object.entries(CHAMBER_NOTCHES)) {
+        for (const n of shape.notches) {
+          const onLeft = n.col === 0;
+          const onRight = n.col + n.cols === shape.cols;
+          const onTop = n.row === 0;
+          const onBottom = n.row + n.rows === shape.rows;
+          expect(
+            (onLeft || onRight) && (onTop || onBottom),
+            `${id} notch at ${String(n.col)},${String(n.row)} is not on a corner`,
+          ).toBe(true);
+        }
+      }
+    });
+
+    it("proves a mid-edge notch really does double the wall", () => {
+      // The evidence for the rule above rather than a restatement of it. Cut
+      // two tiles out of the middle of the top edge and the wall tiles that
+      // close the cut are two convex corners standing side by side, which is
+      // the doubled border. A corner notch never produces that pair.
+      const CONVEX: readonly number[] = [
+        SLICE.topLeft,
+        SLICE.topRight,
+        SLICE.bottomLeft,
+        SLICE.bottomRight,
+      ];
+      const adjacentCorners = (notch: { col: number; row: number; cols: number; rows: number }) =>
+        tilesFor(8, 8, [notch])
+          .filter((t) => t.wall && CONVEX.includes(t.frame))
+          .some((t, _i, all) =>
+            all.some((o) => o.row === t.row && o.col === t.col + 1 && o.frame !== t.frame),
+          );
+
+      expect(adjacentCorners({ col: 3, row: 0, cols: 2, rows: 2 })).toBe(true);
+      expect(adjacentCorners({ col: 0, row: 0, cols: 2, rows: 2 })).toBe(false);
+    });
   });
 });

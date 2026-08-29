@@ -138,15 +138,100 @@ export const SLICE = {
 } as const;
 
 /**
- * The ground frames that are surrounded on every side.
+ * Which sides of a floor tile have no floor beyond them, as bits.
  *
- * The pack's ground is a 47-tile blob set for irregular shapes, and every
- * chamber here is a rectangle, so only the interior tiles are ever wanted. The
- * five differ by where their rivets sit, which is the whole decoration budget
- * for a floor: enough that a large room is not one flat colour, not so much
- * that the eye stops on the floor instead of on the mechanism.
+ * The pack's ground sheet is an autotile: each frame already carries the dark
+ * inset shading for whichever of its four sides is an edge, which is what
+ * makes a room read as a room rather than as a rectangle of texture. A tile
+ * therefore has to be chosen from its neighbours, not from its own position.
  */
-export const GROUND_FILL: readonly number[] = [24, 25, 33, 34, 42];
+export const EDGE = { top: 1, bottom: 2, left: 4, right: 8 } as const;
+
+/** Every side. A tile with no floor around it at all. */
+export const EDGE_ALL = EDGE.top | EDGE.bottom | EDGE.left | EDGE.right;
+
+/**
+ * The sixteen ground frames, indexed by an `EDGE` mask.
+ *
+ * Derived by classifying every frame of `shared/ground.png` rather than picked
+ * by eye: each entry is the frame whose art is shaded on exactly the sides the
+ * index names. The sheet is a 47-tile blob set, but a room built from
+ * rectangles only ever needs the sixteen orthogonal cases, and the pack has no
+ * concave-corner art to want for the rest.
+ *
+ * This replaces `GROUND_FILL`, which scattered frames 24, 25, 33, 34 and 42
+ * across the floor as though they were rivet variants. They are not: they are
+ * one coherent bolted-floor set whose bolts are drawn to meet at shared tile
+ * corners, so choosing between them per tile broke every bolt into a stray
+ * fragment and stippled the whole room.
+ */
+export const FLOOR_BY_EDGE: readonly number[] = [
+  20, 11, 29, 38, 19, 10, 28, 37, 21, 12, 30, 39, 22, 13, 31, 40,
+];
+
+/** The four diagonal neighbours, as bits. Used only by `wallFrame`. */
+export const CORNER = { topLeft: 1, topRight: 2, bottomLeft: 4, bottomRight: 8 } as const;
+
+/**
+ * The wall frames, indexed by which orthogonal neighbours hold floor.
+ *
+ * The inverse of the floor table: a wall tile is chosen by where the room is,
+ * so a wall with floor below it is the room's top edge, and a wall with floor
+ * below and to the right is its top-left corner. A wall with floor on two
+ * opposite sides is a partition one tile thick, which the pack has no art for,
+ * so it falls to the solid centre fill.
+ *
+ * `-1` is the tile with no orthogonal floor at all: either solid wall or the
+ * outside of a convex corner, which only the diagonals can tell apart.
+ */
+const WALL_BY_SIDE: readonly number[] = [
+  -1,
+  SLICE.bottom,
+  SLICE.top,
+  SLICE.centre,
+  SLICE.right,
+  SLICE.bottomRight,
+  SLICE.topRight,
+  SLICE.centre,
+  SLICE.left,
+  SLICE.bottomLeft,
+  SLICE.topLeft,
+  SLICE.centre,
+  SLICE.centre,
+  SLICE.centre,
+  SLICE.centre,
+  SLICE.centre,
+];
+
+/**
+ * The ground frame for one tile, from the sides that are edges.
+ *
+ * Total over every mask, so a caller cannot produce a floor with a hole in it
+ * by passing a combination nobody thought of.
+ */
+export function floorFrame(edges: number): number {
+  return FLOOR_BY_EDGE[edges & EDGE_ALL] ?? FLOOR_BY_EDGE[0] ?? 0;
+}
+
+/**
+ * The wall frame for one tile.
+ *
+ * `sides` names the orthogonal neighbours that are floor, in `EDGE` bits;
+ * `corners` names the diagonal ones in `CORNER` bits. The diagonals are
+ * consulted only for the tile with no orthogonal floor, which is exactly the
+ * one sitting outside a room's convex corner: drawn as solid fill it puts a
+ * notch in the outline, and the corner it actually needs is the one opposite
+ * the diagonal the floor sits on.
+ */
+export function wallFrame(sides: number, corners: number): number {
+  const direct = WALL_BY_SIDE[sides & EDGE_ALL] ?? -1;
+  if (direct >= 0) return direct;
+  if (corners & CORNER.bottomRight) return SLICE.topLeft;
+  if (corners & CORNER.bottomLeft) return SLICE.topRight;
+  if (corners & CORNER.topRight) return SLICE.bottomLeft;
+  if (corners & CORNER.topLeft) return SLICE.bottomRight;
+  return SLICE.centre;
+}
 
 /**
  * Floor plates, for the places a room wants to say something without a device.
@@ -189,17 +274,3 @@ export const FRAMES = {
   turret: { idle: 0, firing: 1 },
   chest: { shut: 0, open: 1 },
 } as const;
-
-/**
- * The ground frame for one tile of a room.
- *
- * Deterministic in the tile's own coordinates rather than random, because a
- * floor that reshuffles its rivets on every frame shimmers, and because a
- * screenshot of a seed should be the same screenshot every time. The multipliers
- * are coprime with the list length so neighbouring tiles rarely match, which is
- * the entire trick to making five tiles look like a floor.
- */
-export function groundFrame(col: number, row: number): number {
-  const index = (col * 3 + row * 7) % GROUND_FILL.length;
-  return GROUND_FILL[index] ?? GROUND_FILL[0] ?? 0;
-}
