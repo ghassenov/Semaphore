@@ -720,3 +720,129 @@ counting both origins together. The flag stays `same`: Chrome passes and
 ChatGPT's in-app browser is still untested, and `apps/archive/CLAUDE.md`
 requires both.
 
+---
+
+### D-034 Third-party art, licensed separately, replacing the authored pixels
+
+**Date.** 2026-08-29
+
+**Decision.** The room's art is LorisC's *[FREE] 16x16 Top Down Puzzle System*, vendored under `apps/game/public/art/` and described by one table in `src/render/atlas.ts`. This supersedes D-029's "no asset files, no third-party art" for everything except the twelve glyphs and the two bodies, which stay authored in `sprites.ts`.
+
+**Options considered.**
+1. Keep authoring pixels in source and hand-draw a fuller set.
+2. Take the pack, tint one neutral copy to the palette at draw time.
+3. Take the pack and use its own colour variants, one per channel.
+
+Option 3. The pack ships every object in six colours, and Semaphore's information architecture *is* colour: amber is what only PILOT perceives, cyan is what only KEEPER perceives, bone is what both do. Yellow, blue and neutral map onto those three exactly, so the channel is chosen when a file is named rather than applied by a `setTint` somebody can forget. Option 2 was rejected because a flat multiply over one greyscale copy throws away the shading the artist put in and reads visibly cheaper than the colour versions sitting unused beside it.
+
+**Two things this cost that were not obvious.**
+
+The pack has **no neutral-coloured devices**. Levers, buttons, lamps and doors exist only in the five accent colours; the neutral colour covers the building. A `SHARED` fact may wear neither player's colour, so `shared/`'s devices are the purple ones with the hue removed - converted to luminance and rescaled so each sprite's brightest pixel lands on the palette's bone. That keeps the artist's shading and changes only the thing the game is not free to leave in. The pack permits modification; it does not permit redistribution.
+
+Which is the second cost. **The repository is MIT and this art is not.** MIT grants redistribution and the pack's terms withhold it, so a reader who assumed one licence covered the whole tree would be wrong about the half that is not ours to grant. `LICENSE` now says so, and `apps/game/public/art/CREDITS.md` records what was taken, what was modified, and what was deliberately left out: the `.aseprite` source, the labelled documentation sheets, and three of the six colours. What ships is the subset this game draws with, inside the game, the way any game ships its art.
+
+**What D-029 got right and keeps.** The glyphs are load-bearing and stay in source: they are the shapes PILOT has to describe, they are held to the palette by a test, and `wave` and `knot` are deliberately confusable in a way no pack could know. The bodies stay too, redrawn from above, because the pack has no characters and because PILOT must not be amber and KEEPER must not have eyes.
+
+**Result.** 47 sheets, 17KB total, verified against the atlas on every build by `scripts/check-art.mjs`: a frame count that disagrees with the file does not throw at runtime, it hands out a frame that is half of two tiles and renders looking merely a bit wrong.
+
+---
+
+### D-035 The station is one room from above, not a section from the side
+
+**Date.** 2026-08-29
+
+**Decision.** `render/rooms.ts` and the side-on cutaway are replaced by `render/room.ts`: one chamber, drawn from above on the art pack's tile grid, with the whole 320x320 canvas to itself. This supersedes the drawing half of D-031. The resolution and the integer-scaling rule are untouched.
+
+**Options considered.**
+1. Keep the section and reskin only the props that read face-on.
+2. Draw the active room top-down and keep the other floors as silhouette strips.
+3. One room, top-down, and move progress off the canvas.
+
+Option 3. Option 1 was the small diff and the wrong one: a top-down tileset drawn into a side elevation looks borrowed, and the tell is unmissable once a figure drawn from the side is standing on a floor drawn from above. Option 2 kept a compromise nobody was asking for.
+
+**The section's real job was never drawing.** D-031 built it to answer three questions - which rooms this session has, which one we are in, which ones we have got out of - and those are progress, not geometry. They moved to the console as a floor list (`render/floors.ts`, which is the old `cutaway.ts` with its pixels removed and its tested logic intact). That is what freed the canvas.
+
+**What the extra room bought.** The Signal Room's six keys had twenty-four pixels each in a 106-pixel band; they are now full 16px buttons in two rows of three, each wearing its glyph on a plate above it. The Blind Panel's gauges stopped being bars and became columns of lamps, which is the one place this rewrite changed what a chamber *is* rather than how it is drawn: the puzzle is read aloud one number at a time, and a column of lit lamps is countable across a room in a way a bar's height is not.
+
+**Three bugs worth recording, all found by looking rather than by testing.** A door spread evenly across four tiles has a pillar in the middle of it, so doors are contiguous and there is now a test saying so. A caption is centred under its tile and is routinely wider than it, so `STRIKES` on a lamp one tile from the wall went through the wall; captions are clamped to the room, measured from the text object rather than estimated. And the decorative floor plates had to come out: in a game whose whole task is finding the channel-coded object, a floor pattern near the mechanism is one more rectangle for the eye to check.
+
+**Result.** 197 tests. All four chambers played and looked at in Chrome against a live worker.
+
+---
+
+### D-036 The heads-up display leaves the canvas for a DOM console
+
+**Date.** 2026-08-29
+
+**Decision.** The clock, the floor list, the CONCORD meter, the audible strip, the activity log, the notepad, the manifest plate and the legend are DOM, laid out as a three-bay station console around the canvas. The canvas draws the room and nothing else.
+
+**Why.** They were six panels packed into the seventy pixels above and below the section, at an estimated 4.8 pixels per character, with a test asserting the bands did not overlap. That test existed because the arrangement was one pixel from illegible. In the DOM the browser measures its own text, the panels are selectable and reachable by a screen reader, and the room gets the canvas back - which is most of what made the redesign possible at all.
+
+**The rule this had to clear.** Puzzle-critical visuals render to canvas, never to DOM, because a text node holding a glyph is a text node an agent with page access can scrape. Every panel was checked individually against it and each passes for one of three reasons: **public copy** (the prompt, the legend, the room's name, the clock, which floors this session has), **KEEPER's own** (the manifest is the registry it can enumerate for itself; a log line is a call it just made, arguments already stripped), or **`SHARED`/`AUDIBLE` by construction** (the notepad, and the sound both parties perceive). Everything `VISUAL` stayed on the canvas: the glyphs, the needle values, the cipher offset, the state of the manual page. `ui.ts` carries that audit in its header, because the next person to move a panel needs to know the test it has to pass.
+
+**A styling bug worth the paragraph.** Phaser sizes its canvas from the parent's *border* box, so a nine-sliced frame on the element it mounts into is a frame it cannot see: it scales to the full outer width, overflows the frame, and lands on a fractional 2.1x. Fractional scaling is the half-pixel shimmer D-031 exists to prevent, and it arrived here looking like a styling choice. The frame and the mount point are two elements now, and the stylesheet says why.
+
+**Result.** Entry chunk 15.6KB gzipped against a 400KB budget. The console and the room paint from the same model, on a callback rather than a poll, so the readouts beside the canvas and the room on it cannot disagree about a frame.
+
+
+---
+
+### D-037 A room is a shape resolved from its neighbours, and its walls carry its channel
+
+**Date.** 2026-08-29
+
+**Decision.** Every floor and wall tile is chosen from the tiles around it rather than from its own position. `atlas.ts` gains two derived tables, `FLOOR_BY_EDGE` and the wall table behind `wallFrame`; `room.ts` gains `tilesFor`, which turns a chamber's box and the pieces cut out of it into resolved tiles; `scenes.ts`'s `paintFloor` and `paintWalls` collapse into one `paintTiles` that does not know what shape it is drawing. Each chamber declares an outline and an accent channel, and devices animate between frames.
+
+**Options considered.**
+1. Fix the floor tiling and leave the rooms as rectangles.
+2. One room per canvas, with a real outline, a channel-coloured wall, and the pack's animations.
+3. The whole station as one connected floor plan, every chamber and corridor visible at once.
+
+Option 2. Option 3 is what the reference image actually shows, and it is the option D-035 already rejected under a different name: five rooms on a 320x320 canvas puts each chamber back to roughly 8x6 tiles, which is the band problem the top-down rewrite was done to escape. It only becomes possible if the canvas grows past the resolution D-031 pinned, and that is a bigger decision than a restyle.
+
+**The bug underneath the restyle.** `GROUND_FILL` picked between frames 24, 25, 33, 34 and 42 per tile, documented as five interior frames "that differ by where their rivets sit". They are not rivet variants. They are one coherent bolted-floor set whose bolts are drawn to meet at *shared* tile corners, so choosing between them per tile broke every bolt into a stray fragment and stippled every floor in the game. The five were never wrong to vendor; they were wrong to shuffle.
+
+**The tables are derived, not picked by eye.** Every frame of `shared/ground.png` was classified by sampling its own pixels for which of its four sides carries the pack's dark inset shading. That yields a complete sixteen-entry table with no duplicates, one frame per combination of edges, which is also the proof that the sheet holds exactly the cases a room built from rectangles can need. A frame index that is wrong by one is invisible in review and obvious on a screen, which is the reason not to guess.
+
+**The constraint the art imposes on the shapes.** `walls-out` is a nine-slice of *convex* corners; the pack ships no concave wall corner in any colour. So a notch cut into the middle of an edge has to turn the wall inward and back out using two convex corners butted together, which draws the border twice and reads as a crack in the building. Six candidate outlines were rendered and looked at before this was understood. **A notch may only be cut from a corner of the box**, and `room.test.ts` both asserts the rule over every chamber and demonstrates the doubled border a mid-edge notch produces, so the next person gets the reason rather than the rule.
+
+Two rows are load-bearing and are never cut: the bottom row, which is the floor PILOT walks across, and whichever row holds the door. Because the bottom row is spoken for, every notch is a top corner, and the four chambers are told apart by how wide and how deep their vestibule is rather than by where it is.
+
+**The walls carry the channel.** The pack ships its walls in all six colours and three were already vendored and loading unused. A room whose puzzle is only PILOT's to read is walled in amber, a room only KEEPER can act in is walled in cyan, and a room both parties work in is bone. This is the existing colour law applied to the building instead of to a device: it costs no art, it cannot disagree with the devices inside it, and it is the first thing on screen in a chamber.
+
+**Animation is a stepper, not a played animation.** A device walks its shown frame one step per 1/12s toward the frame the server says it is on. Phaser's animations were the native option and are the wrong one here: a played animation is a fixed sequence that has to be cancelled when the state changes underneath it, and a door caught halfway by a second update would either finish opening a door the server has shut or stall on a frame nobody chose. A stepper cannot disagree with the server - it is always walking toward the truth, and the worst case is arriving a frame late. A device seen for the first time is drawn at its real frame, so entering a room with a lever already thrown shows a thrown lever rather than one that throws itself on arrival.
+
+**The check.** `room.test.ts` proves that every device, every caption row and every floor plate in all four chambers stands on floor, that the bottom row is whole, that the outline closes with no gap, and that no wall tile is stranded away from the room. The device test caught a real regression while the shapes were being cut: the Signal Room's top strike lamp ended up inside its own chamfer.
+
+**Result.** 207 tests. Entry chunk 16.3KB gzipped against a 400KB budget; the art check still passes at 47 sheets.
+
+---
+
+### D-038 The station is one building, and the camera is what makes a room a room
+
+**Date.** 2026-08-29
+
+**Decision.** All five floors and the corridors between them are drawn as one connected floor plan in station coordinates. A Phaser camera frames the room the pair is standing in at 1x, and pulls back to half zoom to show the whole building. `render/plan.ts` is new and owns the building; `render/room.ts` keeps owning what is inside a room and still knows nothing about where that room is.
+
+**Options considered.**
+1. Grow the canvas so the whole plan is visible at 1x, always.
+2. Build the whole plan and put a camera on it.
+3. Draw the whole plan on the existing 320x320 canvas.
+
+Option 2. Option 3 is the reference image taken literally and it is the option D-035 already rejected under another name: five rooms on a 320x320 canvas puts each chamber at roughly 8x6 tiles, which is the band problem the top-down rewrite was done to escape. Option 1 keeps the rooms full size and costs the 320x320 pin D-031 made and the console layout around it; at the resulting 1x the 8px captions are genuinely hard to read. The camera keeps both: the mechanism is exactly the size it was, and the building exists.
+
+**The whole station is autotiled in one pass, and that is not an optimisation.** A corridor meeting a room is a junction. Resolved as two separate passes, each pass draws a wall the other one wanted open. Resolved together, the wall simply ends in a corner on each side of the opening, which is what a doorway is. So `tilesForCells` takes a set of cells rather than a rectangle, and `tilesFor` became a thin wrapper on it.
+
+**A wall carries the channel of the room it borders**, which is why a wall tile has a channel of its own rather than the room having one: in the station a single wall run has an amber room on one side and a corridor on the other, and the tile is the only thing that knows which side it is on.
+
+**The mistake worth recording.** The camera's wide shot was first keyed on the `TRANSITIONING` phase, which is exactly the moment it should fire and is a phase that never reaches a client. The worker settles it inside the same `reduce()` call that solved the chamber (doc 05 section 4, `settleTransition`), so it is a machine state and not a frame. Driving a live session found it; nothing else would have, because the code is correct and the beat simply never happens. `interlude()` has a `TRANSITIONING` case that has been dead for the same reason since D-035.
+
+What replaced it is better than what was intended. The pair's room *changing* is the same event and it is one the client can see, so the camera holds the building for 1.6 seconds whenever the floor changes: the walk between chambers is a walk across a floor plan instead of a caption. And **holding M pulls back to the building at any time.** That is on the human's side of the split on purpose, and it is the thesis in one keystroke: PILOT can step back and look at the station, and there is no tool that lets KEEPER do the same. It is not a leak, because the building's shape is the same for every seed and a room the pair has not reached is an empty shell.
+
+**What the tests carry.** Every number in `STATION_LAYOUT` was worked out by hand across five room sizes and four corridors, and hand arithmetic over that many coordinates is wrong about once per attempt. `plan.test.ts` floods the floor to prove each mode's station is one connected space and that every floor is reachable on foot from the Airlock, checks that no room or corridor overlaps another (against the rooms' full boxes, so a corridor into a chamfered corner is caught), that every device and caption still lands on floor once its room has been moved into the building, and that both buildings fit what the wide shot can show. A corridor off by one row still renders: it draws as a stub beside a sealed room, and the only way to notice by looking is to play far enough to be trapped.
+
+**Half zoom rather than a fitted fraction.** The canvas is scaled to a whole multiple of 320 (D-031), so at the usual 2x a half puts exactly one source pixel on one device pixel. The layouts are authored to fit inside that rather than the zoom being fitted to the layouts, because a fractional zoom is the half-pixel shimmer D-031 exists to prevent.
+
+**Known and left.** The Airlock's and the Concord Lock's doors are drawn in their rooms' north walls, which in the building faces the space outside rather than a corridor. It is not a regression - the single-room view has always drawn the door against the void - and it is only visible in the wide shot. Aligning corridors to doors means redesigning a layout whose connectivity is now proved, so it is a deliberate cosmetic debt rather than an oversight.
+
+**Result.** 600 tests. Entry chunk 16.7KB gzipped against a 400KB budget. Driven in Chrome 151 against a live worker: the Airlock and the Signal Room framed and lit, the floor plan on M, and the walk between the two chambers.

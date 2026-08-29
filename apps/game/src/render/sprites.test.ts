@@ -103,7 +103,13 @@ describe("the glyph sprites", () => {
 });
 
 describe("the bodies", () => {
-  it("are 16 by 24, which reads as a person rather than a mascot", () => {
+  it("is drawn from above, like the floor they stand on", () => {
+    // The one tell that gives a reskin away is a side elevation standing on a
+    // floor plan, so the bodies are held to the tile grid the room uses.
+    expect(BODY_HEIGHT).toBe(SPRITE_SIZE);
+  });
+
+  it("are one tile square, on the same grid the room is drawn on", () => {
     for (const [name, sprite] of [
       ["PILOT", PILOT_SPRITE],
       ["KEEPER", KEEPER_SPRITE],
@@ -116,7 +122,7 @@ describe("the bodies", () => {
   it("does not paint PILOT in the channel colour that means 'only PILOT sees this'", () => {
     // The human is not a fact only the human can perceive. Using amber for the
     // body would make the legend lie the first time somebody checked it
-    // against the screen. The chest lamp is the one amber thing, and it is a
+    // against the screen. The helmet lamp is the one amber thing, and it is a
     // lamp.
     const bodyColours = Object.entries(PILOT_SPRITE.ink)
       .filter(([char]) => PILOT_SPRITE.rows.join("").split(char).length - 1 > 24)

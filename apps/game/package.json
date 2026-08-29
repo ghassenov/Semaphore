@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node scripts/check-bundle.mjs",
+    "build": "node scripts/check-art.mjs && vite build && node scripts/check-bundle.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },

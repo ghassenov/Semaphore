@@ -109,7 +109,14 @@ async function start(root: HTMLElement): Promise<void> {
   // The engine, on demand. `watch` replays the latest frame to a subscriber
   // that arrives late, so re-registering here costs one call and closes the
   // window in which frames would otherwise have been dropped on the floor.
-  station = await startStation(shell.stage, client, archiveOrigin ? [archiveOrigin] : []);
+  station = await startStation(
+    shell.stage,
+    client,
+    archiveOrigin ? [archiveOrigin] : [],
+    // The console paints from the same model the scenes read, so the readouts
+    // beside the canvas and the room on it can never disagree about the frame.
+    (model) => shell.update(model),
+  );
   socket.watch((view) => station?.setView(view));
 
   await director.mountEntry();

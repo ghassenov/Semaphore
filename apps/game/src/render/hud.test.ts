@@ -1,34 +1,30 @@
 /**
- * The HUD's arithmetic.
+ * The console's arithmetic.
  *
  * Small functions, but every one of them is a thing that can be wrong in a way
  * nobody notices by looking at the screen: a clock that reads zero a second
  * early, a meter that fills instead of emptying, a log that drops the newest
  * line instead of the oldest. Those are exactly the bugs a playtest blames on
  * the puzzle.
+ *
+ * The band-overlap and truncation suites that used to be here went with the
+ * canvas HUD (D-036). Both existed because six panels were being packed into
+ * seventy pixels at an estimated character width; the console is DOM now, so
+ * the browser measures its own text and CSS decides where a line stops.
  */
 
 import { describe, expect, it } from "vitest";
 import { CHANNEL_MARKER, PALETTE } from "./palette.js";
-import { CANVAS, FRAME, SECTION_BOTTOM, SECTION_TOP } from "./cutaway.js";
 import {
-  AUDIBLE_HEIGHT,
-  AUDIBLE_Y,
   LEGEND,
-  LEGEND_Y,
-  LINE_HEIGHT,
   LOG_LINES,
-  LOG_WIDTH,
   MANIFEST_LINES,
-  METER_HEIGHT,
-  METER_Y,
-  PANEL_Y,
-  charsThatFit,
+  PAD_LINES,
   formatCall,
+  formatNote,
   formatTimer,
   meterFill,
   pushLine,
-  truncate,
 } from "./hud.js";
 
 describe("formatTimer", () => {
@@ -132,63 +128,30 @@ describe("the palette", () => {
   });
 });
 
-describe("truncate", () => {
-  it("leaves a line that fits alone", () => {
-    expect(truncate("pull_lever ok 41ms", LOG_WIDTH)).toBe("pull_lever ok 41ms");
-  });
-
-  it("cuts a line that would run into the panel beside it", () => {
-    // `start full` answers with a paragraph of briefing written for an agent.
-    // Left whole it runs straight through the manifest plate and makes both
-    // unreadable, which is not a cosmetic problem at 8px.
-    const briefing =
-      "start full: THE AIRLOCK. A cramped chamber, ankle-deep in cold water. Three levers.";
-    const cut = truncate(briefing, LOG_WIDTH);
-    expect(cut.length).toBeLessThanOrEqual(charsThatFit(LOG_WIDTH));
-    expect(cut.endsWith("\u2026")).toBe(true);
-  });
-
-  it("never returns a string longer than the box it was measured against", () => {
-    // Including the degenerate box with room for one character, where the
-    // ellipsis is the whole of the output.
-    for (const width of [1, 5, 20, LOG_WIDTH]) {
-      expect(truncate("pull_lever ok 41ms and then some", width).length).toBeLessThanOrEqual(
-        charsThatFit(width),
-      );
-    }
+describe("the notepad", () => {
+  it("marks each line with its writer, because the pad is the shared surface", () => {
+    expect(formatNote("KEEPER", "third lever is the spiral")).toBe("K third lever is the spiral");
+    expect(formatNote("PILOT", "gauge two reads four")).toBe("P gauge two reads four");
   });
 });
 
-describe("the HUD's vertical budget", () => {
-  /** Every band, as a half-open [top, bottom) pair, in drawing order. */
-  const bands: readonly (readonly [string, number, number])[] = [
-    ["top bar", FRAME, METER_Y],
-    ["meter", METER_Y, METER_Y + METER_HEIGHT],
-    ["meter label", METER_Y + METER_HEIGHT + 1, SECTION_TOP],
-    ["section", SECTION_TOP, SECTION_BOTTOM],
-    ["audible", AUDIBLE_Y - 1, AUDIBLE_Y + AUDIBLE_HEIGHT + 1],
-    ["panels", PANEL_Y, PANEL_Y + LINE_HEIGHT + 2 + LOG_LINES * LINE_HEIGHT],
-    ["legend", LEGEND_Y, LEGEND_Y + LINE_HEIGHT],
-  ];
-
-  it("stacks every band without one landing on another", () => {
-    // At 320x180 two bands a few pixels apart do not look cramped, they look
-    // like one illegible band. This is the only way to notice before someone
-    // takes a screenshot.
-    for (let i = 1; i < bands.length; i += 1) {
-      const [name, top] = bands[i]!;
-      const [previous, , bottom] = bands[i - 1]!;
-      expect(top, `${name} overlaps ${previous}`).toBeGreaterThanOrEqual(bottom);
+describe("the console's running lists", () => {
+  it("keeps enough of each to be worth glancing at", () => {
+    // A cap rather than a scrollbar, so all three have to hold more than the
+    // one line that would make them useless mid-sentence.
+    for (const [name, lines] of [
+      ["log", LOG_LINES],
+      ["pad", PAD_LINES],
+      ["manifest", MANIFEST_LINES],
+    ] as const) {
+      expect(lines, name).toBeGreaterThan(1);
     }
   });
 
-  it("fits inside the canvas, frame included", () => {
-    for (const [name, , bottom] of bands) {
-      expect(bottom, `${name} runs off the canvas`).toBeLessThanOrEqual(CANVAS - FRAME);
-    }
-  });
-
-  it("shows as many manifest rows as log rows, so the two panels line up", () => {
-    expect(MANIFEST_LINES).toBe(LOG_LINES);
+  it("holds every tool the registry can carry on the manifest at once", () => {
+    // The plate exists to prove the toolchange animation is not a lie, and a
+    // plate that elides a tool under-reports KEEPER's faculties, which is
+    // worse than no plate at all. Twelve is above the largest tier.
+    expect(MANIFEST_LINES).toBeGreaterThanOrEqual(12);
   });
 });
