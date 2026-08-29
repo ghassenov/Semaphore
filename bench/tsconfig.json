@@ -1,0 +1,19 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    // `ablation.ts` is a Node command-line program: it prints a table and
+    // writes its raw logs to disk. `console` is the one web API it needs and
+    // the base configuration's ES2022 library does not declare it. `process`
+    // and `node:fs` are declared where they are used, following the pattern
+    // `tests/` established, rather than pulling `@types/node` in for four
+    // symbols.
+    "lib": ["ES2022", "DOM"],
+
+    // `ablation.ts` is run directly by `node --experimental-strip-types`,
+    // which resolves import specifiers literally and does not rewrite a `.js`
+    // extension back to the `.ts` file that exists. So sibling imports carry
+    // their real extension, which needs this flag and is safe under `noEmit`.
+    "allowImportingTsExtensions": true
+  },
+  "include": ["."]
+}

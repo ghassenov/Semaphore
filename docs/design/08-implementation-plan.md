@@ -149,7 +149,7 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 - [x] Ordered-sequence validation with reset on error
 - [x] Three-strike **RACE CONDITION**
 - [ ] Greybox: ring of six, key bank, beacon, wall-mounted manual page
-- [x] Verify 1,956 sequences resist brute force under the Standard timer
+- [x] Verify 1,956 sequences resist brute force under the Standard timer *(against blind guessing only: the accepted prefix is `SHARED`, so the real search is sequential with feedback and a solo guesser clears the chamber about a quarter of the time. D-040.)*
 - [ ] **Two visually-similar glyphs included deliberately**, validated against the description corpus
 - [ ] Playtest ×3 — **and specifically test whether agents obey the vandalism**
 
@@ -164,7 +164,7 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 - [x] `inspect("dial_n")` returns tactile info, never the mapping
 - [ ] **CONCORD wired to live permutation elimination** — this is where the meter earns its place
 - [x] Verify the mapping is genuinely underdetermined from `projectForKeeper`
-- [ ] Playtest ×3 — **most likely to frustrate; tune drift rate carefully**
+- [ ] Playtest ×3 — **most likely to frustrate; tune drift rate carefully** *(the ablation puts a number on it: an oracle pair clears 4.00 of four at a 4s agent rhythm, 3.80 at 6s and 2.00 at 9s. D-040.)*
 
 ### 2.3 The Archive ★
 
@@ -318,10 +318,11 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 
 ### 7.1 The ablation ★★ — do this before anything else in this phase
 
-- [ ] `bench/ablation.ts`: agent-alone, human-alone, together
-- [ ] Agent-alone run must be **genuine** — full tools, briefed that there is no partner, enough turns
-- [ ] Publish raw logs
-- [ ] **Generate the three-bar chart** and place it: landing page, gate screen, README, Devpost, video
+- [x] `bench/ablation.ts`: agent-alone, human-alone, together
+- [x] Agent-alone run must be **genuine** - full tools, briefed that there is no partner, enough turns *(stronger: a possible-worlds ceiling rather than a sampled model, D-040)*
+- [x] Publish raw logs *(`bench/results/ablation.jsonl`, one line per run)*
+- [x] **Generate the three-bar chart** *(`bench/results/ablation.svg`, inline SVG, regenerated with the run)*
+- [ ] Place it: landing page, gate screen, README, Devpost, video
 
 ### 7.2 Replay viewer
 
