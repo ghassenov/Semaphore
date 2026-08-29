@@ -66,8 +66,24 @@ import {
   WebGLRenderer,
 } from "three";
 import type { PilotView, SessionMode } from "@semaphore/protocol";
-import { ARCHIVE_SCREEN, interlude, roomPlan, type RoomPlan } from "./chamber.js";
-import { DRIFT_METRES, DRIFT_PERIOD_MS, SHOT_MS, WALK_MS, shotFor, type Shot } from "./camera.js";
+import {
+  ARCHIVE_SCREEN,
+  interlude,
+  lampReveal,
+  nearestFixture,
+  roomPlan,
+  type Fixture,
+  type RoomPlan,
+} from "./chamber.js";
+import {
+  DRIFT_METRES,
+  DRIFT_PERIOD_MS,
+  SHOT_MS,
+  WALK_MS,
+  inspectShot,
+  shotFor,
+  type Shot,
+} from "./camera.js";
 import {
   FLOOR_ACCENT,
   cellKey,
@@ -89,11 +105,17 @@ import type { StationModel } from "./station.js";
 /** How thick a floor slab is, in metres. */
 const SLAB = 0.3;
 
-/** How far PILOT can walk across a room, as a fraction of its width. */
-const WALK_SPAN = 0.72;
+/**
+ * How much of a room PILOT can walk, as a fraction of its width and depth.
+ *
+ * Inset from the walls on every side, so a body never stands inside the
+ * masonry and never occludes the mechanism it is walking up to.
+ */
+const WALK_SPAN = 0.74;
+const WALK_SPAN_Z = 0.6;
 
 /** How fast PILOT walks, in fractions of the room per second. */
-const WALK_SPEED = 0.32;
+const WALK_SPEED = 0.34;
 
 /** The largest device-pixel ratio worth rendering at. */
 const MAX_DPR = 2;
@@ -339,7 +361,28 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
   const lookAt = new Vector3();
   let wasOn: FloorId | null | undefined;
   let walkUntil = 0;
-  let walk = 0.3;
+  /**
+   * Where PILOT stands, as a fraction of the walkable floor on each axis.
+   *
+   * **Two axes, and the second one is not a nicety.** With movement on `x`
+   * alone, every mechanism in the game is on a wall PILOT can never approach:
+   * the levers, the gauges, the ring and the door are all at the back, and the
+   * lamp could not reach any of them from the only line a body was allowed to
+   * stand on. Walking existed and could not do the one thing walking is for.
+   */
+  let walk = 0.35;
+  let walkZ = 0.7;
+
+  /**
+   * Where PILOT is standing, in station metres.
+   *
+   * One value, written once a frame and read by the lamp, the camera's follow
+   * and the lean-in. Three separate derivations of "where is PILOT" is exactly
+   * the shape of bug that put the camera in the wrong shot for a whole tour.
+   */
+  let pilotAt = { x: 0, z: 0 };
+  /** What the lean-in is currently framing, so releasing the key returns. */
+  let leaning: Fixture | null = null;
 
   const held = new Set<string>();
   const onKeyDown = (event: KeyboardEvent): void => {
@@ -597,6 +640,31 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
       if (wasOn !== undefined && wasOn !== null && floor !== null) walkUntil = now + WALK_MS;
       wasOn = floor;
     }
+    // PILOT walks first, because everything after it measures against where
+    // they ended up: the lamp resolves what is near them, the camera leans
+    // toward them, and the lean-in frames whatever they are standing at.
+    const acrossKeys =
+      (held.has("d") || held.has("arrowright") ? 1 : 0) -
+      (held.has("a") || held.has("arrowleft") ? 1 : 0);
+    // Toward the back wall is away from the camera, which is negative z, so
+    // `w` and the up arrow walk into the room.
+    const intoKeys =
+      (held.has("s") || held.has("arrowdown") ? 1 : 0) -
+      (held.has("w") || held.has("arrowup") ? 1 : 0);
+    const pace = (deltaMs / 1000) * WALK_SPEED;
+    walk = Math.max(0, Math.min(1, walk + acrossKeys * pace));
+    walkZ = Math.max(0, Math.min(1, walkZ + intoKeys * pace));
+
+    const standing = floor === null ? null : placementOf(mode, floor);
+    if (standing !== null && plan !== null) {
+      const span = plan.size.width * WALK_SPAN;
+      const depth = plan.size.depth * WALK_SPAN_Z;
+      pilotAt = {
+        x: standing.x - span / 2 + walk * span,
+        z: standing.z - depth / 2 + walkZ * depth,
+      };
+    }
+
     // Whether the *shot* is wide, not whether one was asked for.
     //
     // Two different things had been deciding this separately: the camera used
@@ -606,8 +674,30 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
     // anybody saw of the game was a black rectangle. One value now, read from
     // the shot that will actually be used.
     const asked = held.has("m") || now < walkUntil;
-    const shot = shotFor(mode, view?.phase ?? "ENTRY", floor, asked, aspect());
-    const wide = shot.floor === null;
+
+    // Lean in: hold E near a mechanism and the camera goes and looks at it.
+    // The one camera move the human drives, and the reason a glyph is a thing
+    // you can describe rather than a thing you can merely see.
+    const wantsLean = held.has("e") && !asked;
+    leaning =
+      wantsLean && plan !== null && standing !== null
+        ? nearestFixture(plan, pilotAt.x - standing.x, pilotAt.z - standing.z)
+        : null;
+
+    let shot: Shot;
+    if (leaning !== null && standing !== null) {
+      shot = inspectShot(
+        {
+          x: standing.x + leaning.at.x,
+          y: leaning.at.y,
+          z: standing.z + leaning.at.z,
+        },
+        aspect(),
+      );
+    } else {
+      shot = shotFor(mode, view?.phase ?? "ENTRY", floor, asked, aspect(), pilotAt);
+    }
+    const wide = shot.floor === null && leaning === null;
 
     // The wide shot is a model on a table and needs to be lit like one. In a
     // room the ambient is kept low on purpose, so that the practical and the
@@ -619,6 +709,20 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
 
     syncFixtures(plan, floor, mode);
     dressRoom(plan);
+    // PILOT's lamp. Detail resolves near it and fades beyond it, which is what
+    // makes crossing the room the human's actual job (doc 06 section 4). The
+    // fixture's own coordinates are room-local, so the lamp is measured in the
+    // same space rather than converting the world back.
+    if (standing !== null) {
+      const localX = pilotAt.x - standing.x;
+      const localZ = pilotAt.z - standing.z;
+      for (const fixtureView of fixtures.values()) {
+        const at = fixtureView.at;
+        fixtureView.reveal(lampReveal(localX, localZ, { x: at.x, y: 0, z: at.z }));
+      }
+    } else {
+      for (const fixtureView of fixtures.values()) fixtureView.reveal(1);
+    }
     for (const fixtureView of fixtures.values()) fixtureView.step(deltaMs, now);
 
     // The room's own practical, and the moon's shadow frustum, follow the pair.
@@ -665,21 +769,13 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
       }
     }
 
-    // PILOT walks. The whole of the human's physical agency: they can cross the
-    // room and look. Every mechanism in the station is reachable only by
-    // KEEPER, through a tool, and that is the game rather than an unfinished
-    // control scheme.
-    const direction =
-      (held.has("d") || held.has("arrowright") ? 1 : 0) -
-      (held.has("a") || held.has("arrowleft") ? 1 : 0);
-    walk = Math.max(0, Math.min(1, walk + direction * (deltaMs / 1000) * WALK_SPEED));
-
+    // PILOT and KEEPER are placed from the position walked out above, rather
+    // than from a second derivation of it.
     if (floor !== null && plan !== null) {
       const at = placementOf(mode, floor);
       if (at) {
-        const span = plan.size.width * WALK_SPAN;
         pilot.root.visible = true;
-        pilot.root.position.set(at.x - span / 2 + walk * span, 0, at.z + plan.size.depth * 0.3);
+        pilot.root.position.set(pilotAt.x, 0, pilotAt.z);
         // KEEPER stands in the east wall of whichever room the pair is in. It
         // is not *in* the room: it is behind the station's panels, reaching
         // into every cavity at once. They can see each other and reach each

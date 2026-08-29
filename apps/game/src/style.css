@@ -366,6 +366,81 @@ body {
 }
 
 /*
+ * Fullscreen, on the viewport it acts on.
+ *
+ * Quiet until the pointer is near it: the room is the thing being looked at,
+ * and a control sitting permanently over it is one more object competing with
+ * the mechanism. It is always reachable by keyboard regardless.
+ */
+.fullscreen {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  z-index: 2;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+
+.viewport:hover .fullscreen,
+.fullscreen:focus-visible {
+  opacity: 1;
+}
+
+/*
+ * In fullscreen the viewport is the whole screen, so the aspect and the height
+ * ceiling both have to come off: they exist to stop the room crowding the
+ * console, and in fullscreen there is no console to crowd.
+ */
+.viewport.is-fullscreen {
+  aspect-ratio: auto;
+  max-height: none;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+}
+
+/*
+ * PILOT's keyboard.
+ *
+ * A list rather than a sentence. Four controls buried in one line of prose is
+ * how the most important of them - that walking is what resolves detail - went
+ * unread.
+ */
+.keys {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.3rem 0.7rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.74rem;
+}
+
+.keys li {
+  display: contents;
+}
+
+.keys kbd {
+  padding: 0.1rem 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--lamp-deep) 90%, transparent);
+  border-radius: 2px;
+  background: #17110a;
+  color: var(--lamp);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.keys span {
+  color: var(--pearl-dim);
+  align-self: center;
+}
+
+/*
  * The caption band over the room.
  *
  * DOM, and allowed to be: these are phase lines derived from `view.phase`,

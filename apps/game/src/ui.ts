@@ -379,6 +379,21 @@ const PILOT_ACTIONS: readonly {
   },
 ];
 
+/**
+ * PILOT's keyboard, as a list.
+ *
+ * `E` is the one worth putting first. Until the lamp resolved detail by
+ * proximity, walking moved a token and nothing else, and the honest complaint
+ * about it was that position did not mean anything. It does now: this list is
+ * where a player finds that out.
+ */
+const PILOT_KEYS: readonly (readonly [string, string])[] = [
+  ["W A S D", "walk the room, in any direction"],
+  ["E", "lean in and study what you are standing at"],
+  ["M", "step back and see the whole station"],
+  ["F", "fullscreen"],
+] as const;
+
 /** The session lengths, and what each one is, for the button's tooltip. */
 const BEGIN_MODES: readonly (readonly [string, string])[] = [
   ["full", "Four chambers and the Archive. The whole shift."],
@@ -426,6 +441,54 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   // (`render/camera.ts`), and a wrapper that sized itself to its own content
   // would re-frame the shot every time a panel below it grew by a line.
   const viewport = el("div", { class: "viewport" });
+
+  /*
+   * Fullscreen.
+   *
+   * Worth a control of its own rather than leaving it to the browser's own
+   * chrome, for a reason specific to this game: the room is where every
+   * `VISUAL` fact lives, and PILOT's whole job is reading detail off it and
+   * getting it across in words. A bigger viewport is not comfort, it is the
+   * human's half of the puzzle getting easier to do.
+   *
+   * The button sits on the viewport rather than in a panel because that is what
+   * it acts on, and it reports its own state: a control that says "full screen"
+   * while you are already in it is a control nobody trusts.
+   */
+  const fullscreen = el(
+    "button",
+    { type: "button", class: "fullscreen", title: "Fullscreen (F)" },
+    "Fullscreen",
+  );
+  const toggleFullscreen = (): void => {
+    if (document.fullscreenElement === viewport) {
+      void document.exitFullscreen().catch(() => {
+        /* Denied or already out. The button's label is corrected below. */
+      });
+      return;
+    }
+    void viewport.requestFullscreen().catch(() => {
+      /* Some browsers refuse outside a user gesture; nothing to recover. */
+    });
+  };
+  fullscreen.addEventListener("click", toggleFullscreen);
+  document.addEventListener("fullscreenchange", () => {
+    const inside = document.fullscreenElement === viewport;
+    fullscreen.textContent = inside ? "Exit fullscreen" : "Fullscreen";
+    viewport.classList.toggle("is-fullscreen", inside);
+  });
+  // F as well as the button. PILOT's hands are already on the keyboard for
+  // walking, and reaching for a mouse to make the room bigger is a reach away
+  // from the thing being looked at.
+  const onKey = (event: KeyboardEvent): void => {
+    if (event.key.toLowerCase() !== "f") return;
+    const target = event.target;
+    // Never while typing on the shared notepad.
+    if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) return;
+    toggleFullscreen();
+  };
+  globalThis.addEventListener("keydown", onKey);
+  viewport.append(fullscreen);
 
   // The start card, over the room, until there is a session.
   const launch = el("div", { class: "launch" });
@@ -479,13 +542,25 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   // The two things PILOT does with the keyboard rather than with a button. Both
   // belong in this panel for the same reason the buttons do: they are the
   // human's body, and no tool in the manifest reaches them.
-  const handsNote = el(
-    "p",
-    { class: "note" },
-    "Only you can do these; none is a tool your agent can call. A and D walk you across " +
-      "the room. Hold M to step back and see the whole station.",
+  // What the human's hands actually are. Spelled out as a list rather than a
+  // sentence, because the first build buried four controls in one line of prose
+  // and the most important of them - that walking changes what you can read -
+  // was not mentioned at all.
+  const keys = el("ul", { class: "keys" });
+  for (const [key, what] of PILOT_KEYS) {
+    const row = el("li", {});
+    row.append(el("kbd", {}, key), el("span", {}, what));
+    keys.append(row);
+  }
+  controls.body.append(keys);
+  controls.body.append(
+    el(
+      "p",
+      { class: "note" },
+      "None of these is a tool your agent can call. Your lamp is the only thing that " +
+        "resolves detail: walk to a mechanism to read it.",
+    ),
   );
-  controls.body.append(handsNote);
 
   underdeck.append(station.section, controls.section);
   left.append(viewport, audible, underdeck);
@@ -636,6 +711,7 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
     },
 
     dispose() {
+      globalThis.removeEventListener("keydown", onKey);
       root.replaceChildren();
     },
   };
