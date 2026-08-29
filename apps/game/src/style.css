@@ -336,7 +336,19 @@ body {
  */
 .viewport {
   position: relative;
-  aspect-ratio: 16 / 10;
+  /*
+   * A shape, and a ceiling on it.
+   *
+   * The aspect is a design decision: 16:9 gives the Concord Lock its height and
+   * still reads as a shot rather than a strip. The `max-height` is what stops a
+   * wide window pushing the console's own controls off the bottom of a laptop
+   * screen, and it is safe to break the ratio because the renderer measures
+   * this element rather than assuming one: `camera.ts` fits the room against
+   * whatever aspect it is handed, which is the same code path a tall phone
+   * takes.
+   */
+  aspect-ratio: 16 / 9;
+  max-height: 66vh;
   min-height: 0;
   overflow: hidden;
   border: var(--edge);

@@ -597,7 +597,17 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
       if (wasOn !== undefined && wasOn !== null && floor !== null) walkUntil = now + WALK_MS;
       wasOn = floor;
     }
-    const wide = held.has("m") || now < walkUntil;
+    // Whether the *shot* is wide, not whether one was asked for.
+    //
+    // Two different things had been deciding this separately: the camera used
+    // `shotFor`, which also pulls back when there is no room to be in, and the
+    // lighting used the request. So the lobby framed the whole station and lit
+    // it as though the pair were standing in a chamber, and the first thing
+    // anybody saw of the game was a black rectangle. One value now, read from
+    // the shot that will actually be used.
+    const asked = held.has("m") || now < walkUntil;
+    const shot = shotFor(mode, view?.phase ?? "ENTRY", floor, asked, aspect());
+    const wide = shot.floor === null;
 
     // The wide shot is a model on a table and needs to be lit like one. In a
     // room the ambient is kept low on purpose, so that the practical and the
@@ -714,7 +724,7 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
       caption.dataset.shown = "false";
     }
 
-    frame(shotFor(mode, view?.phase ?? "ENTRY", floor, wide, aspect()), now);
+    frame(shot, now);
     renderer.render(scene, camera);
     globalThis.requestAnimationFrame(tick);
   }
