@@ -18,6 +18,7 @@ const VIEW: PilotView = {
   remainingMs: 60_000,
   retries: 0,
   facts: { glyphByLever: { lever_a: "spiral" }, doorOpen: false },
+  ghost: null,
   notes: [],
   mode: "full",
 };
