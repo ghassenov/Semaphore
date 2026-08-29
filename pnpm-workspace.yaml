@@ -2,6 +2,7 @@ packages:
   - apps/*
   - packages/*
   - tests
+  - bench
 
 # wrangler pulls these and both need postinstall scripts to place a binary.
 # Listed explicitly so an install never prompts and CI stays non-interactive.
