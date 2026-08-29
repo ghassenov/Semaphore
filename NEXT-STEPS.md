@@ -12,8 +12,8 @@ It answers three questions and only three: where the repo is right now, what to 
 |---|---|
 | **Last updated** | 2026-08-29, Ahmed Saad |
 | **Spike** | **Run** against Chrome 151, 2026-08-28. Doc 11 filled. Three findings, D-024. ChatGPT's in-app browser still untested. |
-| **Branch** | `feat/archive-beat`, off `main` at `b185fd6`, **not pushed** |
-| **Pipeline** | Green: 621 tests, typecheck, lint, format, both `vite build`s plus the bundle budget and the art check, real `wrangler deploy --dry-run` |
+| **Branch** | `bench/ablation`, off `main` at `abbca5f` |
+| **Pipeline** | Green: 625 tests, typecheck, lint, format, both `vite build`s plus the bundle budget and the art check, real `wrangler deploy --dry-run` |
 | **Played** | A full session, end to end, in Chrome 151 against a live `wrangler dev`: all four chambers, the Archive, the finale. The registry ends genuinely empty. |
 | **Archive** | **Both halves built** (D-039). KEEPER calls `read_station_log`; PILOT watches the same log on a monitor in a room of its own. `pilotTrack` is the mirror of `keeperEntries` and the exclusion is asserted in both directions, on the projection and again on the wire. Looked at in Chrome across the whole recording: the ghost walks into the Signal Room, grips the release bar, and the tape runs out. |
 | **Interface** | **Rebuilt** (D-034 to D-038). Vendored art pack, a three-bay DOM console, and the station drawn as **one connected floor plan**: five rooms and the corridors between them, autotiled in a single pass, each room walled in its own channel colour (D-037, D-038). A camera frames the room the pair is in at 1x, holds the whole building for the walk between chambers, and pulls back whenever PILOT holds **M**. Driven in Chrome 151 against a live worker: the Airlock and the Signal Room framed and lit, the floor plan on M, and the walk between them. **A full session has now been played end to end in Chrome 151 against a live worker**: all four chambers, the Archive, the finale and the ending. It found four rendering bugs no unit test could (see the 2026-08-29 entry in [docs/lessons-learned.md](docs/lessons-learned.md)); all four are fixed. |
@@ -21,6 +21,7 @@ It answers three questions and only three: where the repo is right now, what to 
 | **Verify with** | `pnpm install && pnpm typecheck && pnpm lint && pnpm test && pnpm build` |
 | **Run it** | `cd apps/worker && npx wrangler dev` in one shell, `cd apps/game && pnpm dev` in another. Vite proxies `/session` to `127.0.0.1:8787`, WebSocket included. For the cross-origin path, see `apps/archive/CLAUDE.md`. |
 | **Bundle** | Entry **16.8KB** gzipped of a 400KB budget; the archive origin is **2.2KB**. Phaser is a separate 358KB chunk, fetched only when a shift starts (D-026). The art pack is **17KB** of static files, fetched by the scenes and not by the entry. |
+| **Ablation** | **Run and published** (D-040). Three conditions, twenty fixed seeds, no model and no tokens: the solo condition is a uniform draw from `consistentWorlds` at every step, which beats any real agent, so the gap is a lower bound. At a 6s agent rhythm: **together 3.80 of four and 90% escapes, agent alone 1.25 and no escapes, PILOT alone 0.00.** Raw logs, chart and report in `bench/results/`. |
 | **Cloudflare** | Logged in. D1 database `semaphore-sessions` provisioned and migrated, local and remote. |
 
 ### What exists
@@ -56,7 +57,9 @@ It answers three questions and only three: where the repo is right now, what to 
 | `apps/worker/src/cors.ts` | The origin allowlist, applied in the router so no route can forget it. `ALLOWED_ORIGINS` is a var; empty means same-origin only. |
 | `packages/protocol/src/tools.ts` | The two document tools, declared once for the two origins that register them, plus the bridge's message shapes. |
 | `tests/cross-origin-delegation.ts` | The browser proof. Node plays a session, Chrome follows, and the registry is read out of the browser at every beat. |
-| `bench/` | Rules file only, no code. |
+| `bench/session.ts` | **Pure-ish.** Plays a whole session through `reduce()` against a virtual clock, under one of three conditions. The only thing the conditions vary is the hypothesis the executor acts on. |
+| `bench/ablation.ts` | The run: twenty seeds, three conditions, plus a pacing sweep of the cooperative ceiling. Writes `results/ablation.{jsonl,svg,md}`. `pnpm --filter @semaphore/bench ablation`. |
+| `bench/results/` | Committed and regenerated, never hand-edited. |
 
 ---
 
@@ -115,7 +118,31 @@ beat, in about a minute. Four rendering defects in the interface pass and three
 more in the Archive pass were invisible to six hundred unit tests and obvious
 in a frame. Servers and flags are in the header of that file.
 
-### 4. Deploy the archive origin as its own Pages project
+### 4. Decide what to do about the two things the ablation found
+
+Numbers and reasoning in D-040. Neither is a bug, which is why both are a
+decision rather than a task.
+
+**Chamber II falls off a cliff at a slow agent rhythm**: an oracle pair clears
+4.00 of four at 4s between calls, 3.80 at 6s and **2.00 at 9s**, because the
+gauges drift and the win condition is simultaneous. Do not tune the drift rate
+until doc 11 sections 6 and 7 carry measured round trips - the right value is a
+function of the pace, and the pace is still guessed. Then re-run the ablation.
+
+**The Signal Room's 1,956 figure holds against blind guessing only.** The
+accepted prefix is `SHARED`, so a wrong key never un-confirms an accepted one and
+the real search is sequential with feedback: a solo guesser clears the chamber
+about a quarter of the time. The tag is correct; whether the chamber should be
+that soft is a design call.
+
+### 5. Place the ablation chart
+
+`bench/results/ablation.svg` exists and nothing points at it. Doc 08 phase 7.1
+wants it on the landing page, the gate screen, the README, Devpost and in the
+video. Dependency-free inline SVG at 520x300. The gate screen is Phase 4 and
+unbuilt, so the README is the cheap one to do first.
+
+### 6. Deploy the archive origin as its own Pages project
 
 The code is done and proved locally; what is not done is the second Cloudflare
 Pages project and the preview-deploy wiring for it. Until that exists the
@@ -125,6 +152,8 @@ ChatGPT's in-app browser both need. `VITE_ARCHIVE_ORIGIN` and the worker's
 
 ## Things that will bite you
 
+- **A chamber's solve does not always change `machine.chamber`.** The Blind Panel's solve moves the phase to `ARCHIVE` and leaves the chamber name in place, which is what D-025 means by the chamber outliving the room. Anything watching for "a chamber was cleared" has to watch the phase, not the name; the ablation reported Chamber II at 0% for an afternoon because of it.
+- **Chamber II is solved by aiming ahead of the drift, never at the target.** A greedy solver chases its own tail: it sets a gauge, the gauge falls, it sets it again, forever. `bench/session.ts` plans the whole rotation order and over-shoots each one by the drift due before the last lands, highest target last, because a needle can be aimed early but never above the top of the scale.
 - **A pooled tile image and the graphics object share a depth, so draw order decides.** The pool creates its objects lazily, so an image handed out on frame 40 is appended to the display list after `#paint` and lands on top of it. The Archive's floor plate was drawn straight through the monitor because of this. Do not fix it by raising a depth; the room is what should not have had a plate under a screen.
 - **`pilotTrack` and `keeperEntries` are a matched pair and must be edited as one.** They are the Archive's whole mechanic: one keeps `tool_call`, the other keeps everything a body did. Widening either one hands one party the other's half. `archive.test.ts` asserts the exclusion in both directions and `pilot.test.ts` asserts it again on the wire, because the projection can be right while the view reaches past it.
 - **A caption inside the monitor is clamped to the monitor, not to the room.** Same rule as a device caption, one surface smaller: the tube is 128px and "ENTERS THE CONCORD LOCK" is most of it. Measured from the text object, never estimated.
@@ -177,6 +206,7 @@ ChatGPT's in-app browser both need. `VITE_ARCHIVE_ORIGIN` and the worker's
 | Socket behaviour through Cloudflare's edge | Human | Verified against local `workerd` only. Watch a deployed session through one full chamber before rehearsing the demo on it. |
 | A real agent session | Human | Everything needed exists and has been driven in headless Chrome. Doc 11 sections 6 and 7 stay empty until a model meets the page. |
 | Playtesters | Human | Doc 08 section 0.1 wants six. Every room including the Archive is now playable and looked at, so this unblocks completely. The only task that does not parallelise. |
+| Chamber II's drift rate | Whoever holds the design | Blocked on doc 11 sections 6 and 7. Re-run `pnpm --filter @semaphore/bench ablation` after any change to it. |
 | Repo made public | Human | Deliberately deferred to just before the deadline. |
 | Doc 03 section 10 wording fix | Whoever writes submission copy | It claims "server-generated ID"; the real guarantee is zero PII (D-023). Say what is true. |
 
