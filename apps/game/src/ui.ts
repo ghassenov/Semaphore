@@ -114,8 +114,12 @@ function lampMark(size: number): SVGSVGElement {
 
   if (size >= 20) {
     // The two beams, projecting in opposite directions and never overlapping.
-    draw("path", { d: "M13 10 L1 5 L1 27 L13 22 Z", fill: "var(--lamp)", opacity: "0.28" });
-    draw("path", { d: "M19 10 L31 5 L31 27 L19 22 Z", fill: "var(--tide)", opacity: "0.28" });
+    // Opaque enough to actually read against the page's near-black ground: at
+    // the 0.28 the first pass used they were invisible in a screenshot, which
+    // reduced the mark to a two-tone circle and lost the half of it that says
+    // what the game is.
+    draw("path", { d: "M13 10 L1 5 L1 27 L13 22 Z", fill: "var(--lamp)", opacity: "0.5" });
+    draw("path", { d: "M19 10 L31 5 L31 27 L19 22 Z", fill: "var(--tide)", opacity: "0.5" });
   }
 
   // The lamp: a circle bisected vertically, one channel each side.
