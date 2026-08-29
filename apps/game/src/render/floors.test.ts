@@ -20,6 +20,7 @@ function view(over: Partial<PilotView> = {}): PilotView {
     remainingMs: 120_000,
     retries: 0,
     facts: {},
+    ghost: null,
     notes: [],
     ...over,
   };
