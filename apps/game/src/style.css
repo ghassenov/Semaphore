@@ -61,8 +61,7 @@ body {
   padding: var(--gap);
   background:
     /* A cold vignette, so the console reads as lit from its own panels. */
-    radial-gradient(120% 90% at 50% 0%, #131824 0%, var(--void) 70%),
-    var(--void);
+    radial-gradient(120% 90% at 50% 0%, #131824 0%, var(--void) 70%), var(--void);
   color: var(--bone);
   font:
     400 15px/1.5 ui-monospace,

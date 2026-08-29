@@ -720,3 +720,67 @@ counting both origins together. The flag stays `same`: Chrome passes and
 ChatGPT's in-app browser is still untested, and `apps/archive/CLAUDE.md`
 requires both.
 
+---
+
+### D-034 Third-party art, licensed separately, replacing the authored pixels
+
+**Date.** 2026-08-29
+
+**Decision.** The room's art is LorisC's *[FREE] 16x16 Top Down Puzzle System*, vendored under `apps/game/public/art/` and described by one table in `src/render/atlas.ts`. This supersedes D-029's "no asset files, no third-party art" for everything except the twelve glyphs and the two bodies, which stay authored in `sprites.ts`.
+
+**Options considered.**
+1. Keep authoring pixels in source and hand-draw a fuller set.
+2. Take the pack, tint one neutral copy to the palette at draw time.
+3. Take the pack and use its own colour variants, one per channel.
+
+Option 3. The pack ships every object in six colours, and Semaphore's information architecture *is* colour: amber is what only PILOT perceives, cyan is what only KEEPER perceives, bone is what both do. Yellow, blue and neutral map onto those three exactly, so the channel is chosen when a file is named rather than applied by a `setTint` somebody can forget. Option 2 was rejected because a flat multiply over one greyscale copy throws away the shading the artist put in and reads visibly cheaper than the colour versions sitting unused beside it.
+
+**Two things this cost that were not obvious.**
+
+The pack has **no neutral-coloured devices**. Levers, buttons, lamps and doors exist only in the five accent colours; the neutral colour covers the building. A `SHARED` fact may wear neither player's colour, so `shared/`'s devices are the purple ones with the hue removed - converted to luminance and rescaled so each sprite's brightest pixel lands on the palette's bone. That keeps the artist's shading and changes only the thing the game is not free to leave in. The pack permits modification; it does not permit redistribution.
+
+Which is the second cost. **The repository is MIT and this art is not.** MIT grants redistribution and the pack's terms withhold it, so a reader who assumed one licence covered the whole tree would be wrong about the half that is not ours to grant. `LICENSE` now says so, and `apps/game/public/art/CREDITS.md` records what was taken, what was modified, and what was deliberately left out: the `.aseprite` source, the labelled documentation sheets, and three of the six colours. What ships is the subset this game draws with, inside the game, the way any game ships its art.
+
+**What D-029 got right and keeps.** The glyphs are load-bearing and stay in source: they are the shapes PILOT has to describe, they are held to the palette by a test, and `wave` and `knot` are deliberately confusable in a way no pack could know. The bodies stay too, redrawn from above, because the pack has no characters and because PILOT must not be amber and KEEPER must not have eyes.
+
+**Result.** 47 sheets, 17KB total, verified against the atlas on every build by `scripts/check-art.mjs`: a frame count that disagrees with the file does not throw at runtime, it hands out a frame that is half of two tiles and renders looking merely a bit wrong.
+
+---
+
+### D-035 The station is one room from above, not a section from the side
+
+**Date.** 2026-08-29
+
+**Decision.** `render/rooms.ts` and the side-on cutaway are replaced by `render/room.ts`: one chamber, drawn from above on the art pack's tile grid, with the whole 320x320 canvas to itself. This supersedes the drawing half of D-031. The resolution and the integer-scaling rule are untouched.
+
+**Options considered.**
+1. Keep the section and reskin only the props that read face-on.
+2. Draw the active room top-down and keep the other floors as silhouette strips.
+3. One room, top-down, and move progress off the canvas.
+
+Option 3. Option 1 was the small diff and the wrong one: a top-down tileset drawn into a side elevation looks borrowed, and the tell is unmissable once a figure drawn from the side is standing on a floor drawn from above. Option 2 kept a compromise nobody was asking for.
+
+**The section's real job was never drawing.** D-031 built it to answer three questions - which rooms this session has, which one we are in, which ones we have got out of - and those are progress, not geometry. They moved to the console as a floor list (`render/floors.ts`, which is the old `cutaway.ts` with its pixels removed and its tested logic intact). That is what freed the canvas.
+
+**What the extra room bought.** The Signal Room's six keys had twenty-four pixels each in a 106-pixel band; they are now full 16px buttons in two rows of three, each wearing its glyph on a plate above it. The Blind Panel's gauges stopped being bars and became columns of lamps, which is the one place this rewrite changed what a chamber *is* rather than how it is drawn: the puzzle is read aloud one number at a time, and a column of lit lamps is countable across a room in a way a bar's height is not.
+
+**Three bugs worth recording, all found by looking rather than by testing.** A door spread evenly across four tiles has a pillar in the middle of it, so doors are contiguous and there is now a test saying so. A caption is centred under its tile and is routinely wider than it, so `STRIKES` on a lamp one tile from the wall went through the wall; captions are clamped to the room, measured from the text object rather than estimated. And the decorative floor plates had to come out: in a game whose whole task is finding the channel-coded object, a floor pattern near the mechanism is one more rectangle for the eye to check.
+
+**Result.** 197 tests. All four chambers played and looked at in Chrome against a live worker.
+
+---
+
+### D-036 The heads-up display leaves the canvas for a DOM console
+
+**Date.** 2026-08-29
+
+**Decision.** The clock, the floor list, the CONCORD meter, the audible strip, the activity log, the notepad, the manifest plate and the legend are DOM, laid out as a three-bay station console around the canvas. The canvas draws the room and nothing else.
+
+**Why.** They were six panels packed into the seventy pixels above and below the section, at an estimated 4.8 pixels per character, with a test asserting the bands did not overlap. That test existed because the arrangement was one pixel from illegible. In the DOM the browser measures its own text, the panels are selectable and reachable by a screen reader, and the room gets the canvas back - which is most of what made the redesign possible at all.
+
+**The rule this had to clear.** Puzzle-critical visuals render to canvas, never to DOM, because a text node holding a glyph is a text node an agent with page access can scrape. Every panel was checked individually against it and each passes for one of three reasons: **public copy** (the prompt, the legend, the room's name, the clock, which floors this session has), **KEEPER's own** (the manifest is the registry it can enumerate for itself; a log line is a call it just made, arguments already stripped), or **`SHARED`/`AUDIBLE` by construction** (the notepad, and the sound both parties perceive). Everything `VISUAL` stayed on the canvas: the glyphs, the needle values, the cipher offset, the state of the manual page. `ui.ts` carries that audit in its header, because the next person to move a panel needs to know the test it has to pass.
+
+**A styling bug worth the paragraph.** Phaser sizes its canvas from the parent's *border* box, so a nine-sliced frame on the element it mounts into is a frame it cannot see: it scales to the full outer width, overflows the frame, and lands on a fractional 2.1x. Fractional scaling is the half-pixel shimmer D-031 exists to prevent, and it arrived here looking like a styling choice. The frame and the mount point are two elements now, and the stylesheet says why.
+
+**Result.** Entry chunk 15.6KB gzipped against a 400KB budget. The console and the room paint from the same model, on a callback rather than a poll, so the readouts beside the canvas and the room on it cannot disagree about a frame.
+

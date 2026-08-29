@@ -100,9 +100,10 @@ describe("the progress trail", () => {
   it("never lights two floors at once", () => {
     for (const phase of ["IN_CHAMBER", "ARCHIVE", "FINALE", "ESCAPED", "DEADLOCK"] as const) {
       const floors = stationFloors(view({ phase, chamber: "concord_lock" }));
-      expect(floors.filter((floor) => floor.active), phase).toHaveLength(
-        activeFloor(view({ phase, chamber: "concord_lock" })) === null ? 0 : 1,
-      );
+      expect(
+        floors.filter((floor) => floor.active),
+        phase,
+      ).toHaveLength(activeFloor(view({ phase, chamber: "concord_lock" })) === null ? 0 : 1);
     }
   });
 

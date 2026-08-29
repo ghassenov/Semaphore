@@ -408,7 +408,14 @@ describe("roomTitle and interlude", () => {
   });
 
   it("gives every interlude a headline", () => {
-    for (const phase of ["ENTRY", "LOBBY", "TRANSITIONING", "ARCHIVE", "FINALE", "ESCAPED"] as const)
+    for (const phase of [
+      "ENTRY",
+      "LOBBY",
+      "TRANSITIONING",
+      "ARCHIVE",
+      "FINALE",
+      "ESCAPED",
+    ] as const)
       expect(interlude(view({ phase }))[0], phase).not.toBe("");
   });
 });

@@ -12,13 +12,14 @@ It answers three questions and only three: where the repo is right now, what to 
 |---|---|
 | **Last updated** | 2026-08-29, Ahmed Saad |
 | **Spike** | **Run** against Chrome 151, 2026-08-28. Doc 11 filled. Three findings, D-024. ChatGPT's in-app browser still untested. |
-| **Branch** | `feat/archive-origin`, off `main` at `9a9e775`, **not pushed** |
-| **Pipeline** | Green: 580 tests, typecheck, lint, format, both `vite build`s plus the bundle budget, real `wrangler deploy --dry-run` |
+| **Branch** | `feat/ui-redesign`, off `main` at `f443a0f`, **not pushed** |
+| **Pipeline** | Green: 580 tests, typecheck, lint, format, both `vite build`s plus the bundle budget and the new art check, real `wrangler deploy --dry-run` |
 | **Played** | A full session, end to end, in Chrome 151 against a live `wrangler dev`: all four chambers, the Archive, the finale. The registry ends genuinely empty. |
+| **Interface** | **Rebuilt** (D-034 to D-036). Vendored art pack, one top-down room on the canvas, a three-bay DOM console around it. The Airlock, Signal Room and Blind Panel have been driven up and looked at in Chrome against a live worker; the Concord Lock has not yet been reached by a scripted run. |
 | **Delegation** | **Working and proved.** `apps/archive` serves `read_manual` and `read_station_log` from a second origin. `tests/cross-origin-delegation.ts`: 17 checks, run twice (frame embedded, and fallback), both green on Chrome 151, 2026-08-29. `ARCHIVE_ORIGIN` stays `same` (D-033). |
 | **Verify with** | `pnpm install && pnpm typecheck && pnpm lint && pnpm test && pnpm build` |
 | **Run it** | `cd apps/worker && npx wrangler dev` in one shell, `cd apps/game && pnpm dev` in another. Vite proxies `/session` to `127.0.0.1:8787`, WebSocket included. For the cross-origin path, see `apps/archive/CLAUDE.md`. |
-| **Bundle** | Entry **10.8KB** gzipped of a 400KB budget; the archive origin is **2.2KB**. Phaser is a separate 358KB chunk, fetched only when a shift starts (D-026). |
+| **Bundle** | Entry **15.8KB** gzipped of a 400KB budget; the archive origin is **2.2KB**. Phaser is a separate 358KB chunk, fetched only when a shift starts (D-026). The art pack is **17KB** of static files, fetched by the scenes and not by the entry. |
 | **Cloudflare** | Logged in. D1 database `semaphore-sessions` provisioned and migrated, local and remote. |
 
 ### What exists
@@ -26,7 +27,7 @@ It answers three questions and only three: where the repo is right now, what to 
 | Path | State |
 |---|---|
 | `docs/design/` | Numbered set 00-12, complete. Plan sections 0.4 and 1.4 ticked. |
-| `docs/` | Decision log at D-033, lessons journal live. |
+| `docs/` | Decision log at D-036, lessons journal live. |
 | `packages/seed`, `packages/protocol` | Done. |
 | `apps/worker/src/chambers/*.ts` | Done. All four chambers: generation, state, facts, world enumeration. |
 | `apps/worker/src/reducer.ts` | Done end to end, ENTRY through **ESCAPED**. `ambiguityFor` is now exported, for the CONCORD route. |
@@ -35,12 +36,15 @@ It answers three questions and only three: where the repo is right now, what to 
 | `apps/game/src/webmcp/*` | Done. Adapter (declarative API and `fromOrigins` too), three-tier director, 14 tools, and the archive frame. `tools.notepad.ts` holds both halves of the pad. |
 | `apps/game/src/net/*` | Done. `sessionClient` gained `concord()`; the socket is unchanged. |
 | `apps/game/src/render/palette.ts` | The 14 locked colours, and the one place a channel becomes a colour. |
-| `apps/game/src/render/rooms.ts` | **Pure.** All four rooms as geometry, from one `PilotView`. Takes no other input, by design and by type. |
-| `apps/game/src/render/hud.ts` | **Pure.** Timer, meter fill, truncation, legend, band coordinates. |
+| `apps/game/src/render/room.ts` | **Pure.** All four chambers as top-down tile plans, from one `PilotView`. Takes no other input, by design and by type. Replaces `rooms.ts` (D-035). |
+| `apps/game/src/render/floors.ts` | **Pure.** Which floors this session has, which one the pair is in, which are cleared. The old `cutaway.ts` with its pixels removed and its logic intact. |
+| `apps/game/src/render/atlas.ts` | **Pure.** The art pack as one table: paths, frame counts, named frames, the ground's variation. No Phaser in it. |
+| `apps/game/src/render/hud.ts` | **Pure.** Timer, meter fill, legend, log trimming. The band coordinates and the character-width estimate went with the canvas HUD (D-036). |
 | `apps/game/src/render/scenes.ts` | `LandingScene` and `ChamberScene`. The only file that touches Phaser's API. Paints; decides nothing. |
-| `apps/game/src/render/sprites.ts` | The art: twelve glyphs, both bodies, wall and floor tiles, authored as pixels in source (D-029). |
+| `apps/game/src/render/sprites.ts` | What is still authored in source: twelve glyphs and the two bodies, redrawn from above. The tiles are the pack's now. |
+| `apps/game/public/art/` | The pack: 47 sheets, three channel directories, 17KB. **Separately licensed** - see its `CREDITS.md`. |
 | `apps/game/src/render/station.ts` | The boot. Dynamic `import("phaser")`, the scene model, the CONCORD poll. |
-| `apps/game/src/ui.ts` | The DOM shell: gate screen, canvas mount, prompt card, PILOT's buttons. The operator console is gone. |
+| `apps/game/src/ui.ts` | The gate screen and the station console: three bays, every readout that used to be crammed onto the canvas, and the audit saying why each one is allowed to be a text node. |
 | `tests/possible-worlds.test.ts` | Done and passing for all four chambers. The headline proof, honestly scoped. |
 | `apps/spike/` | Built and **run** (Chrome 151, headless, 2026-08-28): 24 checks, 1 failing, 3 awaiting a model. |
 | `apps/archive/src/*` | Done. `registrar.ts` is this origin's only spec contact; `station.ts` fetches the worker; `main.ts` is the boot and the message bridge. Holds no content of its own. |
@@ -80,13 +84,21 @@ and which the game now genuinely uses.
 one-tool page gets discovered unprompted, whether `untrustedContentHint`
 changes behaviour, and the latency distribution that sizes Chamber III's window.
 
-### 3. The rest of the art
+### 3. Look at the Concord Lock, and play the new interface with a person
 
-The glyphs, the bodies and the hull tiles are drawn (D-029). Still greybox
-rectangles: levers, keys, gauges, dials, bolts, the cipher wheel, the door.
-`sprites.ts` is the pattern and `sprites.test.ts` will hold anything new to the
-same checks. Do this after the playtest, not before: the layout constants are
-the whole vertical budget and a sprite pass changes what is drawn, not where.
+The interface rewrite was checked by driving a live session and looking at it,
+which found three bugs no test had (D-035). Three of the four chambers were
+reached that way; **the Concord Lock was not**, because getting there means
+solving the Blind Panel and the scripted solver only brute-forces the linkage.
+Reach it and look at it: the grip clock is now a laser beam that shortens, the
+bolts are lamps, and the door changes sprite at the end of the session. None of
+that has been seen with real state behind it.
+
+Then playtest the console with somebody who has not seen it. The specific
+question is whether the three bays read as one instrument or as three lists:
+the layout is making a claim about the game (what the human perceives and what
+the agent can do are two surfaces, with the room between them) and a claim like
+that either lands in a second or does not land.
 
 ### 4. Deploy the archive origin as its own Pages project
 
@@ -104,8 +116,11 @@ ChatGPT's in-app browser both need. `VITE_ARCHIVE_ORIGIN` and the worker's
 - **A declarative tool leaves the registry only when its element leaves the DOM** (D-024, fixed in D-028). Aborting a signal will not do it. `endSession` and `#enterFinale` both remove the notepad form, and anything that adds a second declarative tool has to do both too. `fake-registry.ts` models this now, so a regression fails a test rather than a demo.
 - **A scripted playthrough is the fastest way to find a rendering or registry bug.** `tests/cross-origin-delegation.ts` plays a full session against live servers in about twenty seconds; three of the greybox phase's five defects were invisible to unit tests and obvious in a frame.
 - **Never import Phaser statically outside `render/station.ts`** (D-026). One top-level import moves 358KB into the entry chunk, and nothing about the page looks wrong. `apps/game/scripts/check-bundle.mjs` fails the build, which is the only thing that will tell you.
-- **Captions are wider than their pieces.** A caption is centred under its piece and routinely overhangs it, so the caption is what collides with the next piece, runs past the grate, or falls out of the room band. Three separate layout bugs in this phase were all this one thing, and all three were invisible to a test that measured rectangles. The tests now measure caption extents; keep it that way.
-- **The server writes for an agent, not for a 172-pixel panel.** `start full` answers with a paragraph. Anything from a tool response that reaches the HUD goes through `truncate` first, or it draws straight through the panel beside it.
+- **Captions are wider than their tiles.** A caption is centred under its device and routinely overhangs it, so it is the caption that runs through the wall, not the sprite. Six separate layout bugs across two phases have now been this one thing. `scenes.ts` clamps every caption to the room from the text object's *measured* width; do not fix a collision by moving the device to a safer column.
+- **Phaser sizes its canvas from the parent's *border* box.** A border or a nine-slice frame on the element it mounts into is a border it cannot see: it scales to the full outer width, overflows the frame, and lands on a fractional scale that reads as a styling choice rather than as the shimmer D-031 forbids. The frame and the mount point are two elements (`.stage-frame` and `.stage`); keep them that way. A flex item's automatic minimum size will also fight Phaser's centring margin - `min-height: 0` is what stops that loop.
+- **The art pack is not MIT.** `apps/game/public/art/` is used under LorisC's terms, which permit use in the game and modification and withhold redistribution. Touching that directory means updating its `CREDITS.md`. Do not assume the repository's licence covers it, and do not let a reader assume it either.
+- **A wrong frame count in `atlas.ts` does not throw.** Phaser slices the sheet on whatever numbers it is given and hands out a frame that is half of two tiles; the room renders looking merely a bit off. `apps/game/scripts/check-art.mjs` runs first in the build and is the only thing that will tell you.
+- **The console may hold no `VISUAL` fact.** Glyphs, needle values, the cipher offset and the manual page's state stay on the canvas, because a text node is scrapeable by an agent with page access. `ui.ts`'s header carries the audit that let the other panels out; extend it rather than reasoning afresh.
 - **`execute` takes one argument and no `AbortSignal`** in Chrome 151, reversing D-007. The plumbing is kept, typed optional and documented as unimplemented (D-024).
 - **A host invocation delivers input as an object; the page-side `executeTool` helper wants a JSON string** (D-024). The game is only ever host-invoked. The benchmark harness will have to serialise. Driving one over CDP, `WebMCP.invokeTool` also takes a `frameId` and returns only an `invocationId`: the output arrives later on `WebMCP.toolResponded`, and a driver that reads the command's own return value concludes the tool is broken.
 - **`machine.chamber` outlives the room** (D-025). `pilot.inTheRoom` is the shared gate; use it rather than writing a second phase list. The renderer additionally treats an empty `facts` as "no room here", which is the same answer arrived at from the frame.
@@ -125,7 +140,7 @@ ChatGPT's in-app browser both need. `VITE_ARCHIVE_ORIGIN` and the worker's
 - **A `GameError` thrown out of `reduce()` discards everything that call settled.**
 - **A Durable Object alarm must never be the only place a rule lives** (D-018).
 - **Nothing in `apps/game` outside `adapter.ts` may touch `modelContext`.** A grep that returns a second file is a defect.
-- **Nothing puzzle-critical goes into the DOM.** What is left in the DOM is the starter prompt and buttons whose labels name actions, never facts.
+- **Nothing puzzle-critical goes into the DOM.** The console holds public copy, things KEEPER can obtain for itself, and `SHARED`/`AUDIBLE` facts. Nothing else.
 - **`tests/` is a workspace package** (`@semaphore/tests`); import `@semaphore/worker/chambers/airlock`, not a relative path.
 - **`pnpm-workspace.yaml` needs `allowBuilds`** for `esbuild` and `workerd`.
 - **D1 migrations are not automatic.** Run both the local and `--remote` `wrangler d1 execute` from `apps/worker/`.
