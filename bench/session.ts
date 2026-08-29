@@ -67,6 +67,7 @@ import * as signalRoom from "@semaphore/worker/chambers/signal_room";
 import * as blindPanel from "@semaphore/worker/chambers/blind_panel";
 import * as concordLock from "@semaphore/worker/chambers/concord_lock";
 import { GHOST_LOG, keeperEntries } from "@semaphore/worker/archive/index";
+import { bitsDelivered, PARTNERS, type Partner, type PartnerName } from "./partners.ts";
 
 /** The three bars of the chart. */
 export type Condition = "agent-alone" | "human-alone" | "together";
@@ -93,17 +94,45 @@ export interface ChamberResult {
   readonly calls: number;
   /** Of those, the ones the server marked `wasted`: no new information. */
   readonly wasted: number;
+  /** Whether the chamber deadlocked at least once before it ended this way. */
+  readonly retried: boolean;
 }
 
 export interface Run {
   readonly seed: string;
   readonly condition: Condition;
+  /**
+   * Which scripted PILOT played, or null when there was nobody to play one.
+   *
+   * Only the cooperative condition has a partner: the other two are defined by
+   * the absence of one, and giving them a name here would invite a reader to
+   * compare a partner's column against a row that never consulted it.
+   */
+  readonly partner: PartnerName | null;
   readonly difficulty: Difficulty;
   readonly mode: SessionMode;
   readonly chambers: readonly ChamberResult[];
   readonly cleared: number;
   readonly calls: number;
   readonly wasted: number;
+  /** How many times the agent acted on something the partner had said. */
+  readonly descriptions: number;
+  /**
+   * Decision-relevant bits those descriptions delivered, summed.
+   *
+   * Negative contributions are kept (see `bitsDelivered`): a confident
+   * mis-description leaves the agent worse informed than silence and the
+   * arithmetic should say so.
+   */
+  readonly bits: number;
+  /**
+   * Whether this run's Signal Room carried the vandalised manual page.
+   *
+   * Seeded, so it is a property of the puzzle rather than of the partner, and
+   * `null` when the run never reached that chamber. Doc 07 section 2.2's
+   * injection-resistance metric is the ratio of the two groups.
+   */
+  readonly vandalised: boolean | null;
   /** Virtual milliseconds of station time the run consumed. */
   readonly elapsedMs: number;
   /** Whether the session reached ESCAPED, which needs every chamber and the door. */
@@ -115,6 +144,15 @@ export interface RunOptions {
   readonly condition: Condition;
   readonly difficulty?: Difficulty;
   readonly mode?: SessionMode;
+  /**
+   * The scripted PILOT, for the cooperative condition. Ignored by the other
+   * two, which have no partner to script.
+   *
+   * `oracle` is the default because it is what the ablation's `together` bar
+   * means: the cooperative *ceiling*, with the partner held perfect so the only
+   * thing the bar measures is the tool surface.
+   */
+  readonly partner?: PartnerName;
   /**
    * Virtual milliseconds between one response and the next call.
    *
@@ -163,37 +201,69 @@ export function runSession(options: RunOptions): Run {
     maxCalls = DEFAULT_MAX_CALLS,
   } = options;
 
-  const rng = new Rng(`${seed}:${condition}`);
+  const partnerName = condition === "together" ? (options.partner ?? "oracle") : null;
+  const partner = partnerName ? PARTNERS[partnerName] : null;
+  // A partner who takes a while to answer moves the agent's rhythm, which is
+  // the same axis `gapMs` is on. Chamber II's drift and Chamber III's stamina
+  // window are both derived from that pace, so a slow partner is felt by the
+  // game rather than merely reported by the harness.
+  const rhythmMs = gapMs + (partner?.extraGapMs ?? 0);
+
+  // A partner that degrades the description gets its own stream, so `vague`
+  // and `wrong` face the same puzzles as `oracle` while making their own
+  // independent mistakes on them. `oracle` and the two partnerless conditions
+  // keep the unsuffixed key the ablation was published from, so adding this
+  // axis does not silently move that chart's numbers.
+  const rng = new Rng(
+    partnerName && partnerName !== "oracle"
+      ? `${seed}:${condition}:${partnerName}`
+      : `${seed}:${condition}`,
+  );
   const startedAtMs = 0;
   let session = newSession(`bench_${condition}_${seed}`, seed, startedAtMs);
   let now = startedAtMs;
   let calls = 0;
+  let vandalised: boolean | null = null;
+
+  /** What the partner delivered, accumulated across the whole run. */
+  const heard = { descriptions: 0, bits: 0 };
 
   /**
    * Per-chamber tallies, keyed by chamber. A retry adds to the same entry
    * rather than starting a new one: the pair spent those calls on that room.
    */
-  const tally = new Map<ChamberId, { calls: number; wasted: number; outcome: ChamberOutcome }>();
+  interface Tally {
+    calls: number;
+    wasted: number;
+    outcome: ChamberOutcome;
+    retried: boolean;
+  }
+
+  const tally = new Map<ChamberId, Tally>();
+  const at = (chamber: ChamberId): Tally => {
+    const found = tally.get(chamber) ?? {
+      calls: 0,
+      wasted: 0,
+      outcome: "out_of_calls" as ChamberOutcome,
+      retried: false,
+    };
+    tally.set(chamber, found);
+    return found;
+  };
   const note = (
     chamber: ChamberId,
     patch: Partial<{ calls: number; wasted: number }>,
     outcome?: ChamberOutcome,
   ) => {
-    const at = tally.get(chamber) ?? {
-      calls: 0,
-      wasted: 0,
-      outcome: "out_of_calls" as ChamberOutcome,
-    };
-    tally.set(chamber, {
-      calls: at.calls + (patch.calls ?? 0),
-      wasted: at.wasted + (patch.wasted ?? 0),
-      outcome: outcome ?? at.outcome,
-    });
+    const entry = at(chamber);
+    entry.calls += patch.calls ?? 0;
+    entry.wasted += patch.wasted ?? 0;
+    if (outcome) entry.outcome = outcome;
   };
 
   /** Advance the virtual clock and apply one action, absorbing a refusal. */
   const call = (action: Action): readonly SessionEvent[] => {
-    now += gapMs;
+    now += rhythmMs;
     calls++;
     const chamber = session.machine.chamber;
     if (chamber) note(chamber, { calls: 1 });
@@ -220,8 +290,18 @@ export function runSession(options: RunOptions): Run {
 
   const retriesUsed = new Map<ChamberId, number>();
 
+  /** Everything the acting policy is allowed to know, in one object. */
+  const play: Play = { solo: condition === "agent-alone", partner, rng, heard };
+
   while (calls < maxCalls) {
     const { phase, chamber } = session.machine;
+
+    // Recorded on first sight rather than at the end, because a retry
+    // regenerates the room from a machine-dependent seed and can flip the flag
+    // (see `CHAMBER_ENTRY` in the reducer). The condition being measured is the
+    // page the agent actually met first.
+    if (vandalised === null && session.signalRoom)
+      vandalised = session.signalRoom.params.vandalised;
 
     if (phase === "ESCAPED") break;
 
@@ -259,13 +339,14 @@ export function runSession(options: RunOptions): Run {
         break;
       }
       retriesUsed.set(chamber, used + 1);
+      at(chamber).retried = true;
       call({ type: "retry_chamber" });
       continue;
     }
 
     if (phase !== "IN_CHAMBER" || !chamber) break;
 
-    const action = nextAction(session, chamber, condition, rng, now + gapMs, gapMs);
+    const action = nextAction(session, chamber, play, now + rhythmMs, rhythmMs);
     if (action === "no_tools") {
       // PILOT alone. Nothing on this side of the grate advances the chamber,
       // so the only thing left to spend is the clock. Jump to the deadline
@@ -306,22 +387,27 @@ export function runSession(options: RunOptions): Run {
     }
   }
 
-  const played = [...tally.entries()].map(([chamber, at]) => ({
+  const played = [...tally.entries()].map(([chamber, entry]) => ({
     chamber,
-    outcome: at.outcome,
-    calls: at.calls,
-    wasted: at.wasted,
+    outcome: entry.outcome,
+    calls: entry.calls,
+    wasted: entry.wasted,
+    retried: entry.retried,
   }));
 
   return {
     seed,
     condition,
+    partner: partnerName,
     difficulty,
     mode,
     chambers: played,
     cleared: played.filter((c) => c.outcome === "solved").length,
     calls,
     wasted: played.reduce((sum, c) => sum + c.wasted, 0),
+    descriptions: heard.descriptions,
+    bits: heard.bits,
+    vandalised,
     elapsedMs: now - startedAtMs,
     escaped: session.machine.phase === "ESCAPED",
   };
@@ -338,24 +424,38 @@ export function runSession(options: RunOptions): Run {
 function nextAction(
   session: PersistedSession,
   chamber: ChamberId,
-  condition: Condition,
-  rng: Rng,
+  play: Play,
   atMs: number,
   gapMs: number,
 ): Action | "no_tools" | "no_body" {
-  if (condition === "human-alone") return "no_tools";
-  const solo = condition === "agent-alone";
+  // No partner and not soloing means PILOT alone: hands, a room, and no tool
+  // surface at all.
+  if (!play.solo && !play.partner) return "no_tools";
 
   switch (chamber) {
     case "airlock":
-      return airlockAction(session, solo, rng);
+      return airlockAction(session, play);
     case "signal_room":
-      return signalRoomAction(session, solo, rng);
+      return signalRoomAction(session, play);
     case "blind_panel":
-      return blindPanelAction(session, solo, rng, atMs, gapMs);
+      return blindPanelAction(session, play, atMs, gapMs);
     case "concord_lock":
-      return concordLockAction(session, solo, rng, atMs);
+      return concordLockAction(session, play, atMs);
   }
+}
+
+/**
+ * What the acting policy knows, which is the only thing the conditions vary.
+ *
+ * `solo` and `partner` are mutually exclusive by construction: an agent alone
+ * has no one to consult, a pair has, and PILOT alone is neither.
+ */
+interface Play {
+  readonly solo: boolean;
+  readonly partner: Partner | null;
+  readonly rng: Rng;
+  /** Running totals of what the partner has said, folded into the `Run`. */
+  readonly heard: { descriptions: number; bits: number };
 }
 
 /**
@@ -370,12 +470,21 @@ function nextAction(
 function hypothesis<TState>(
   chamberWorlds: Parameters<typeof consistentWorlds<TState>>[0],
   state: TState,
-  solo: boolean,
-  rng: Rng,
+  play: Play,
 ): TState {
-  if (!solo) return state;
   const worlds = consistentWorlds(chamberWorlds, state);
-  return worlds[rng.int(worlds.length)] ?? state;
+  if (!play.partner) return worlds[play.rng.int(worlds.length)] ?? state;
+
+  // PILOT looks at the room and says something. What that sentence *is* never
+  // enters this harness; what it did to the agent's belief is the whole of what
+  // can be measured, and is what a partner returns.
+  const left = play.partner.narrow(chamberWorlds, worlds, state, play.rng);
+  play.heard.descriptions += 1;
+  play.heard.bits += bitsDelivered(chamberWorlds, worlds, left, state);
+  // A description that settles the room draws nothing, so a perfect partner
+  // leaves the run's random stream exactly where the ablation published it.
+  if (left.length === 1) return left[0] ?? state;
+  return left[play.rng.int(left.length)] ?? state;
 }
 
 const AIRLOCK_WORLDS = {
@@ -406,15 +515,15 @@ const CONCORD_LOCK_WORLDS = {
   correctAction: concordLock.correctAction,
 };
 
-function airlockAction(session: PersistedSession, solo: boolean, rng: Rng): Action {
+function airlockAction(session: PersistedSession, play: Play): Action {
   const state = session.airlock!;
-  const world = hypothesis(AIRLOCK_WORLDS, state, solo, rng);
+  const world = hypothesis(AIRLOCK_WORLDS, state, play);
   return { type: "pull_lever", leverId: airlock.correctLever(world.params) };
 }
 
-function signalRoomAction(session: PersistedSession, solo: boolean, rng: Rng): Action {
+function signalRoomAction(session: PersistedSession, play: Play): Action {
   const state = session.signalRoom!;
-  const world = hypothesis(SIGNAL_ROOM_WORLDS, state, solo, rng);
+  const world = hypothesis(SIGNAL_ROOM_WORLDS, state, play);
   const target = signalRoom.correctSequence(world.params);
   const next = target[state.pressedSequence.length];
   // A drawn world can assert the sequence is already complete, which the true
@@ -452,14 +561,19 @@ function signalRoomAction(session: PersistedSession, solo: boolean, rng: Rng): A
  */
 function blindPanelAction(
   session: PersistedSession,
-  solo: boolean,
-  rng: Rng,
+  play: Play,
   atMs: number,
   gapMs: number,
 ): Action {
   const state = session.blindPanel!;
-  const world = hypothesis(BLIND_PANEL_WORLDS, state, solo, rng);
-  const targets = solo ? guessTargets(rng) : world.params.targets;
+  const world = hypothesis(BLIND_PANEL_WORLDS, state, play);
+  // A partner reads the engraved plate out loud, and reads it correctly even
+  // when it is `wrong` or `vague`: `candidates()` holds the targets fixed, so
+  // the world set a partner degrades spans the wiring and the inversions and
+  // not the plate. A partner that mis-read the plate is a mechanic this
+  // harness does not model, and saying so is cheaper than a metric that
+  // quietly means something narrower than its name.
+  const targets = play.partner ? world.params.targets : guessTargets(play.rng);
 
   /** Marks of drift accrued by `t`, under this session's difficulty. */
   const driftBy = (t: number): number =>
@@ -544,7 +658,7 @@ function blindPanelAction(
     // count, which is the only observation that narrows the world set.
     return {
       type: "rotate_dial",
-      dialId: blindPanel.DIALS[rng.int(blindPanel.DIALS.length)]!,
+      dialId: blindPanel.DIALS[play.rng.int(blindPanel.DIALS.length)]!,
       direction: "clockwise",
       clicks: 1,
     };
@@ -580,21 +694,20 @@ function guessTargets(rng: Rng): Record<blindPanel.GaugeId, number> {
  */
 function concordLockAction(
   session: PersistedSession,
-  solo: boolean,
-  rng: Rng,
+  play: Play,
   nowMs: number,
 ): Action | "no_body" {
   const state = session.concordLock!;
 
   if (!concordLock.isArmed(state, nowMs)) {
-    if (solo) return "no_body";
+    if (!play.partner) return "no_body";
     return { type: "grip_bar" };
   }
 
   const bolt = concordLock.nextBolt(state);
   if (bolt !== null) return { type: "align_bolt", boltId: bolt };
 
-  const world = hypothesis(CONCORD_LOCK_WORLDS, state, solo, rng);
+  const world = hypothesis(CONCORD_LOCK_WORLDS, state, play);
   return { type: "speak_passphrase", phrase: world.params.passphrase };
 }
 
