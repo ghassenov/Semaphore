@@ -13,13 +13,13 @@ It answers three questions and only three: where the repo is right now, what to 
 | **Last updated** | 2026-08-29, Ahmed Saad |
 | **Spike** | **Run** against Chrome 151, 2026-08-28. Doc 11 filled. Three findings, D-024. ChatGPT's in-app browser still untested. |
 | **Branch** | `feat/ui-redesign`, off `main` at `f443a0f`, **not pushed** |
-| **Pipeline** | Green: 590 tests, typecheck, lint, format, both `vite build`s plus the bundle budget and the new art check, real `wrangler deploy --dry-run` |
+| **Pipeline** | Green: 600 tests, typecheck, lint, format, both `vite build`s plus the bundle budget and the new art check, real `wrangler deploy --dry-run` |
 | **Played** | A full session, end to end, in Chrome 151 against a live `wrangler dev`: all four chambers, the Archive, the finale. The registry ends genuinely empty. |
-| **Interface** | **Rebuilt** (D-034 to D-037). Vendored art pack, one top-down room on the canvas, a three-bay DOM console around it. Rooms now resolve every tile from its neighbours, so each chamber has its own outline and a wall in its own channel colour, and devices animate between states (D-037). The Airlock, Signal Room and Blind Panel have been driven up and looked at in Chrome against a live worker; **the four new outlines have only been looked at as composited stills, not in the running client**, and the Concord Lock has still not been reached by a scripted run. |
+| **Interface** | **Rebuilt** (D-034 to D-038). Vendored art pack, a three-bay DOM console, and the station drawn as **one connected floor plan**: five rooms and the corridors between them, autotiled in a single pass, each room walled in its own channel colour (D-037, D-038). A camera frames the room the pair is in at 1x, holds the whole building for the walk between chambers, and pulls back whenever PILOT holds **M**. Driven in Chrome 151 against a live worker: the Airlock and the Signal Room framed and lit, the floor plan on M, and the walk between them. **The Blind Panel, the Archive and the Concord Lock have not been reached in a live run** - only rendered from their real `roomPlan` output as stills. |
 | **Delegation** | **Working and proved.** `apps/archive` serves `read_manual` and `read_station_log` from a second origin. `tests/cross-origin-delegation.ts`: 17 checks, run twice (frame embedded, and fallback), both green on Chrome 151, 2026-08-29. `ARCHIVE_ORIGIN` stays `same` (D-033). |
 | **Verify with** | `pnpm install && pnpm typecheck && pnpm lint && pnpm test && pnpm build` |
 | **Run it** | `cd apps/worker && npx wrangler dev` in one shell, `cd apps/game && pnpm dev` in another. Vite proxies `/session` to `127.0.0.1:8787`, WebSocket included. For the cross-origin path, see `apps/archive/CLAUDE.md`. |
-| **Bundle** | Entry **16.3KB** gzipped of a 400KB budget; the archive origin is **2.2KB**. Phaser is a separate 358KB chunk, fetched only when a shift starts (D-026). The art pack is **17KB** of static files, fetched by the scenes and not by the entry. |
+| **Bundle** | Entry **16.7KB** gzipped of a 400KB budget; the archive origin is **2.2KB**. Phaser is a separate 358KB chunk, fetched only when a shift starts (D-026). The art pack is **17KB** of static files, fetched by the scenes and not by the entry. |
 | **Cloudflare** | Logged in. D1 database `semaphore-sessions` provisioned and migrated, local and remote. |
 
 ### What exists
@@ -27,7 +27,7 @@ It answers three questions and only three: where the repo is right now, what to 
 | Path | State |
 |---|---|
 | `docs/design/` | Numbered set 00-12, complete. Plan sections 0.4 and 1.4 ticked. |
-| `docs/` | Decision log at D-037, lessons journal live. |
+| `docs/` | Decision log at D-038, lessons journal live. |
 | `packages/seed`, `packages/protocol` | Done. |
 | `apps/worker/src/chambers/*.ts` | Done. All four chambers: generation, state, facts, world enumeration. |
 | `apps/worker/src/reducer.ts` | Done end to end, ENTRY through **ESCAPED**. `ambiguityFor` is now exported, for the CONCORD route. |
@@ -36,7 +36,8 @@ It answers three questions and only three: where the repo is right now, what to 
 | `apps/game/src/webmcp/*` | Done. Adapter (declarative API and `fromOrigins` too), three-tier director, 14 tools, and the archive frame. `tools.notepad.ts` holds both halves of the pad. |
 | `apps/game/src/net/*` | Done. `sessionClient` gained `concord()`; the socket is unchanged. |
 | `apps/game/src/render/palette.ts` | The 14 locked colours, and the one place a channel becomes a colour. |
-| `apps/game/src/render/room.ts` | **Pure.** All four chambers as top-down tile plans, from one `PilotView`. Takes no other input, by design and by type. Replaces `rooms.ts` (D-035). Also holds each chamber's outline and `tilesFor`, which resolves a shape to floor and wall frames (D-037). |
+| `apps/game/src/render/room.ts` | **Pure.** All four chambers as top-down tile plans, from one `PilotView`. Takes no other input, by design and by type. Holds each chamber's outline, and `tilesForCells`, which resolves any set of floor cells to floor and wall frames (D-035, D-037). |
+| `apps/game/src/render/plan.ts` | **Pure.** The building: where each floor sits per mode, the corridors, and where the camera looks. Knows nothing about what is in a room (D-038). |
 | `apps/game/src/render/floors.ts` | **Pure.** Which floors this session has, which one the pair is in, which are cleared. The old `cutaway.ts` with its pixels removed and its logic intact. |
 | `apps/game/src/render/atlas.ts` | **Pure.** The art pack as one table: paths, frame counts, named frames, and the two autotile tables `floorFrame` and `wallFrame` read (D-037). No Phaser in it. |
 | `apps/game/src/render/hud.ts` | **Pure.** Timer, meter fill, legend, log trimming. The band coordinates and the character-width estimate went with the canvas HUD (D-036). |
@@ -84,13 +85,20 @@ and which the game now genuinely uses.
 one-tool page gets discovered unprompted, whether `untrustedContentHint`
 changes behaviour, and the latency distribution that sizes Chamber III's window.
 
-### 3. Look at the Concord Lock, and look at the four new outlines in the running client
+### 3. Reach the Blind Panel, the Archive and the Concord Lock in a live run
 
-D-037 gave each chamber its own silhouette, a wall in its channel colour and
-animated devices. All of that was checked by compositing the real `roomPlan`
-output against the real tiles as stills, which proves the geometry and proves
-nothing about motion: the frame stepper, the pad flourish and the accent walls
-have not been seen in Phaser. Drive a session up and look.
+The interface has now been driven in Chrome against a live worker as far as the
+Signal Room: the station renders as one building, the camera frames and walks,
+and the floor plan comes up on M. **The last three floors have not been seen in
+Phaser.** They are rendered correctly from their real `roomPlan` output as
+stills, which proves the geometry and proves nothing about the things only
+motion shows: the frame stepper on the Concord Lock's door, the pad flourish,
+the grip clock's shortening beam, and whether the Archive at ten by six is big
+enough for the two lines of interlude text drawn across it.
+
+Getting there means solving the Signal Room and the Blind Panel, which the
+scripted solver only brute-forces. `tests/cross-origin-delegation.ts` already
+plays a full session from Node and is the fastest way in.
 
 The interface rewrite was checked by driving a live session and looking at it,
 which found three bugs no test had (D-035). Three of the four chambers were
