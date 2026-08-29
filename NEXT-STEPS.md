@@ -12,14 +12,15 @@ It answers three questions and only three: where the repo is right now, what to 
 |---|---|
 | **Last updated** | 2026-08-29, Ahmed Saad |
 | **Spike** | **Run** against Chrome 151, 2026-08-28. Doc 11 filled. Three findings, D-024. ChatGPT's in-app browser still untested. |
-| **Branch** | `feat/ui-redesign`, off `main` at `f443a0f`, **not pushed** |
-| **Pipeline** | Green: 601 tests, typecheck, lint, format, both `vite build`s plus the bundle budget and the new art check, real `wrangler deploy --dry-run` |
+| **Branch** | `feat/archive-beat`, off `main` at `b185fd6`, **not pushed** |
+| **Pipeline** | Green: 621 tests, typecheck, lint, format, both `vite build`s plus the bundle budget and the art check, real `wrangler deploy --dry-run` |
 | **Played** | A full session, end to end, in Chrome 151 against a live `wrangler dev`: all four chambers, the Archive, the finale. The registry ends genuinely empty. |
+| **Archive** | **Both halves built** (D-039). KEEPER calls `read_station_log`; PILOT watches the same log on a monitor in a room of its own. `pilotTrack` is the mirror of `keeperEntries` and the exclusion is asserted in both directions, on the projection and again on the wire. Looked at in Chrome across the whole recording: the ghost walks into the Signal Room, grips the release bar, and the tape runs out. |
 | **Interface** | **Rebuilt** (D-034 to D-038). Vendored art pack, a three-bay DOM console, and the station drawn as **one connected floor plan**: five rooms and the corridors between them, autotiled in a single pass, each room walled in its own channel colour (D-037, D-038). A camera frames the room the pair is in at 1x, holds the whole building for the walk between chambers, and pulls back whenever PILOT holds **M**. Driven in Chrome 151 against a live worker: the Airlock and the Signal Room framed and lit, the floor plan on M, and the walk between them. **A full session has now been played end to end in Chrome 151 against a live worker**: all four chambers, the Archive, the finale and the ending. It found four rendering bugs no unit test could (see the 2026-08-29 entry in [docs/lessons-learned.md](docs/lessons-learned.md)); all four are fixed. |
-| **Delegation** | **Working and proved.** `apps/archive` serves `read_manual` and `read_station_log` from a second origin. `tests/cross-origin-delegation.ts`: 17 checks, run twice (frame embedded, and fallback), both green on Chrome 151, 2026-08-29. `ARCHIVE_ORIGIN` stays `same` (D-033). |
+| **Delegation** | **Working and proved.** `apps/archive` serves `read_manual` and `read_station_log` from a second origin. `tests/cross-origin-delegation.ts`: 17 checks, green on Chrome 151, 2026-08-29, on both paths. `ARCHIVE_ORIGIN` stays `same` (D-033). That file is also the screenshot tour: `SHOTS=<dir>` writes a frame at every beat and is a no-op without it. |
 | **Verify with** | `pnpm install && pnpm typecheck && pnpm lint && pnpm test && pnpm build` |
 | **Run it** | `cd apps/worker && npx wrangler dev` in one shell, `cd apps/game && pnpm dev` in another. Vite proxies `/session` to `127.0.0.1:8787`, WebSocket included. For the cross-origin path, see `apps/archive/CLAUDE.md`. |
-| **Bundle** | Entry **16.7KB** gzipped of a 400KB budget; the archive origin is **2.2KB**. Phaser is a separate 358KB chunk, fetched only when a shift starts (D-026). The art pack is **17KB** of static files, fetched by the scenes and not by the entry. |
+| **Bundle** | Entry **16.8KB** gzipped of a 400KB budget; the archive origin is **2.2KB**. Phaser is a separate 358KB chunk, fetched only when a shift starts (D-026). The art pack is **17KB** of static files, fetched by the scenes and not by the entry. |
 | **Cloudflare** | Logged in. D1 database `semaphore-sessions` provisioned and migrated, local and remote. |
 
 ### What exists
@@ -31,13 +32,15 @@ It answers three questions and only three: where the repo is right now, what to 
 | `packages/seed`, `packages/protocol` | Done. |
 | `apps/worker/src/chambers/*.ts` | Done. All four chambers: generation, state, facts, world enumeration. |
 | `apps/worker/src/reducer.ts` | Done end to end, ENTRY through **ESCAPED**. `ambiguityFor` is now exported, for the CONCORD route. |
-| `apps/worker/src/views.ts`, `pilot.ts`, `manual.ts` | Done. `pilot.ts` also exports `inTheRoom`, the one phase gate the frame and the meter share. |
+| `apps/worker/src/views.ts`, `pilot.ts`, `manual.ts` | Done. `pilot.ts` also exports `inTheRoom`, the one phase gate the frame and the meter share, and puts the ghost on the wire in `ARCHIVE` and nowhere else. |
+| `apps/worker/src/archive/index.ts` | Done, both halves. `keeperEntries` keeps `tool_call`; `pilotTrack` drops it and keeps what a body did. Neither can see the other's half, and `archive.test.ts` proves it both ways. |
 | `apps/worker/src/Session.ts` | Done. Read routes, machine state on every response, `/socket` (D-025), `/concord` (D-027) and the notepad's two routes (D-028). |
 | `apps/game/src/webmcp/*` | Done. Adapter (declarative API and `fromOrigins` too), three-tier director, 14 tools, and the archive frame. `tools.notepad.ts` holds both halves of the pad. |
 | `apps/game/src/net/*` | Done. `sessionClient` gained `concord()`; the socket is unchanged. |
 | `apps/game/src/render/palette.ts` | The 14 locked colours, and the one place a channel becomes a colour. |
 | `apps/game/src/render/room.ts` | **Pure.** All four chambers as top-down tile plans, from one `PilotView`. Takes no other input, by design and by type. Holds each chamber's outline, and `tilesForCells`, which resolves any set of floor cells to floor and wall frames (D-035, D-037). |
 | `apps/game/src/render/plan.ts` | **Pure.** The building: where each floor sits per mode, the corridors, and where the camera looks. Knows nothing about what is in a room (D-038). |
+| `apps/game/src/render/ghost.ts` | **Pure.** What the Archive's monitor is showing at an instant. The walk between two beats is interpolated here, and the module says so: no log has ever carried PILOT's position. |
 | `apps/game/src/render/floors.ts` | **Pure.** Which floors this session has, which one the pair is in, which are cleared. The old `cutaway.ts` with its pixels removed and its logic intact. |
 | `apps/game/src/render/atlas.ts` | **Pure.** The art pack as one table: paths, frame counts, named frames, and the two autotile tables `floorFrame` and `wallFrame` read (D-037). No Phaser in it. |
 | `apps/game/src/render/hud.ts` | **Pure.** Timer, meter fill, legend, log trimming. The band coordinates and the character-width estimate went with the canvas HUD (D-036). |
@@ -85,39 +88,32 @@ and which the game now genuinely uses.
 one-tool page gets discovered unprompted, whether `untrustedContentHint`
 changes behaviour, and the latency distribution that sizes Chamber III's window.
 
-### 3. Playtest the console and the floor plan with a person
+### 3. Playtest the console, the floor plan and the Archive with a person
 
-The rendering is verified by machine: a full session now plays end to end in
-Chrome against a live worker, and every floor has been looked at. What has not
-been asked is whether any of it *reads*.
+The rendering is verified by machine: a full session plays end to end in Chrome
+against a live worker, and every floor including the Archive has now been
+looked at. What has not been asked is whether any of it *reads*.
 
-Two specific questions. Whether the three bays land as one instrument or as
-three lists - the layout is making a claim about the game (what the human
-perceives and what the agent can do are two surfaces, with the room between
-them) and a claim like that either lands in a second or does not. And whether
-anybody finds **M**. The floor plan is the clearest statement of the thesis in
-the whole client, PILOT can see the building and no tool of KEEPER's can, and
-right now it is one line of copy in the "Your hands" panel.
+Three questions, in order of how much rides on them. **Does the Archive land?**
+It is the thesis in one room - PILOT watches a body walk and grip a bar, KEEPER
+reads a list of calls, and neither half says what the pair was doing - and the
+only thing that tells us is a pair who have not been told. Doc 08 section 2.3
+asks it exactly: do they reconstruct the release-bar mechanic from it. **Do the
+three bays land as one instrument or as three lists?** The layout is making a
+claim about the game and a claim like that either lands in a second or does
+not. **Does anybody find M?** The floor plan is the clearest statement of the
+thesis in the client and it is one line of copy in the "Your hands" panel.
 
-**Before any further renderer change, replay the tour.** Four rendering bugs in
-the last pass were invisible to 600 unit tests and to stills composited from
-real `roomPlan` output, and three of them needed two chambers of history to
-appear at all. `tests/cross-origin-delegation.ts` has the chamber solvers; it
-is about forty lines to point them at a screenshot instead of an assertion.
+**Before any further renderer change, run the tour and look at the frames.**
 
-The interface rewrite was checked by driving a live session and looking at it,
-which found three bugs no test had (D-035). Three of the four chambers were
-reached that way; **the Concord Lock was not**, because getting there means
-solving the Blind Panel and the scripted solver only brute-forces the linkage.
-Reach it and look at it: the grip clock is now a laser beam that shortens, the
-bolts are lamps, and the door changes sprite at the end of the session. None of
-that has been seen with real state behind it.
+```
+SHOTS=/tmp/tour ARCHIVE="" node --experimental-strip-types tests/cross-origin-delegation.ts
+```
 
-Then playtest the console with somebody who has not seen it. The specific
-question is whether the three bays read as one instrument or as three lists:
-the layout is making a claim about the game (what the human perceives and what
-the agent can do are two surfaces, with the room between them) and a claim like
-that either lands in a second or does not land.
+It plays a whole session against live servers and writes a screenshot at every
+beat, in about a minute. Four rendering defects in the interface pass and three
+more in the Archive pass were invisible to six hundred unit tests and obvious
+in a frame. Servers and flags are in the header of that file.
 
 ### 4. Deploy the archive origin as its own Pages project
 
@@ -129,6 +125,9 @@ ChatGPT's in-app browser both need. `VITE_ARCHIVE_ORIGIN` and the worker's
 
 ## Things that will bite you
 
+- **A pooled tile image and the graphics object share a depth, so draw order decides.** The pool creates its objects lazily, so an image handed out on frame 40 is appended to the display list after `#paint` and lands on top of it. The Archive's floor plate was drawn straight through the monitor because of this. Do not fix it by raising a depth; the room is what should not have had a plate under a screen.
+- **`pilotTrack` and `keeperEntries` are a matched pair and must be edited as one.** They are the Archive's whole mechanic: one keeps `tool_call`, the other keeps everything a body did. Widening either one hands one party the other's half. `archive.test.ts` asserts the exclusion in both directions and `pilot.test.ts` asserts it again on the wire, because the projection can be right while the view reaches past it.
+- **A caption inside the monitor is clamped to the monitor, not to the room.** Same rule as a device caption, one surface smaller: the tube is 128px and "ENTERS THE CONCORD LOCK" is most of it. Measured from the text object, never estimated.
 - **A default `getTools()` does not include a cross-origin frame's tools**, even when `allow="tools"` and `exposedTo` are both satisfied. The consumer has to pass `fromOrigins` (doc 11 section 4). The manifest plate is what notices, and it notices by silently showing four tools where there are five.
 - **The archive frame's fetches need `ALLOWED_ORIGINS` in `apps/worker/.dev.vars`,** which is git-ignored, so every checkout writes its own. Without it the manual silently does not exist and the console says CORS, not "the game is broken".
 - **One `AbortController` per delegated tool, never one per message** (D-033). Rebuilding the set on each change would abort and re-register `read_manual` at every door, which is the registry telling an agent its manual was taken away and given back.
@@ -177,7 +176,7 @@ ChatGPT's in-app browser both need. `VITE_ARCHIVE_ORIGIN` and the worker's
 | A second Pages project for `apps/archive` | Human | Needs a Cloudflare project and preview-deploy wiring. Until it exists the cross-origin path only runs locally. |
 | Socket behaviour through Cloudflare's edge | Human | Verified against local `workerd` only. Watch a deployed session through one full chamber before rehearsing the demo on it. |
 | A real agent session | Human | Everything needed exists and has been driven in headless Chrome. Doc 11 sections 6 and 7 stay empty until a model meets the page. |
-| Playtesters | Human | Doc 08 section 0.1 wants six. The greybox is now playable, so this unblocks. The only task that does not parallelise. |
+| Playtesters | Human | Doc 08 section 0.1 wants six. Every room including the Archive is now playable and looked at, so this unblocks completely. The only task that does not parallelise. |
 | Repo made public | Human | Deliberately deferred to just before the deadline. |
 | Doc 03 section 10 wording fix | Whoever writes submission copy | It claims "server-generated ID"; the real guarantee is zero PII (D-023). Say what is true. |
 
