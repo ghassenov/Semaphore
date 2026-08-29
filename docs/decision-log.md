@@ -815,3 +815,34 @@ Two rows are load-bearing and are never cut: the bottom row, which is the floor 
 **The check.** `room.test.ts` proves that every device, every caption row and every floor plate in all four chambers stands on floor, that the bottom row is whole, that the outline closes with no gap, and that no wall tile is stranded away from the room. The device test caught a real regression while the shapes were being cut: the Signal Room's top strike lamp ended up inside its own chamfer.
 
 **Result.** 207 tests. Entry chunk 16.3KB gzipped against a 400KB budget; the art check still passes at 47 sheets.
+
+---
+
+### D-038 The station is one building, and the camera is what makes a room a room
+
+**Date.** 2026-08-29
+
+**Decision.** All five floors and the corridors between them are drawn as one connected floor plan in station coordinates. A Phaser camera frames the room the pair is standing in at 1x, and pulls back to half zoom to show the whole building. `render/plan.ts` is new and owns the building; `render/room.ts` keeps owning what is inside a room and still knows nothing about where that room is.
+
+**Options considered.**
+1. Grow the canvas so the whole plan is visible at 1x, always.
+2. Build the whole plan and put a camera on it.
+3. Draw the whole plan on the existing 320x320 canvas.
+
+Option 2. Option 3 is the reference image taken literally and it is the option D-035 already rejected under another name: five rooms on a 320x320 canvas puts each chamber at roughly 8x6 tiles, which is the band problem the top-down rewrite was done to escape. Option 1 keeps the rooms full size and costs the 320x320 pin D-031 made and the console layout around it; at the resulting 1x the 8px captions are genuinely hard to read. The camera keeps both: the mechanism is exactly the size it was, and the building exists.
+
+**The whole station is autotiled in one pass, and that is not an optimisation.** A corridor meeting a room is a junction. Resolved as two separate passes, each pass draws a wall the other one wanted open. Resolved together, the wall simply ends in a corner on each side of the opening, which is what a doorway is. So `tilesForCells` takes a set of cells rather than a rectangle, and `tilesFor` became a thin wrapper on it.
+
+**A wall carries the channel of the room it borders**, which is why a wall tile has a channel of its own rather than the room having one: in the station a single wall run has an amber room on one side and a corridor on the other, and the tile is the only thing that knows which side it is on.
+
+**The mistake worth recording.** The camera's wide shot was first keyed on the `TRANSITIONING` phase, which is exactly the moment it should fire and is a phase that never reaches a client. The worker settles it inside the same `reduce()` call that solved the chamber (doc 05 section 4, `settleTransition`), so it is a machine state and not a frame. Driving a live session found it; nothing else would have, because the code is correct and the beat simply never happens. `interlude()` has a `TRANSITIONING` case that has been dead for the same reason since D-035.
+
+What replaced it is better than what was intended. The pair's room *changing* is the same event and it is one the client can see, so the camera holds the building for 1.6 seconds whenever the floor changes: the walk between chambers is a walk across a floor plan instead of a caption. And **holding M pulls back to the building at any time.** That is on the human's side of the split on purpose, and it is the thesis in one keystroke: PILOT can step back and look at the station, and there is no tool that lets KEEPER do the same. It is not a leak, because the building's shape is the same for every seed and a room the pair has not reached is an empty shell.
+
+**What the tests carry.** Every number in `STATION_LAYOUT` was worked out by hand across five room sizes and four corridors, and hand arithmetic over that many coordinates is wrong about once per attempt. `plan.test.ts` floods the floor to prove each mode's station is one connected space and that every floor is reachable on foot from the Airlock, checks that no room or corridor overlaps another (against the rooms' full boxes, so a corridor into a chamfered corner is caught), that every device and caption still lands on floor once its room has been moved into the building, and that both buildings fit what the wide shot can show. A corridor off by one row still renders: it draws as a stub beside a sealed room, and the only way to notice by looking is to play far enough to be trapped.
+
+**Half zoom rather than a fitted fraction.** The canvas is scaled to a whole multiple of 320 (D-031), so at the usual 2x a half puts exactly one source pixel on one device pixel. The layouts are authored to fit inside that rather than the zoom being fitted to the layouts, because a fractional zoom is the half-pixel shimmer D-031 exists to prevent.
+
+**Known and left.** The Airlock's and the Concord Lock's doors are drawn in their rooms' north walls, which in the building faces the space outside rather than a corridor. It is not a regression - the single-room view has always drawn the door against the void - and it is only visible in the wide shot. Aligning corridors to doors means redesigning a layout whose connectivity is now proved, so it is a deliberate cosmetic debt rather than an oversight.
+
+**Result.** 600 tests. Entry chunk 16.7KB gzipped against a 400KB budget. Driven in Chrome 151 against a live worker: the Airlock and the Signal Room framed and lit, the floor plan on M, and the walk between the two chambers.
