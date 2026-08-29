@@ -74,6 +74,18 @@ export class FixtureView {
   #wanted = 0;
   #progress = 0;
   #fixture: Fixture;
+  /**
+   * The parts PILOT's lamp resolves: the glyph, its plate glow, the caption.
+   *
+   * Held rather than looked up each frame, and deliberately *not* the device
+   * itself. A lever that faded out with distance would make the room
+   * unnavigable; what fades is the detail you would have to walk over to read
+   * anyway. See `LAMP_REACH` in `chamber.ts`.
+   */
+  readonly #readable: { opacity: number }[] = [];
+  /** How near the lamp is, 0 to 1, eased so walking does not strobe. */
+  #reveal = 1;
+  #wantedReveal = 1;
 
   constructor(kit: Kit, fixture: Fixture) {
     this.#fixture = fixture;
@@ -98,10 +110,12 @@ export class FixtureView {
         const mark = kit.glyphPlane(glyphCanvas(rows), fixture.channel, 0.62);
         mark.position.set(0, GLYPH_HEIGHT, 0.05);
         this.root.add(mark);
+        this.#readable.push(mark.material);
 
         const halo = kit.halo(fixture.channel, 1.5, 0.4);
         halo.position.set(0, GLYPH_HEIGHT, 0.12);
         this.root.add(halo);
+        this.#readable.push(halo.material);
       }
     }
 
@@ -109,6 +123,7 @@ export class FixtureView {
       const caption = kit.label(fixture.label, CHANNEL[fixture.channel].key);
       caption.position.set(0, -CAPTION_DROP, 0.2);
       this.root.add(caption);
+      this.#readable.push(caption.material);
     }
 
     // Placed at its true state rather than animated up to it.
@@ -123,11 +138,31 @@ export class FixtureView {
     this.#wanted = fixture.on ? 1 : 0;
   }
 
+  /**
+   * How near PILOT's lamp is, from `lampReveal`.
+   *
+   * Eased rather than applied directly, for the same reason a device converges
+   * rather than snapping: a caption that flicked on at an exact distance would
+   * strobe every time somebody stood on the boundary.
+   */
+  reveal(amount: number): void {
+    this.#wantedReveal = amount;
+  }
+
+  /** Where this fixture stands, so the stage can measure the lamp against it. */
+  get at(): { x: number; z: number } {
+    return { x: this.#fixture.at.x, z: this.#fixture.at.z };
+  }
+
   /** Move one frame closer to it. */
   step(deltaMs: number, elapsedMs: number): void {
     const rate = Math.min(1, (deltaMs / 1000) * CONVERGENCE_PER_SECOND);
     this.#progress += (this.#wanted - this.#progress) * rate;
+    this.#reveal += (this.#wantedReveal - this.#reveal) * rate;
     this.#animate(this.#progress, elapsedMs, this.#fixture);
+    // After the animator, never before: an animator sets its own opacities and
+    // would otherwise overwrite the lamp on the same frame.
+    for (const material of this.#readable) material.opacity *= this.#reveal;
   }
 
   /** Free the geometry this view owns. Materials belong to the kit. */

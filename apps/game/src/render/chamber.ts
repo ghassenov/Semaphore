@@ -420,6 +420,68 @@ function signalRoom(facts: Readonly<Record<string, unknown>>): RoomPlan {
   };
 }
 
+/**
+ * How near PILOT's lamp has to be before a fixture's detail resolves, in metres.
+ *
+ * **This is what makes walking mean something**, and it is doc 06 section 4's
+ * own rule rather than a new one: the lamp casts a real light, so moving the
+ * avatar changes what is visible. Until it was built, PILOT could walk and the
+ * position was decorative - which is exactly what it looked like.
+ *
+ * What resolves is *detail*: the glyph on a plate, the reading on a gauge, the
+ * offset on the cipher wheel, the caption under a device. What never fades is
+ * the device itself, so the room stays navigable and you can always see that
+ * there is a lever over there worth walking to. The difference between "there
+ * is something here" and "I can tell you what it says" is the difference
+ * between a room and a job.
+ *
+ * It has one consequence the finale is built on. The Concord Lock's cipher
+ * wheel and its release bar are at opposite walls, further apart than this, so
+ * **PILOT cannot read the offset and hold the bar at the same time** (doc 02
+ * section 3.4). That exclusion is not enforced anywhere in code: it falls out
+ * of the room being wider than the lamp is bright.
+ */
+export const LAMP_REACH = 3.6;
+
+/** Beyond this much further again, detail is gone entirely rather than dim. */
+export const LAMP_FALLOFF = 3.0;
+
+/**
+ * How strongly PILOT's lamp resolves a fixture, from 0 (unreadable) to 1.
+ *
+ * Distance is measured on the floor plane. Height is deliberately ignored: a
+ * gauge three metres up the wall is as readable as the dial beneath it once you
+ * are standing at the bank, and making a player crane at a fixed camera would
+ * be a puzzle about the renderer.
+ */
+export function lampReveal(pilotX: number, pilotZ: number, at: Vec3): number {
+  const distance = Math.hypot(at.x - pilotX, at.z - pilotZ);
+  if (distance <= LAMP_REACH) return 1;
+  const beyond = (distance - LAMP_REACH) / LAMP_FALLOFF;
+  return Math.max(0, 1 - beyond);
+}
+
+/**
+ * The fixture PILOT is closest to, or null if nothing is within reach.
+ *
+ * What "lean in" pushes the camera at, and what the console names as the thing
+ * being looked at. Fixtures with nothing to read - a grate, a crate - are never
+ * chosen, because leaning in on a crate is a camera move that answers nothing.
+ */
+export function nearestFixture(plan: RoomPlan, pilotX: number, pilotZ: number): Fixture | null {
+  let best: Fixture | null = null;
+  let bestDistance = LAMP_REACH;
+  for (const fixture of plan.fixtures) {
+    if (fixture.label === undefined && fixture.glyph === undefined) continue;
+    const distance = Math.hypot(fixture.at.x - pilotX, fixture.at.z - pilotZ);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = fixture;
+    }
+  }
+  return best;
+}
+
 /** Gauge travel, matching the chamber's own clamp of 0 to 8. */
 export const GAUGE_MAX = 8;
 

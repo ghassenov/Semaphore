@@ -118,11 +118,22 @@ function glowCanvas(size = 128): HTMLCanvasElement {
   return canvas;
 }
 
-/** The console's typeface, restated for the textures drawn in the scene. */
-const LABEL_FONT = '600 34px ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+/**
+ * The console's typeface, restated for the textures drawn in the scene.
+ *
+ * Large, because the texture is the resolution ceiling: a caption drawn at
+ * 34px and then stretched across half a metre of wall is a blurred caption
+ * however big the wall is, and the first build shipped exactly that. Drawing it
+ * at 72 and letting it scale *down* is the only way round it that does not
+ * involve a font file.
+ */
+const LABEL_FONT = '700 72px ui-monospace, "SF Mono", Menlo, Consolas, monospace';
 
 /** How many pixels of padding a label texture keeps around its text. */
-const LABEL_PAD = 14;
+const LABEL_PAD = 26;
+
+/** The drawn height of a caption's canvas, before its padding. */
+const LABEL_LINE = 96;
 
 /**
  * Draw a caption into a canvas, sized to the text.
@@ -139,7 +150,7 @@ function labelCanvas(text: string, colour: number): HTMLCanvasElement {
 
   context.font = LABEL_FONT;
   const width = Math.ceil(context.measureText(text).width) + LABEL_PAD * 2;
-  const height = 48 + LABEL_PAD;
+  const height = LABEL_LINE + LABEL_PAD;
   canvas.width = width;
   canvas.height = height;
 
@@ -149,10 +160,18 @@ function labelCanvas(text: string, colour: number): HTMLCanvasElement {
   draw.font = LABEL_FONT;
   draw.textAlign = "center";
   draw.textBaseline = "middle";
-  // A dark backing plate, so a caption stays readable over a lit wall without
-  // needing the wall to cooperate.
-  draw.fillStyle = "rgba(5,7,10,0.72)";
+
+  // An engraved plate rather than a wash: a filled ground, a bright top edge
+  // and a dark bottom one, so the caption reads as something bolted to the
+  // equipment rather than as text floating in front of it. It also guarantees
+  // contrast without needing the wall behind it to cooperate.
+  draw.fillStyle = "rgba(6,9,13,0.86)";
   draw.fillRect(0, 0, width, height);
+  draw.fillStyle = "rgba(255,255,255,0.10)";
+  draw.fillRect(0, 0, width, 2);
+  draw.fillStyle = "rgba(0,0,0,0.55)";
+  draw.fillRect(0, height - 2, width, 2);
+
   draw.fillStyle = hex(colour);
   draw.fillText(text, width / 2, height / 2);
   return canvas;
@@ -288,7 +307,7 @@ export class Kit {
    * access can scrape. The console beside the canvas may hold public copy and
    * things KEEPER can obtain for itself; it may not hold these.
    */
-  label(text: string, colour: number, height = 0.34): Sprite {
+  label(text: string, colour: number, height = 0.52): Sprite {
     const canvas = labelCanvas(text, colour);
     const texture = this.#keep(new CanvasTexture(canvas));
     texture.colorSpace = SRGBColorSpace;
@@ -308,7 +327,11 @@ export class Kit {
    * station with hard pixel edges, which is what makes the shape PILOT has to
    * describe the sharpest thing in the frame. See `glyphs.ts`.
    */
-  glyphPlane(canvas: HTMLCanvasElement, channel: RenderChannel, metres: number): Mesh {
+  glyphPlane(
+    canvas: HTMLCanvasElement,
+    channel: RenderChannel,
+    metres: number,
+  ): Mesh<PlaneGeometry, MeshBasicMaterial> {
     const texture = this.#keep(new CanvasTexture(canvas));
     texture.colorSpace = SRGBColorSpace;
     texture.magFilter = NearestFilter;

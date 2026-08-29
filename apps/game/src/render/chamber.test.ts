@@ -24,7 +24,10 @@ import {
   ROOM_SIZES,
   arc,
   facingCentre,
+  LAMP_REACH,
   interlude,
+  lampReveal,
+  nearestFixture,
   roomPlan,
   roomTitle,
   spread,
@@ -267,6 +270,62 @@ describe("the phases with no room", () => {
     // Each of them says something different. A shared fallback would pass every
     // assertion above while telling the player nothing.
     expect(seen.size).toBe(5);
+  });
+});
+
+describe("PILOT's lamp", () => {
+  it("resolves what is at hand and loses what is across the room", () => {
+    const here = { x: 0, y: 0, z: 0 };
+    expect(lampReveal(0, 0, here)).toBe(1);
+    expect(lampReveal(LAMP_REACH - 0.1, 0, here)).toBe(1);
+    // Beyond the reach it falls off rather than cutting out, so standing on the
+    // boundary does not strobe.
+    const edge = lampReveal(LAMP_REACH + 1, 0, here);
+    expect(edge).toBeGreaterThan(0);
+    expect(edge).toBeLessThan(1);
+    expect(lampReveal(40, 0, here)).toBe(0);
+  });
+
+  it("ignores height, because a gauge up a wall is still at the bank", () => {
+    // Making a player crane at a fixed camera would be a puzzle about the
+    // renderer rather than about the station.
+    expect(lampReveal(0, 0, { x: 0, y: 0, z: 0 })).toBe(lampReveal(0, 0, { x: 0, y: 3, z: 0 }));
+  });
+
+  it("cannot reach the Concord Lock's wheel and its bar at once", () => {
+    // The finale's whole tension (doc 02 section 3.4), and it is not enforced
+    // anywhere: it falls out of the room being wider than the lamp is bright.
+    // If the room ever narrows, or the lamp brightens, this fails rather than
+    // the chamber quietly becoming soluble from one spot.
+    const plan = roomPlan(CHAMBERS[3]?.view ?? viewOf({}));
+    const wheel = plan?.fixtures.find((f) => f.id === "wheel");
+    const bar = plan?.fixtures.find((f) => f.id === "bar");
+    if (!wheel || !bar) throw new Error("the Concord Lock has a wheel and a bar");
+    const apart = Math.hypot(wheel.at.x - bar.at.x, wheel.at.z - bar.at.z);
+    expect(apart).toBeGreaterThan(LAMP_REACH * 2);
+    // Standing at either one, the other is unreadable.
+    expect(lampReveal(wheel.at.x, wheel.at.z, bar.at)).toBe(0);
+    expect(lampReveal(bar.at.x, bar.at.z, wheel.at)).toBe(0);
+  });
+
+  it("picks the nearest thing that has something to read", () => {
+    const plan = roomPlan(CHAMBERS[0]?.view ?? viewOf({}));
+    if (!plan) throw new Error("the airlock has a room");
+    const lever = plan.fixtures.find((f) => f.id === "lever_a");
+    if (!lever) throw new Error("the airlock has lever_a");
+    expect(nearestFixture(plan, lever.at.x, lever.at.z)?.id).toBe("lever_a");
+    // Nothing within reach is null rather than the least-far thing: leaning in
+    // on something across the room would be a camera move nobody asked for.
+    expect(nearestFixture(plan, 500, 500)).toBeNull();
+  });
+
+  it("never leans in on something with nothing to read", () => {
+    // A grate and a crate are furniture. Framing one answers no question.
+    const plan = roomPlan(CHAMBERS[2]?.view ?? viewOf({}));
+    if (!plan) throw new Error("the blind panel has a room");
+    const grate = plan.fixtures.find((f) => f.id === "grate");
+    if (!grate) throw new Error("the blind panel has a grate");
+    expect(nearestFixture(plan, grate.at.x, grate.at.z)?.id).not.toBe("grate");
   });
 });
 

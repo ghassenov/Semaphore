@@ -194,6 +194,46 @@ export function fitBox(
 }
 
 /**
+ * How far the room shot's aim slides toward PILOT, as a fraction of the offset.
+ *
+ * A little, and never all the way. Tracking PILOT exactly turns the camera into
+ * a chase cam and throws away the composition the room was staged for; not
+ * tracking at all is what made walking feel like it moved a token rather than a
+ * person. A third is enough that crossing the room visibly re-frames it.
+ */
+const FOLLOW = 0.34;
+
+/**
+ * The shot that leans in on one fixture.
+ *
+ * PILOT holding a key near a mechanism. It is the only camera move the human
+ * drives, and it exists because a glyph at room distance is a shape you can see
+ * and not a shape you can *describe*: the whole job is getting a detail across
+ * in words, so being able to go and study it is the job's other half.
+ *
+ * The framing is deliberately tight and slightly above, which is how you look
+ * at something you are holding a lamp up to.
+ */
+export function inspectShot(at: Vec3, aspect: number): Shot {
+  const target: Vec3 = { x: at.x, y: at.y + 0.9, z: at.z };
+  const distance = fitBox(
+    target,
+    { x: 1.5, y: 1.5, z: 1.5 },
+    { x: at.x, y: at.y + 0.9, z: at.z },
+    ROOM_FOV,
+    aspect,
+    0.34,
+    ROOM_YAW,
+  );
+  return {
+    eye: orbit(target, distance, 0.34, ROOM_YAW),
+    target,
+    fov: ROOM_FOV,
+    floor: null,
+  };
+}
+
+/**
  * The shot that frames one room.
  *
  * The target is not the room's centre. It sits a little above the floor and a
@@ -201,10 +241,17 @@ export function fitBox(
  * its floor is mostly empty: aiming at the geometric centre puts the mechanism
  * in the top third of the frame and a lot of nothing under it.
  */
-export function roomShot(centre: { x: number; z: number }, floor: FloorId, aspect: number): Shot {
+export function roomShot(
+  centre: { x: number; z: number },
+  floor: FloorId,
+  aspect: number,
+  /** Where PILOT is standing, so the shot can lean toward them. */
+  follow?: { x: number; z: number },
+): Shot {
   const size = footprintOf(floor);
+  const drift = follow ? (follow.x - centre.x) * FOLLOW : 0;
   const target: Vec3 = {
-    x: centre.x,
+    x: centre.x + drift,
     y: size.height * 0.34,
     z: centre.z - size.depth * 0.12,
   };
@@ -219,6 +266,8 @@ export function roomShot(centre: { x: number; z: number }, floor: FloorId, aspec
     ROOM_PITCH,
     ROOM_YAW,
   );
+  // The room still has to fit whichever way the aim has drifted, so the fit is
+  // solved against the room's real centre and the drift is added afterwards.
   return {
     eye: orbit(target, distance, ROOM_PITCH, ROOM_YAW),
     target,
@@ -260,12 +309,13 @@ export function shotFor(
   floor: FloorId | null,
   wide: boolean,
   aspect: number,
+  follow?: { x: number; z: number },
 ): Shot {
   if (wide || floor === null) return wideShot(mode, aspect);
   if (phase === "TRANSITIONING") return wideShot(mode, aspect);
   const centre = centreOf(mode, floor);
   if (centre === null) return wideShot(mode, aspect);
-  return roomShot(centre, floor, aspect);
+  return roomShot(centre, floor, aspect, follow);
 }
 
 /**
