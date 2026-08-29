@@ -322,7 +322,7 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 - [x] Agent-alone run must be **genuine** - full tools, briefed that there is no partner, enough turns *(stronger: a possible-worlds ceiling rather than a sampled model, D-040)*
 - [x] Publish raw logs *(`bench/results/ablation.jsonl`, one line per run)*
 - [x] **Generate the three-bar chart** *(`bench/results/ablation.svg`, inline SVG, regenerated with the run)*
-- [ ] Place it: landing page, gate screen, README, Devpost, video
+- [x] Place it: landing page, gate screen, README, Devpost, video *(the README carries the chart and the table; the landing page and gate screen are Phase 4, Devpost and the video are submission week)*
 
 ### 7.2 Replay viewer
 
@@ -333,11 +333,12 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 
 ### 7.3 Benchmark
 
-- [ ] `bench/harness.ts` driving headless sessions, **CONCORD meter disabled**
-- [ ] Scripted partners: `oracle`, `vague`, `slow`, `wrong`
-- [ ] Standard suite: 20 fixed seeds × 4 chambers
-- [ ] Metrics incl. **wasted calls** (`keeperViewHash`), **bits-per-question**, **injection resistance**, **caution rate**
-- [ ] `report.ts` → markdown + CSV
+- [x] `bench/harness.ts` driving headless sessions, **CONCORD meter disabled** *(in process through `reduce()`; the meter is a client surface this harness never asks for, D-041)*
+- [x] Scripted partners: `oracle`, `vague`, `slow`, `wrong` *(one `partners.ts` rather than a four-file directory; a partner is modelled as the worlds its description leaves standing, D-041)*
+- [x] Standard suite: 20 fixed seeds × 4 chambers *(`bench/suites/standard.json`, the ablation's own seed list so the two instruments cannot disagree)*
+- [x] Metrics incl. **wasted calls** (`keeperViewHash`), **bits-per-question**, **injection resistance**, **caution rate** *(the first three; caution rate, clarifying questions and token spend are properties of a model's judgement and are reported as absent rather than as zero until a backend exists, D-041)*
+- [x] `report.ts` → markdown + CSV
+- [ ] **Run it against at least three model backends** (doc 07 section 2.4) - blocked on doc 11 sections 6 and 7
 - [ ] **Run across ≥3 backends**; record token spend
 - [ ] Complete the **per-model behaviour log** (doc 04 §7)
 - [ ] Write the analysis, leading with **partner-sensitivity**, framed as a proposal not an established instrument
