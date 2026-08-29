@@ -846,3 +846,39 @@ What replaced it is better than what was intended. The pair's room *changing* is
 **Known and left.** The Airlock's and the Concord Lock's doors are drawn in their rooms' north walls, which in the building faces the space outside rather than a corridor. It is not a regression - the single-room view has always drawn the door against the void - and it is only visible in the wide shot. Aligning corridors to doors means redesigning a layout whose connectivity is now proved, so it is a deliberate cosmetic debt rather than an oversight.
 
 **Result.** 600 tests. Entry chunk 16.7KB gzipped against a 400KB budget. Driven in Chrome 151 against a live worker: the Airlock and the Signal Room framed and lit, the floor plan on M, and the walk between the two chambers.
+
+---
+
+### D-039 The Archive's monitor is PILOT's half of the ghost, and it is a schematic
+
+**Date.** 2026-08-29
+
+**Decision.** The Archive beat gets its half of the split: a room with a monitor in it, playing a prior session's log as PILOT would have perceived it. `pilotTrack` on the server is the mirror of `keeperEntries`; `PilotView` carries the resulting `GhostTrack` in the `ARCHIVE` phase and null everywhere else; `render/ghost.ts` decides what is on the screen at an instant and `scenes.ts` paints it. The recording is a flat schematic, not a shrunken room.
+
+**Options considered.**
+1. Fetch the ghost JSONL in the client and filter it there.
+2. Project it on the server, beside the tool that reads the other half, and put it on the view.
+3. Serve it from the archive origin, next to `read_station_log`.
+
+Option 2. Option 1 is the client reaching around `projectForPilot` for a fact it wants to render, which is the one thing the design law forbids however convenient it looks, and it would put the ghost's tool calls in the page. Option 3 is where `read_station_log` lives and is the wrong place for this: the archive origin is KEEPER's surface, and PILOT's half arriving over the same socket every other rendered fact arrives on is what makes the two halves obviously symmetric.
+
+**The exclusion is the mechanic.** `keeperEntries` keeps `tool_call` and drops everything else; `pilotTrack` drops `tool_call` and keeps what a body in the room produced. A monitor that showed the ghost's calls would hand PILOT KEEPER's half and leave nothing to reconstruct. `archive.test.ts` asserts it in both directions over the real fixture: no tool name, no argument value and no view hash appears anywhere in PILOT's half, and no `pilot_action` target appears in KEEPER's. `pilot.test.ts` asserts the same wall again over the wire, because the projection can be right while the view reaches past it.
+
+`state_delta` is dropped too, and less obviously. Those events carry raw `WorldState` paths, which include `HIDDEN` fields like the Blind Panel's mapping. They are the replay viewer's business, behind a projection, and have no business on a screen PILOT reads directly.
+
+**The walk is interpolated, and that is stated where it happens.** PILOT's position is client-local and was never logged, so the log knows the ghost gripped the release bar and not the path they took to it. Every position between two beats is `ghost.ts`'s invention. It is an honest one only because the beats themselves are real, and the module says so at the top rather than in a commit message.
+
+**A schematic rather than a shrunken room.** Doc 08 asked for the replay renderer at 1:4. The pack's sprites are 16px tiles and can only be shrunk by a fractional scale, which is exactly the half-pixel shimmer D-031 exists to forbid, arriving on a smaller surface. A flat outline in two palette colours has no such constraint, is what a decade-old station monitor would actually show, and costs no art. The scale is computed from the tube and floored to whole pixels, so it cannot shimmer however the rooms are resized later; with the chambers as they are it lands at two pixels a tile, nearer 1:8 than 1:4, and the comment says so rather than repeating the doc.
+
+**No `ArchiveScene`.** Doc 08 named one. Two scenes exist because the chambers differ in what they contain rather than in how they are drawn, and the Archive differs the same way: a room with furniture in it, drawn by the code that draws rooms with furniture in them. A third scene would buy a transition, and doc 07 section 6 names listener accumulation across transitions as this project's likely frame-time problem.
+
+**Three things the frame found that no test could.** The tour was run against a live worker and looked at, and it was worth doing:
+- The Archive's threshold plate was drawn *through* the monitor. Pooled tile images and the graphics object share a depth, so draw order decides, and it is decided by which pooled object was created first. The fix is that the Archive has no floor plate at all, which is also the right answer under this app's own rule: decoration that competes is not decoration.
+- The designation and the caption both overflowed a six-tile tube. The tube is eight tiles wide now and the door above it lost its caption, which claimed back the row the schematic needed. `doorway` takes an optional label for that: a room with one exit and one monitor does not need the exit labelled.
+- The first tour's frames were captured mid-camera-move, so three of them are the previous room with the next room's name over it. The camera holds the building for 1.6s on the walk and then pans for 0.7s, and the tour's default wait is the sum of the two.
+
+**The tour is bolted to the browser proof, not to a file of its own.** Getting to the Archive means solving the Blind Panel, and the solvers that do it were already in `cross-origin-delegation.ts`. `SHOTS=<dir>` writes a screenshot at every beat and is a no-op without it, so the assertion run is unchanged and costs nothing.
+
+**One ghost, deliberately.** Doc 08 section 2.3 wants two authored sessions. `fixtures/ghosts/CLAUDE.md` scopes the submission to one and doc 08's own cut order allows it, and a second ghost is content rather than mechanism: nothing here is built around there being exactly one. Left as future work rather than filled with a variation of the first.
+
+**Result.** 621 tests. Entry chunk 16.8KB gzipped against a 400KB budget. Driven in Chrome 151 against a live worker: 17/17 browser checks green, and the Archive looked at three times across the recording - the ghost walking into the Signal Room, gripping the release bar, and the tape running out.
