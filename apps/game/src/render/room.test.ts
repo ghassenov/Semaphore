@@ -23,6 +23,7 @@ import {
   roomTitle,
   spread,
   tilesFor,
+  ARCHIVE_PLAN,
   CHAMBER_NOTCHES,
 } from "./room.js";
 import { CHANNEL_SHEETS, FRAMES, SLICE } from "./atlas.js";
@@ -37,6 +38,7 @@ function view(over: Partial<PilotView> = {}): PilotView {
     retries: 0,
     facts: {},
     notes: [],
+    ghost: null,
     mode: "full",
     ...over,
   };
@@ -109,11 +111,22 @@ describe("spread", () => {
 
 describe("roomPlan", () => {
   it("draws nothing when the pair is not standing in a room", () => {
-    // The Archive keeps `machine.chamber` set so the machine knows which room
-    // was last entered (D-025). Drawing from that alone would put the Blind
-    // Panel behind the Archive's dead monitor.
-    expect(roomPlan(view({ phase: "ARCHIVE", chamber: "blind_panel", facts: {} }))).toBeNull();
     expect(roomPlan(view({ phase: "LOBBY", chamber: null, facts: {} }))).toBeNull();
+    expect(roomPlan(view({ phase: "FINALE", chamber: null, facts: {} }))).toBeNull();
+  });
+
+  it("draws the Archive, never the room behind it", () => {
+    // The Archive keeps `machine.chamber` set so the machine knows which room
+    // was last entered (D-025). Reading the chamber first would put the Blind
+    // Panel behind the monitor, which is the bug this asserts against; the
+    // phase is what decides, and it decides before the chamber is consulted.
+    const plan = roomPlan(view({ phase: "ARCHIVE", chamber: "blind_panel", facts: {} }));
+    expect(plan).toBe(ARCHIVE_PLAN);
+    // Every chamber is wider than the Archive, so a plan of this width cannot
+    // be one of them however the chamber layouts change later.
+    for (const [, shape] of Object.entries(CHAMBER_NOTCHES)) {
+      expect(shape.cols).toBeGreaterThan(ARCHIVE_PLAN.cols);
+    }
   });
 
   it("fits every room on the canvas, walls included", () => {
