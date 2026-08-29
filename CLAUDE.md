@@ -15,7 +15,7 @@ Repo-wide law. Everything on this page applies in every directory. A subdirector
 | Submission deadline | 2026-09-03, 13:00 PDT (hard) |
 | Judging period ends | 2026-09-21 (the live URL must stay up until then) |
 | Live URL must work in | ChatGPT in-app browser (GPT-5.6 Sol or Terra) and Chrome 149+ with `chrome://flags/#enable-webmcp-testing` |
-| License | MIT, visible in the GitHub About panel |
+| License | MIT for the code. `apps/game/public/art/` is third-party and separately licensed (D-034). |
 
 The thesis every decision is checked against:
 
@@ -38,7 +38,8 @@ Judging is four equally weighted criteria: **WebMCP Leverage**, **Execution**, *
 | [packages/](packages/) | Code shared by client, worker, archive and bench. Pure, no I/O. | `seed`, `protocol` built |
 | `packages/seed/` | Deterministic xorshift128+ PRNG. Same seed, same puzzle, always. | Built |
 | `packages/protocol/` | Channel tags, error codes, wire types, and the two document-tool specs the game and the archive origin share. One definition each. | Built |
-| [apps/game/](apps/game/) | Phaser client. Renders PILOT's view, hosts the WebMCP tool director. | Complete through plan 1.4, plus the declarative notepad and first art. A full session has been played end to end in Chrome 151. |
+| `apps/game/public/art/` | The vendored art pack, one directory per channel. **Not covered by this repository's MIT licence** (D-034); terms and provenance in its `CREDITS.md`. | Vendored |
+| [apps/game/](apps/game/) | Phaser client. Renders PILOT's view, hosts the WebMCP tool director. | Complete through plan 1.4. Interface rebuilt on the vendored art pack: one top-down room on the canvas, a three-bay DOM console around it (D-034 to D-036). All four chambers looked at in Chrome against a live worker. |
 | [apps/worker/](apps/worker/) | Cloudflare Worker plus the Session Durable Object. Authoritative state. | Complete: four chambers, the reducer, the Archive beat, the timer, the read-only tool surface, the manual, PILOT's view socket, the CONCORD route and the shared notepad |
 | [apps/archive/](apps/archive/) | Cross-origin tool provider: `read_manual` and `read_station_log`, registered on a second origin and exposed back to the game. | Built (D-033). Holds no content: both tools fetch the worker. |
 | [fixtures/ghosts/](fixtures/ghosts/) | Authored ghost session logs, generated from real play. | One ghost built |
@@ -149,3 +150,4 @@ Rules that follow from this:
 | 2026-08-28 | Ahmed Saad | Repository map: Phaser and the scenes landed (D-026), and the worker gained the CONCORD route (D-027). |
 | 2026-08-28 | Ahmed Saad | Repository map: the declarative notepad, the first art, and a full session played end to end (D-028 to D-030). |
 | 2026-08-29 | Ahmed Saad | Repository map: `apps/archive` is built and the document tools are delegated across origins (D-033). `tests/` gained the browser proof. |
+| 2026-08-29 | Ahmed Saad | The client's interface was rebuilt on a vendored art pack (D-034 to D-036). Repository map gained `apps/game/public/art/`, and the licence row now separates the MIT code from the separately-licensed art. |

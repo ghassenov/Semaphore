@@ -465,8 +465,7 @@ function paintFloor(
   const key = textureKey("shared", "ground");
   for (let row = 0; row < plan.rows; row += 1) {
     for (let col = 0; col < plan.cols; col += 1) {
-      const image =
-        pool?.next() ?? scene.add.image(0, 0, key).setOrigin(0, 0).setDepth(0);
+      const image = pool?.next() ?? scene.add.image(0, 0, key).setOrigin(0, 0).setDepth(0);
       image
         .setTexture(key)
         .setFrame(groundFrame(col, row))

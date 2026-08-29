@@ -323,11 +323,7 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   card.body.append(
     prompt,
     copyButton("Copy prompt", () => STARTER_PROMPT, prompt),
-    el(
-      "p",
-      { class: "note" },
-      "No response? Ask it: what tools does this page give you?",
-    ),
+    el("p", { class: "note" }, "No response? Ask it: what tools does this page give you?"),
   );
 
   const manifestPanel = panel("Manifest");
