@@ -13,13 +13,13 @@ It answers three questions and only three: where the repo is right now, what to 
 | **Last updated** | 2026-08-29, Ahmed Saad |
 | **Spike** | **Run** against Chrome 151, 2026-08-28. Doc 11 filled. Three findings, D-024. ChatGPT's in-app browser still untested. |
 | **Branch** | `feat/ui-redesign`, off `main` at `f443a0f`, **not pushed** |
-| **Pipeline** | Green: 580 tests, typecheck, lint, format, both `vite build`s plus the bundle budget and the new art check, real `wrangler deploy --dry-run` |
+| **Pipeline** | Green: 590 tests, typecheck, lint, format, both `vite build`s plus the bundle budget and the new art check, real `wrangler deploy --dry-run` |
 | **Played** | A full session, end to end, in Chrome 151 against a live `wrangler dev`: all four chambers, the Archive, the finale. The registry ends genuinely empty. |
-| **Interface** | **Rebuilt** (D-034 to D-036). Vendored art pack, one top-down room on the canvas, a three-bay DOM console around it. The Airlock, Signal Room and Blind Panel have been driven up and looked at in Chrome against a live worker; the Concord Lock has not yet been reached by a scripted run. |
+| **Interface** | **Rebuilt** (D-034 to D-037). Vendored art pack, one top-down room on the canvas, a three-bay DOM console around it. Rooms now resolve every tile from its neighbours, so each chamber has its own outline and a wall in its own channel colour, and devices animate between states (D-037). The Airlock, Signal Room and Blind Panel have been driven up and looked at in Chrome against a live worker; **the four new outlines have only been looked at as composited stills, not in the running client**, and the Concord Lock has still not been reached by a scripted run. |
 | **Delegation** | **Working and proved.** `apps/archive` serves `read_manual` and `read_station_log` from a second origin. `tests/cross-origin-delegation.ts`: 17 checks, run twice (frame embedded, and fallback), both green on Chrome 151, 2026-08-29. `ARCHIVE_ORIGIN` stays `same` (D-033). |
 | **Verify with** | `pnpm install && pnpm typecheck && pnpm lint && pnpm test && pnpm build` |
 | **Run it** | `cd apps/worker && npx wrangler dev` in one shell, `cd apps/game && pnpm dev` in another. Vite proxies `/session` to `127.0.0.1:8787`, WebSocket included. For the cross-origin path, see `apps/archive/CLAUDE.md`. |
-| **Bundle** | Entry **15.8KB** gzipped of a 400KB budget; the archive origin is **2.2KB**. Phaser is a separate 358KB chunk, fetched only when a shift starts (D-026). The art pack is **17KB** of static files, fetched by the scenes and not by the entry. |
+| **Bundle** | Entry **16.3KB** gzipped of a 400KB budget; the archive origin is **2.2KB**. Phaser is a separate 358KB chunk, fetched only when a shift starts (D-026). The art pack is **17KB** of static files, fetched by the scenes and not by the entry. |
 | **Cloudflare** | Logged in. D1 database `semaphore-sessions` provisioned and migrated, local and remote. |
 
 ### What exists
@@ -27,7 +27,7 @@ It answers three questions and only three: where the repo is right now, what to 
 | Path | State |
 |---|---|
 | `docs/design/` | Numbered set 00-12, complete. Plan sections 0.4 and 1.4 ticked. |
-| `docs/` | Decision log at D-036, lessons journal live. |
+| `docs/` | Decision log at D-037, lessons journal live. |
 | `packages/seed`, `packages/protocol` | Done. |
 | `apps/worker/src/chambers/*.ts` | Done. All four chambers: generation, state, facts, world enumeration. |
 | `apps/worker/src/reducer.ts` | Done end to end, ENTRY through **ESCAPED**. `ambiguityFor` is now exported, for the CONCORD route. |
@@ -36,9 +36,9 @@ It answers three questions and only three: where the repo is right now, what to 
 | `apps/game/src/webmcp/*` | Done. Adapter (declarative API and `fromOrigins` too), three-tier director, 14 tools, and the archive frame. `tools.notepad.ts` holds both halves of the pad. |
 | `apps/game/src/net/*` | Done. `sessionClient` gained `concord()`; the socket is unchanged. |
 | `apps/game/src/render/palette.ts` | The 14 locked colours, and the one place a channel becomes a colour. |
-| `apps/game/src/render/room.ts` | **Pure.** All four chambers as top-down tile plans, from one `PilotView`. Takes no other input, by design and by type. Replaces `rooms.ts` (D-035). |
+| `apps/game/src/render/room.ts` | **Pure.** All four chambers as top-down tile plans, from one `PilotView`. Takes no other input, by design and by type. Replaces `rooms.ts` (D-035). Also holds each chamber's outline and `tilesFor`, which resolves a shape to floor and wall frames (D-037). |
 | `apps/game/src/render/floors.ts` | **Pure.** Which floors this session has, which one the pair is in, which are cleared. The old `cutaway.ts` with its pixels removed and its logic intact. |
-| `apps/game/src/render/atlas.ts` | **Pure.** The art pack as one table: paths, frame counts, named frames, the ground's variation. No Phaser in it. |
+| `apps/game/src/render/atlas.ts` | **Pure.** The art pack as one table: paths, frame counts, named frames, and the two autotile tables `floorFrame` and `wallFrame` read (D-037). No Phaser in it. |
 | `apps/game/src/render/hud.ts` | **Pure.** Timer, meter fill, legend, log trimming. The band coordinates and the character-width estimate went with the canvas HUD (D-036). |
 | `apps/game/src/render/scenes.ts` | `LandingScene` and `ChamberScene`. The only file that touches Phaser's API. Paints; decides nothing. |
 | `apps/game/src/render/sprites.ts` | What is still authored in source: twelve glyphs and the two bodies, redrawn from above. The tiles are the pack's now. |
@@ -84,7 +84,13 @@ and which the game now genuinely uses.
 one-tool page gets discovered unprompted, whether `untrustedContentHint`
 changes behaviour, and the latency distribution that sizes Chamber III's window.
 
-### 3. Look at the Concord Lock, and play the new interface with a person
+### 3. Look at the Concord Lock, and look at the four new outlines in the running client
+
+D-037 gave each chamber its own silhouette, a wall in its channel colour and
+animated devices. All of that was checked by compositing the real `roomPlan`
+output against the real tiles as stills, which proves the geometry and proves
+nothing about motion: the frame stepper, the pad flourish and the accent walls
+have not been seen in Phaser. Drive a session up and look.
 
 The interface rewrite was checked by driving a live session and looking at it,
 which found three bugs no test had (D-035). Three of the four chambers were
@@ -118,6 +124,8 @@ ChatGPT's in-app browser both need. `VITE_ARCHIVE_ORIGIN` and the worker's
 - **Never import Phaser statically outside `render/station.ts`** (D-026). One top-level import moves 358KB into the entry chunk, and nothing about the page looks wrong. `apps/game/scripts/check-bundle.mjs` fails the build, which is the only thing that will tell you.
 - **Captions are wider than their tiles.** A caption is centred under its device and routinely overhangs it, so it is the caption that runs through the wall, not the sprite. Six separate layout bugs across two phases have now been this one thing. `scenes.ts` clamps every caption to the room from the text object's *measured* width; do not fix a collision by moving the device to a safer column.
 - **Phaser sizes its canvas from the parent's *border* box.** A border or a nine-slice frame on the element it mounts into is a border it cannot see: it scales to the full outer width, overflows the frame, and lands on a fractional scale that reads as a styling choice rather than as the shimmer D-031 forbids. The frame and the mount point are two elements (`.stage-frame` and `.stage`); keep them that way. A flex item's automatic minimum size will also fight Phaser's centring margin - `min-height: 0` is what stops that loop.
+- **A notch may only be cut from a corner of a room's box** (D-037). `walls-out` is a nine-slice of *convex* corners and the pack ships no concave one, so a notch in the middle of an edge turns the wall in and back out with two convex corners butted together: the border draws twice and reads as a crack in the building. Two rows are also never cut - the bottom row, which PILOT walks along, and whichever row holds the door. `room.test.ts` asserts the corner rule over every chamber and demonstrates the doubled border, so a new chamber fails a test rather than shipping the artifact.
+- **Devices step toward the server's frame; they never play an animation** (D-037). A played sequence has to be cancelled when the state changes underneath it, and a door caught halfway by a second update either finishes opening a door the server has shut or stalls on a frame nobody chose. If you add motion, add it to `#stepFrame` in `scenes.ts` rather than reaching for `this.anims`.
 - **The art pack is not MIT.** `apps/game/public/art/` is used under LorisC's terms, which permit use in the game and modification and withhold redistribution. Touching that directory means updating its `CREDITS.md`. Do not assume the repository's licence covers it, and do not let a reader assume it either.
 - **A wrong frame count in `atlas.ts` does not throw.** Phaser slices the sheet on whatever numbers it is given and hands out a frame that is half of two tiles; the room renders looking merely a bit off. `apps/game/scripts/check-art.mjs` runs first in the build and is the only thing that will tell you.
 - **The console may hold no `VISUAL` fact.** Glyphs, needle values, the cipher offset and the manual page's state stay on the canvas, because a text node is scrapeable by an agent with page access. `ui.ts`'s header carries the audit that let the other panels out; extend it rather than reasoning afresh.

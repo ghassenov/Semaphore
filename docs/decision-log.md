@@ -784,3 +784,34 @@ Option 3. Option 1 was the small diff and the wrong one: a top-down tileset draw
 
 **Result.** Entry chunk 15.6KB gzipped against a 400KB budget. The console and the room paint from the same model, on a callback rather than a poll, so the readouts beside the canvas and the room on it cannot disagree about a frame.
 
+
+---
+
+### D-037 A room is a shape resolved from its neighbours, and its walls carry its channel
+
+**Date.** 2026-08-29
+
+**Decision.** Every floor and wall tile is chosen from the tiles around it rather than from its own position. `atlas.ts` gains two derived tables, `FLOOR_BY_EDGE` and the wall table behind `wallFrame`; `room.ts` gains `tilesFor`, which turns a chamber's box and the pieces cut out of it into resolved tiles; `scenes.ts`'s `paintFloor` and `paintWalls` collapse into one `paintTiles` that does not know what shape it is drawing. Each chamber declares an outline and an accent channel, and devices animate between frames.
+
+**Options considered.**
+1. Fix the floor tiling and leave the rooms as rectangles.
+2. One room per canvas, with a real outline, a channel-coloured wall, and the pack's animations.
+3. The whole station as one connected floor plan, every chamber and corridor visible at once.
+
+Option 2. Option 3 is what the reference image actually shows, and it is the option D-035 already rejected under a different name: five rooms on a 320x320 canvas puts each chamber back to roughly 8x6 tiles, which is the band problem the top-down rewrite was done to escape. It only becomes possible if the canvas grows past the resolution D-031 pinned, and that is a bigger decision than a restyle.
+
+**The bug underneath the restyle.** `GROUND_FILL` picked between frames 24, 25, 33, 34 and 42 per tile, documented as five interior frames "that differ by where their rivets sit". They are not rivet variants. They are one coherent bolted-floor set whose bolts are drawn to meet at *shared* tile corners, so choosing between them per tile broke every bolt into a stray fragment and stippled every floor in the game. The five were never wrong to vendor; they were wrong to shuffle.
+
+**The tables are derived, not picked by eye.** Every frame of `shared/ground.png` was classified by sampling its own pixels for which of its four sides carries the pack's dark inset shading. That yields a complete sixteen-entry table with no duplicates, one frame per combination of edges, which is also the proof that the sheet holds exactly the cases a room built from rectangles can need. A frame index that is wrong by one is invisible in review and obvious on a screen, which is the reason not to guess.
+
+**The constraint the art imposes on the shapes.** `walls-out` is a nine-slice of *convex* corners; the pack ships no concave wall corner in any colour. So a notch cut into the middle of an edge has to turn the wall inward and back out using two convex corners butted together, which draws the border twice and reads as a crack in the building. Six candidate outlines were rendered and looked at before this was understood. **A notch may only be cut from a corner of the box**, and `room.test.ts` both asserts the rule over every chamber and demonstrates the doubled border a mid-edge notch produces, so the next person gets the reason rather than the rule.
+
+Two rows are load-bearing and are never cut: the bottom row, which is the floor PILOT walks across, and whichever row holds the door. Because the bottom row is spoken for, every notch is a top corner, and the four chambers are told apart by how wide and how deep their vestibule is rather than by where it is.
+
+**The walls carry the channel.** The pack ships its walls in all six colours and three were already vendored and loading unused. A room whose puzzle is only PILOT's to read is walled in amber, a room only KEEPER can act in is walled in cyan, and a room both parties work in is bone. This is the existing colour law applied to the building instead of to a device: it costs no art, it cannot disagree with the devices inside it, and it is the first thing on screen in a chamber.
+
+**Animation is a stepper, not a played animation.** A device walks its shown frame one step per 1/12s toward the frame the server says it is on. Phaser's animations were the native option and are the wrong one here: a played animation is a fixed sequence that has to be cancelled when the state changes underneath it, and a door caught halfway by a second update would either finish opening a door the server has shut or stall on a frame nobody chose. A stepper cannot disagree with the server - it is always walking toward the truth, and the worst case is arriving a frame late. A device seen for the first time is drawn at its real frame, so entering a room with a lever already thrown shows a thrown lever rather than one that throws itself on arrival.
+
+**The check.** `room.test.ts` proves that every device, every caption row and every floor plate in all four chambers stands on floor, that the bottom row is whole, that the outline closes with no gap, and that no wall tile is stranded away from the room. The device test caught a real regression while the shapes were being cut: the Signal Room's top strike lamp ended up inside its own chamfer.
+
+**Result.** 207 tests. Entry chunk 16.3KB gzipped against a 400KB budget; the art check still passes at 47 sheets.
