@@ -2,48 +2,76 @@
  * The station console.
  *
  * The page is not a document with a game in it. It is the inside of a piece of
- * salvaged equipment, and the canvas is the window in the middle of it. That is
- * why almost nothing here is styled like web furniture: panels are plates,
- * headings are stencilled, and the frames around things are the art pack's own
- * wall tiles used as CSS nine-slices (D-036).
+ * salvaged equipment, and the viewport is the window in the middle of it.
  *
- * Three things are load-bearing rather than decorative.
+ * Rebuilt for the 3D interface (D-042, D-045). What changed is not only the
+ * skin: the console used to be three bays of equal weight around a square
+ * canvas, which read as a dashboard. It is now **two surfaces with the room
+ * between them** - what the human perceives on the left, what the agent can do
+ * on the right - because that is the game's own thesis and a layout is the
+ * cheapest place to state it.
  *
- * **The palette is the same fourteen colours the canvas uses** (doc 06 section
- * 2), restated here as custom properties. A fifteenth colour arriving through
- * a stylesheet would be exactly as much of a problem as one arriving through an
- * image editor, and this is the file where that is easiest to do by accident.
+ * Four things here are load-bearing rather than decorative.
  *
- * **Amber is PILOT, cyan is KEEPER, bone is both.** Colour is the game's
- * information architecture and it does not bend for a nice frame. Amber is
- * reserved for the human's own controls and the human's own notes; cyan for the
- * agent's. Nothing else may take either.
+ * **The palette is the same twenty colours the scene uses** (`render/palette.ts`),
+ * restated as custom properties. A colour changed here and not there is a
+ * console that has quietly stopped matching the room beside it, so
+ * `palette.test.ts` parses this file and compares every value.
  *
- * **`image-rendering: pixelated` is not optional.** Every border image here is
- * a 16px tile scaled up. Without it the browser resamples, and the crisp pixel
- * edges the canvas goes to the trouble of preserving are undone by the frame
- * around it.
+ * **Lamplight is PILOT, tidewater is KEEPER, pearl is both.** Colour is the
+ * game's information architecture and it does not bend for a nice frame.
+ * Lamplight is reserved for the human's own controls and the human's own notes;
+ * tidewater for the agent's. Nothing else may take either.
+ *
+ * **Chroma is scarce.** The ground is near-neutral on purpose, so the only
+ * saturated things on the page are facts. A panel that takes a hue because it
+ * looked flat is a panel competing with the information.
+ *
+ * **The viewport owns its own aspect.** It is the one element that must never
+ * be squeezed to fit a panel that grew by a line, because the camera frames
+ * against its shape and a reflow re-frames the shot.
  */
 
 :root {
-  /* The fourteen, as they are in render/palette.ts. */
-  --void: #0d0f14;
-  --hull: #1a1f2b;
-  --hull-light: #2e3646;
-  --rust: #4a3b32;
-  --amber-deep: #8c5a1b;
-  --amber: #f0a830;
-  --amber-bright: #ffd98e;
-  --cyan-deep: #14606e;
-  --cyan: #3bc9db;
-  --cyan-bright: #a5f3fc;
-  --bone: #f2efe6;
-  --bone-dim: #a8a296;
-  --alarm: #e5484d;
-  --brass: #c9a227;
+  /* The ground: cold, near-neutral, deliberately dull. */
+  --abyss: #05070a;
+  --ink: #0b0f14;
+  --slate: #141a22;
+  --stone: #1f2831;
+  --ash: #2e3a45;
+  --iron: #4c5a66;
+  --mist: #7c8a99;
 
-  --frame: url("../public/art/shared/walls-out.png");
-  --gap: 0.75rem;
+  /* What the station is built and furnished from. Never a fact. */
+  --brass: #b8873c;
+  --copper: #8c5a3c;
+  --rust: #5e3b2c;
+  --glass: #0e1a20;
+
+  /* PILOT's channel: lamplight. Only the human perceives this. */
+  --lamp-deep: #6e4a22;
+  --lamp: #e8b26a;
+  --lamp-bright: #ffe6c0;
+
+  /* KEEPER's channel: tidewater. Only the agent perceives this. */
+  --tide-deep: #263a63;
+  --tide: #8aa9e0;
+  --tide-bright: #d3e1fa;
+
+  /* Shared: pearl. Both parties perceive it. */
+  --pearl: #ede7dc;
+  --pearl-dim: #8e9299;
+
+  /* Penalties, and nothing else. Never used to carry information. */
+  --alarm: #e05a4f;
+
+  --gap: 0.85rem;
+  --radius: 3px;
+  --edge: 1px solid color-mix(in srgb, var(--iron) 42%, transparent);
+
+  --ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+
   color-scheme: dark;
 }
 
@@ -60,34 +88,32 @@ body {
   margin: 0;
   padding: var(--gap);
   background:
-    /* A cold vignette, so the console reads as lit from its own panels. */
-    radial-gradient(120% 90% at 50% 0%, #131824 0%, var(--void) 70%), var(--void);
-  color: var(--bone);
-  font:
-    400 15px/1.5 ui-monospace,
-    "SF Mono",
-    Menlo,
-    Consolas,
-    monospace;
+    /* A cold vignette, so the console reads as lit by its own panels rather
+       than as a page with a dark background colour. */
+    radial-gradient(130% 100% at 50% -10%, #111823 0%, var(--abyss) 68%), var(--abyss);
+  color: var(--pearl);
+  font: 400 15px/1.55 var(--ui);
+  -webkit-font-smoothing: antialiased;
 }
 
 /* ---------------------------------------------------------------- layout -- */
 
 /*
- * Three bays and a rail across the top.
+ * Two surfaces and a rail.
  *
- * The station's own state on the left, the room in the middle, KEEPER's
- * surface on the right. That is the game's thesis as furniture: what the human
- * perceives and what the agent can do are two different surfaces, side by
- * side, with the room between them.
+ * The room and everything the human perceives on the left; everything the agent
+ * can do on the right. That is the thesis as furniture, and it is why the
+ * right-hand column is a fixed measure rather than a fraction: the manifest is
+ * a list of tool names and it should be the same width in every chamber, so a
+ * change to it reads as the registry moving rather than as the layout settling.
  */
 .console {
   display: grid;
-  grid-template-columns: minmax(13rem, 1fr) minmax(0, 2.4fr) minmax(14rem, 1.15fr);
-  grid-template-rows: auto 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(19rem, 21rem);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: var(--gap);
   align-items: start;
-  max-width: 96rem;
+  max-width: 104rem;
   margin: 0 auto;
 }
 
@@ -102,8 +128,16 @@ body {
   min-width: 0;
 }
 
-/* One column under a laptop's width, room first: the game before its readouts. */
-@media (max-width: 68rem) {
+/* Under the room: the station on one side, the human's own controls on the other. */
+.underdeck {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+  gap: var(--gap);
+  align-items: start;
+}
+
+/* One column on a narrow window, room first: the game before its readouts. */
+@media (max-width: 72rem) {
   .console {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -113,42 +147,62 @@ body {
   }
 }
 
+@media (max-width: 40rem) {
+  .underdeck {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* ------------------------------------------------------------------ rail -- */
 
 .rail {
   display: flex;
-  align-items: baseline;
-  gap: 1rem;
-  padding: 0.55rem 0.9rem;
-  border: 1px solid var(--rust);
-  background: linear-gradient(var(--hull), var(--void));
-  box-shadow: inset 0 1px 0 #ffffff14;
+  align-items: center;
+  gap: 1.1rem;
+  padding: 0.55rem 0.95rem;
+  border: var(--edge);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, var(--slate), var(--ink));
+  box-shadow: inset 0 1px 0 #ffffff12;
 }
 
-.mark {
-  color: var(--brass);
-  font-size: 0.75rem;
-  letter-spacing: 0.34em;
+.rail .mark {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--pearl);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  white-space: nowrap;
 }
 
 .rail .room {
   flex: 1;
-  color: var(--bone);
-  font-size: 0.95rem;
-  letter-spacing: 0.16em;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--pearl);
+  font-size: 0.85rem;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .rail .resets {
   color: var(--alarm);
-  font-size: 0.7rem;
-  letter-spacing: 0.18em;
+  font-size: 0.65rem;
+  letter-spacing: 0.16em;
+  white-space: nowrap;
 }
 
 .rail .clock {
-  min-width: 4.5ch;
-  color: var(--bone);
-  font-size: 1.15rem;
+  min-width: 5ch;
+  color: var(--pearl);
+  font-family: var(--mono);
+  font-size: 1.2rem;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
   text-align: right;
 }
 
@@ -160,50 +214,92 @@ body {
 
 @keyframes pulse {
   50% {
-    opacity: 0.45;
+    opacity: 0.4;
   }
+}
+
+/*
+ * The ambiguity gauge, in the rail.
+ *
+ * A headline number, so it sits with the clock rather than in a panel of its
+ * own. Segmented rather than continuous, because information arrives in
+ * discrete quanta and doc 06 section 7 asks for a meter that ratchets: a smooth
+ * tween would say the pair is converging steadily, which is not what happens.
+ */
+.gauge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+
+.gauge-label {
+  color: var(--mist);
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+}
+
+.gauge-track {
+  display: flex;
+  gap: 2px;
+}
+
+.gauge-track i {
+  width: 7px;
+  height: 13px;
+  background: color-mix(in srgb, var(--iron) 35%, transparent);
+  transition: background 260ms steps(3, end);
+}
+
+.gauge-track i.lit {
+  background: var(--brass);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--brass) 70%, transparent);
+}
+
+.gauge-bits {
+  min-width: 8ch;
+  color: var(--brass);
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
 }
 
 /* ---------------------------------------------------------------- panels -- */
 
-/*
- * A panel is a plate bolted to the hull.
- *
- * The bevel is drawn with two inset shadows rather than an image, because a
- * plate is the most repeated element on the page and thirty nine-sliced border
- * images would be thirty decodes of the same tile. The nine-slice is spent
- * where it earns its keep: the stage, and the prompt card.
- */
 .panel {
-  border: 1px solid var(--rust);
-  background: linear-gradient(180deg, #171c27, #10141c);
+  border: var(--edge);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, #151b24, #0e131a);
   box-shadow:
-    inset 0 1px 0 #ffffff10,
-    inset 0 -1px 0 #00000060;
+    inset 0 1px 0 #ffffff0e,
+    0 1px 0 #00000050;
 }
 
 .panel h2 {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.5rem;
   margin: 0;
-  padding: 0.4rem 0.7rem;
-  border-bottom: 1px solid var(--rust);
-  background: #0f131b;
-  color: var(--bone-dim);
-  font-size: 0.65rem;
-  font-weight: 400;
-  letter-spacing: 0.24em;
+  padding: 0.45rem 0.75rem;
+  border-bottom: var(--edge);
+  color: var(--mist);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
 }
 
 .panel h2 .count {
-  color: var(--brass);
-  letter-spacing: 0.1em;
+  color: var(--tide);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
 }
 
 .panel-body {
-  padding: 0.7rem;
+  padding: 0.7rem 0.75rem;
 }
 
 .panel-body > :last-child {
@@ -211,66 +307,133 @@ body {
 }
 
 .panel p {
-  margin: 0 0 0.6rem;
-  color: var(--bone-dim);
-  font-size: 0.8rem;
+  margin: 0 0 0.55rem;
+  color: var(--pearl-dim);
+  font-size: 0.78rem;
 }
 
 /* The quiet aside under a panel's contents: what the thing is for. */
 .panel .note {
-  margin-top: 0.6rem;
-  color: #6e6a60;
+  margin-top: 0.55rem;
+  color: color-mix(in srgb, var(--mist) 62%, transparent);
   font-size: 0.68rem;
   line-height: 1.45;
 }
 
-/* ----------------------------------------------------------------- stage -- */
+/* -------------------------------------------------------------- viewport -- */
 
 /*
- * The canvas, in a machined frame.
+ * The room.
  *
- * The frame is `walls-out.png`, the same wall the rooms inside the canvas are
- * built from, used as a nine-slice. The room on the canvas and the frame around
- * it are therefore literally the same material, which is the one place on this
- * page where a decorative choice is also a continuity one.
+ * A wide frame rather than the square canvas the tile renderer used. The camera
+ * frames against this shape (`render/camera.ts`), so the aspect is a design
+ * decision rather than a container's leftovers: 16:10 gives the Concord Lock
+ * its height and still reads as a shot rather than as a strip.
  *
- * **The frame and the mount point are two elements and must stay two.** Phaser
- * measures its parent with `getBoundingClientRect`, which is the border box, so
- * a border on the element it mounts into is a border it cannot see: it sizes
- * the canvas to the full outer width, overflows the frame, and lands on a
- * fractional scale. Fractional scaling produces the half-pixel shimmer D-031
- * exists to prevent, and it arrives here looking like a styling choice.
+ * `min-height: 0` because a grid item's automatic minimum size is its content,
+ * and a canvas inside a flex column will otherwise refuse to shrink and push
+ * the panels below it off the page.
  */
-.stage-frame {
-  width: min(672px, 100%);
-  margin: 0 auto;
-  border: 16px solid transparent;
-  border-image: var(--frame) 16 repeat;
-  background: var(--void);
-  image-rendering: pixelated;
-}
-
-/*
- * The mount point: a bare square, and 640 is the budget rather than a taste.
- *
- * The scale manager snaps to whole multiples of the 320 native size, so a box
- * one pixel narrower than 640 falls back to x1 and the room renders
- * quarter-size in the middle of a large empty canvas.
- *
- * `min-height: 0` because a flex item's automatic minimum size is its content,
- * and Phaser centres its canvas with a margin: left alone the two feed each
- * other, the margin making the box taller and the taller box needing a bigger
- * margin to centre in.
- */
-.stage {
-  width: 100%;
-  aspect-ratio: 1 / 1;
+.viewport {
+  position: relative;
+  aspect-ratio: 16 / 10;
   min-height: 0;
+  overflow: hidden;
+  border: var(--edge);
+  border-radius: var(--radius);
+  background: radial-gradient(120% 100% at 50% 0%, #0d141d 0%, var(--abyss) 70%), var(--abyss);
+  box-shadow:
+    inset 0 0 0 1px #ffffff08,
+    inset 0 30px 60px -30px #000000c0;
 }
 
-.stage canvas {
+.viewport-canvas {
   display: block;
-  image-rendering: pixelated;
+  width: 100%;
+  height: 100%;
+}
+
+/*
+ * The caption band over the room.
+ *
+ * DOM, and allowed to be: these are phase lines derived from `view.phase`,
+ * which is `SHARED` machine state the rail already prints. No fact from
+ * `view.facts` is ever written here - those are sprites in the scene, because a
+ * DOM text node holding a gauge reading is a text node an agent with page
+ * access can scrape.
+ */
+.viewport-caption {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 2.5rem 1.4rem 1.3rem;
+  background: linear-gradient(transparent, #05070ae0 55%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 420ms ease;
+}
+
+.viewport-caption[data-shown="true"] {
+  opacity: 1;
+}
+
+.viewport-headline {
+  margin: 0;
+  color: var(--pearl);
+  font-size: clamp(0.95rem, 2.2vw, 1.35rem);
+  font-weight: 500;
+  letter-spacing: 0.16em;
+}
+
+.viewport-instruction {
+  margin: 0;
+  color: var(--mist);
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+}
+
+/*
+ * The start card, over the room, until the shift begins.
+ *
+ * Progressive disclosure rather than a panel that is present and inert for the
+ * rest of the session. Before a session exists this is the only thing on the
+ * page worth touching, and afterwards it is three buttons that can no longer do
+ * anything.
+ */
+.launch {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: #05070ab8;
+  backdrop-filter: blur(2px);
+  text-align: center;
+}
+
+.launch[hidden] {
+  display: none;
+}
+
+.launch h3 {
+  margin: 0;
+  color: var(--pearl);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+.launch-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
 }
 
 /*
@@ -281,21 +444,27 @@ body {
  * not jump every time a room falls silent.
  */
 .audible {
-  min-height: 2.4rem;
+  min-height: 2.5rem;
   margin: 0;
-  padding: 0.55rem;
-  border: 1px solid var(--bone);
-  outline: 1px solid var(--bone);
+  padding: 0.6rem;
+  border: 1px solid var(--pearl);
+  outline: 1px solid var(--pearl);
   outline-offset: 2px;
-  color: var(--bone);
-  font-size: 0.78rem;
-  letter-spacing: 0.12em;
+  border-radius: 2px;
+  color: var(--pearl);
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.14em;
   text-align: center;
+  text-transform: uppercase;
+  transition:
+    border-color 300ms ease,
+    outline-color 300ms ease;
 }
 
 .audible:empty {
-  border-color: var(--rust);
-  outline-color: var(--rust);
+  border-color: color-mix(in srgb, var(--iron) 40%, transparent);
+  outline-color: color-mix(in srgb, var(--iron) 40%, transparent);
 }
 
 /* -------------------------------------------------------------- controls -- */
@@ -303,45 +472,53 @@ body {
 .controls .panel-body {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: 0.45rem;
 }
 
 .controls .note {
   flex-basis: 100%;
-  margin: 0 0 0.2rem;
+  margin: 0.15rem 0 0;
 }
 
 /*
- * Amber, because these are the things only the human can do.
+ * Lamplight, because these are the things only the human can do.
  *
- * A button here is the asymmetry seen from PILOT's side: an agent cannot grip
- * a bar it has no body for. Colouring them in the agent's cyan, or in a
- * neutral, would quietly undo the one visual statement the control panel
- * makes.
+ * A button here is the asymmetry seen from PILOT's side: an agent cannot grip a
+ * bar it has no body for. Colouring them in the agent's tidewater, or in a
+ * neutral, would quietly undo the one visual statement the control panel makes.
  */
 button {
   padding: 0.45rem 0.8rem;
-  border: 1px solid var(--amber-deep);
-  background: linear-gradient(180deg, #241a0d, #17110a);
-  color: var(--amber);
+  border: 1px solid var(--lamp-deep);
+  border-radius: 2px;
+  background: linear-gradient(180deg, #241a0f, #16100a);
+  color: var(--lamp);
   font: inherit;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   letter-spacing: 0.06em;
   cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    color 160ms ease,
+    background 160ms ease;
 }
 
 button:hover {
-  border-color: var(--amber);
-  color: var(--amber-bright);
+  border-color: var(--lamp);
+  color: var(--lamp-bright);
 }
 
 button:focus-visible {
-  outline: 2px solid var(--amber-bright);
+  outline: 2px solid var(--lamp-bright);
   outline-offset: 2px;
 }
 
 button:active {
-  background: #0e0a06;
+  background: #0d0906;
+}
+
+button[hidden] {
+  display: none;
 }
 
 /* ----------------------------------------------------------------- lists -- */
@@ -357,8 +534,8 @@ button:active {
 .panel li {
   display: flex;
   gap: 0.5rem;
-  padding: 0.2rem 0;
-  border-bottom: 1px solid #ffffff08;
+  padding: 0.24rem 0;
+  border-bottom: 1px solid #ffffff09;
   overflow-wrap: anywhere;
 }
 
@@ -376,25 +553,22 @@ button:active {
 .panel ol:empty::after,
 .panel ul:empty::after {
   content: attr(data-empty);
-  color: #565248;
-  font-size: 0.72rem;
+  color: color-mix(in srgb, var(--mist) 45%, transparent);
+  font-size: 0.7rem;
   letter-spacing: 0.14em;
 }
 
-/*
- * The station's floors: the only progress display the game has.
- *
- * Every floor is listed from the first minute, including the ones not reached
- * yet, because knowing the station has a Concord Lock in it is part of knowing
- * what you are in for.
- */
+/* The station's floors: the only progress display the game has. */
 .floors .floor {
-  color: #565248;
-  letter-spacing: 0.1em;
+  align-items: center;
+  color: color-mix(in srgb, var(--mist) 55%, transparent);
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  transition: color 300ms ease;
 }
 
 .floors .cleared {
-  color: var(--bone-dim);
+  color: var(--pearl-dim);
 }
 
 .floors .cleared .pip {
@@ -402,76 +576,115 @@ button:active {
 }
 
 .floors .here {
-  color: var(--bone);
+  color: var(--pearl);
 }
 
 .floors .here .pip {
-  color: var(--amber);
+  color: var(--lamp);
 }
 
 .floors .pip {
-  width: 1ch;
+  width: 1.2ch;
   color: inherit;
+  font-family: var(--mono);
 }
 
+/*
+ * The manifest: KEEPER's faculties, as the registry reports them.
+ *
+ * The one list on the page with a real transition on it, because it is the one
+ * list whose *changing* is the thing being demonstrated. A tool arriving slides
+ * in and settles; a tool leaving is not animated here at all, because it is
+ * gone from `getTools()` before this list is rebuilt - the leaving is drawn on
+ * KEEPER's body, in the scene, where there is a limb to fall.
+ */
 .manifest .tool {
-  color: var(--cyan);
+  align-items: baseline;
+  color: var(--tide);
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.02em;
+  animation: stamp 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.manifest .tool .marker {
+  color: var(--tide-deep);
+  font-size: 0.6rem;
+}
+
+@keyframes stamp {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .manifest .tool {
+    animation: none;
+  }
+
+  .rail .clock.urgent {
+    animation: none;
+  }
 }
 
 .log li {
-  color: var(--bone-dim);
-  font-size: 0.72rem;
+  color: var(--pearl-dim);
+  font-family: var(--mono);
+  font-size: 0.7rem;
 }
 
 /* The pad is the one surface both parties write to, so both colours appear. */
 .notes .who {
-  width: 1ch;
-  opacity: 0.75;
+  width: 1.4ch;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  opacity: 0.8;
 }
 
 .chan-pilot {
-  color: var(--amber);
+  color: var(--lamp);
 }
 
 .chan-keeper {
-  color: var(--cyan);
+  color: var(--tide);
 }
 
 .chan-shared {
-  color: var(--bone);
+  color: var(--pearl);
 }
 
-.legend li {
+/* ---------------------------------------------------------------- legend -- */
+
+/*
+ * The colour law, permanently on screen, as teaching material.
+ *
+ * Compact and inline rather than a panel of its own: it is a key, and a key
+ * that takes as much room as the thing it explains is a key nobody reads.
+ */
+.legend-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.legend-row li {
+  display: flex;
+  gap: 0.4rem;
   align-items: center;
+  padding: 0;
+  border: 0;
+  font-size: 0.66rem;
   letter-spacing: 0.1em;
 }
 
-.legend .marker {
-  width: 1.2ch;
-  font-size: 0.95rem;
-}
-
-/* ----------------------------------------------------------------- meter -- */
-
-.meter {
-  height: 8px;
-  border: 1px solid var(--rust);
-  background: var(--hull);
-}
-
-.meter i {
-  display: block;
-  height: 100%;
-  background: linear-gradient(90deg, var(--brass), #e6c34a);
-  transition: width 400ms ease-out;
-}
-
-.bits {
-  margin: 0.4rem 0 0;
-  color: var(--brass);
-  font-size: 0.72rem;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.12em;
+.legend-row .marker {
+  font-size: 0.85rem;
+  line-height: 1;
 }
 
 /* ------------------------------------------------------- prompt and pad --- */
@@ -480,63 +693,72 @@ button:active {
  * The starter prompt.
  *
  * The single most important element on the page (doc 04 section 2): a session
- * begins when this text reaches an agent. It gets the nine-slice frame and the
- * amber rule because it is the human's line to speak, and it is selectable
- * because a canvas is not, which is the whole reason it lives in the DOM.
+ * begins when this text reaches an agent. It gets the lamplight rule because it
+ * is the human's line to speak, and it is selectable because a canvas is not,
+ * which is the whole reason it lives in the DOM.
  */
 .prompt {
-  margin: 0 0 0.6rem;
+  margin: 0 0 0.55rem;
   padding: 0.7rem 0.8rem;
-  border-left: 2px solid var(--amber);
-  background: #0b0e14;
-  color: var(--bone);
-  font-size: 0.78rem;
-  line-height: 1.5;
+  border-left: 2px solid var(--lamp);
+  border-radius: 0 2px 2px 0;
+  background: var(--ink);
+  color: var(--pearl);
+  font-size: 0.76rem;
+  line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.copy {
+  border-color: color-mix(in srgb, var(--lamp-deep) 80%, transparent);
 }
 
 .flag {
   display: block;
   margin: 0 0 0.6rem;
   padding: 0.6rem 0.7rem;
-  border-left: 2px solid var(--amber);
-  background: #0b0e14;
-  color: var(--bone);
-  font-size: 0.78rem;
+  border-left: 2px solid var(--lamp);
+  border-radius: 0 2px 2px 0;
+  background: var(--ink);
+  color: var(--pearl);
+  font-family: var(--mono);
+  font-size: 0.76rem;
   overflow-wrap: anywhere;
 }
 
 /*
  * The notepad form.
  *
- * Styled as a control rather than a panel, because it is one: the canvas draws
- * the room, this is the pen. Amber because PILOT is the one typing here;
- * KEEPER reaches the same form through the host and never sees this styling.
+ * Styled as a control rather than a panel, because it is one: the viewport
+ * shows the room, this is the pen. Lamplight because PILOT is the one typing
+ * here; KEEPER reaches the same form through the host and never sees any of
+ * this.
  */
 .notepad-host textarea {
   display: block;
   width: 100%;
-  margin: 0.5rem 0;
-  padding: 0.55rem 0.65rem;
-  border: 1px solid var(--rust);
-  border-left: 2px solid var(--amber);
-  background: #0b0e14;
-  color: var(--bone);
+  margin: 0.45rem 0;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid color-mix(in srgb, var(--iron) 45%, transparent);
+  border-left: 2px solid var(--lamp);
+  border-radius: 0 2px 2px 0;
+  background: var(--ink);
+  color: var(--pearl);
   font: inherit;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   resize: vertical;
 }
 
 .notepad-host textarea:focus-visible {
-  border-color: var(--amber);
+  border-color: var(--lamp);
   outline: none;
 }
 
 .notepad-host label {
   display: block;
-  color: var(--bone-dim);
-  font-size: 0.66rem;
+  color: var(--mist);
+  font-size: 0.62rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
 }
@@ -553,6 +775,21 @@ button:active {
   overflow: hidden;
 }
 
+/* ------------------------------------------------------------------ mark -- */
+
+/*
+ * The split lamp.
+ *
+ * One light source, two beams, and they never meet. That is the game, and it is
+ * the whole reason the mark is worth drawing rather than setting in type. Inline
+ * SVG so it costs no request and takes its colours from the same custom
+ * properties everything else does.
+ */
+.lamp-mark {
+  display: block;
+  flex: none;
+}
+
 /* ------------------------------------------------------------------ gate -- */
 
 /*
@@ -560,58 +797,123 @@ button:active {
  *
  * For some judges this is the entire submission, so it is laid out as a page
  * that can be read rather than as a console that cannot be operated. It gets
- * the same materials so that arriving at the real thing later feels like the
- * same building.
+ * the same materials, so arriving at the real thing later feels like the same
+ * building.
  */
 .gate {
-  max-width: 52rem;
-  margin: 0 auto;
-  padding: 2rem 0 4rem;
   display: flex;
   flex-direction: column;
   gap: var(--gap);
+  max-width: 54rem;
+  margin: 0 auto;
+  padding: 2.5rem 0 4rem;
+}
+
+.hero {
+  padding: 2rem 1.8rem;
+  border: var(--edge);
+  border-radius: var(--radius);
+  background:
+    radial-gradient(90% 140% at 12% 0%, #17202c 0%, transparent 60%),
+    linear-gradient(180deg, #151b24, #0d1219);
+}
+
+.hero-mark {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin-bottom: 1.5rem;
 }
 
 .eyebrow {
-  margin: 0 0 1.2rem;
-  color: var(--brass);
+  margin: 0;
+  color: var(--pearl);
   font-size: 0.72rem;
+  font-weight: 600;
   letter-spacing: 0.34em;
+}
+
+.tagline {
+  margin: 0;
+  color: var(--mist);
+  font-size: 0.66rem;
+  letter-spacing: 0.16em;
 }
 
 .gate h1 {
   margin: 0 0 1rem;
-  font-size: 1.5rem;
-  font-weight: 400;
-  line-height: 1.3;
+  font-size: clamp(1.4rem, 3.6vw, 2rem);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
 }
 
 .gate .lede {
-  color: var(--bone);
-  font-size: 0.95rem;
+  color: var(--pearl);
+  font-size: 1rem;
 }
 
 .gate p {
   margin: 0 0 1rem;
-  color: var(--bone-dim);
-  font-size: 0.88rem;
-  line-height: 1.6;
-}
-
-.hero {
-  padding: 1.6rem;
-  border: 16px solid transparent;
-  border-image: var(--frame) 16 repeat;
-  background: linear-gradient(180deg, #171c27, #10141c);
-  image-rendering: pixelated;
-}
-
-.hero > * {
-  image-rendering: auto;
+  color: var(--pearl-dim);
+  font-size: 0.9rem;
+  line-height: 1.65;
 }
 
 .routes {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
   gap: var(--gap);
+}
+
+/*
+ * The ablation, as three bars.
+ *
+ * Two of them are on the floor, and that is the entire thesis understood in one
+ * second (doc 07 section 1). It belongs on this screen more than on any other,
+ * because this is the screen a judge who never gets the game running will
+ * score from.
+ */
+.ablation {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.ablation-row {
+  display: grid;
+  grid-template-columns: 9.5rem minmax(0, 1fr) 4.5rem;
+  gap: 0.7rem;
+  align-items: center;
+  font-size: 0.76rem;
+}
+
+.ablation-row .who {
+  color: var(--pearl-dim);
+  letter-spacing: 0.08em;
+}
+
+.ablation-row .track {
+  height: 12px;
+  border: 1px solid color-mix(in srgb, var(--iron) 40%, transparent);
+  border-radius: 2px;
+  background: var(--ink);
+}
+
+.ablation-row .track i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--lamp-deep), var(--lamp));
+}
+
+.ablation-row.together .track i {
+  background: linear-gradient(90deg, var(--brass), var(--lamp-bright));
+}
+
+.ablation-row .value {
+  color: var(--pearl);
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }

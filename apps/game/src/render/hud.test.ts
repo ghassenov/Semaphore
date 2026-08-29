@@ -14,7 +14,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { CHANNEL_MARKER, PALETTE } from "./palette.js";
+import { CHANNEL_MARKER } from "./palette.js";
 import {
   LEGEND,
   LOG_LINES,
@@ -106,24 +106,6 @@ describe("the channel legend", () => {
     for (const row of LEGEND) {
       expect(row.marker).toBe(CHANNEL_MARKER[row.channel]);
       expect(row.marker.length).toBeGreaterThan(0);
-    }
-  });
-});
-
-describe("the palette", () => {
-  it("holds exactly the fourteen locked colours", () => {
-    // Adding a fifteenth is a decision-log entry, not a judgement call
-    // (doc 06 section 2). This test is where that rule is enforced.
-    expect(Object.keys(PALETTE)).toHaveLength(14);
-  });
-
-  it("has no green in it, so success cannot be signalled with one", () => {
-    // Red/green signalling is the most common accessibility failure in puzzle
-    // games, and the cheapest defence is not having the colour available.
-    for (const value of Object.values(PALETTE)) {
-      const [r, g, b] = [(value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff];
-      const dominantlyGreen = g > r + 24 && g > b + 24;
-      expect(dominantlyGreen, `#${value.toString(16)} is green`).toBe(false);
     }
   });
 });
