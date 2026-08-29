@@ -15,13 +15,17 @@
 import { describe, expect, it } from "vitest";
 import {
   CHANNEL_SHEETS,
-  GROUND_FILL,
+  CORNER,
+  EDGE,
+  EDGE_ALL,
+  FLOOR_BY_EDGE,
   LOAD,
   PLATE,
   SHARED_SHEETS,
   SLICE,
   TILE,
-  groundFrame,
+  floorFrame,
+  wallFrame,
   textureKey,
 } from "./atlas.js";
 
@@ -62,7 +66,7 @@ describe("the art table", () => {
     for (const [name, frame] of Object.entries(SLICE)) {
       expect(frame, name).toBeLessThan(CHANNEL_SHEETS["walls-out"]);
     }
-    for (const frame of GROUND_FILL) {
+    for (const frame of FLOOR_BY_EDGE) {
       expect(frame).toBeLessThan(SHARED_SHEETS.ground);
     }
     for (const [name, frame] of Object.entries(PLATE)) {
@@ -75,23 +79,48 @@ describe("the art table", () => {
     expect(new Set(Object.values(SLICE)).size).toBe(9);
   });
 
-  it("varies the ground without ever leaving the fill set", () => {
-    const seen = new Set<number>();
-    for (let col = 0; col < 20; col += 1) {
-      for (let row = 0; row < 20; row += 1) {
-        const frame = groundFrame(col, row);
-        expect(GROUND_FILL).toContain(frame);
-        seen.add(frame);
-      }
-    }
-    // A floor that resolves to one tile is a floor with no decoration on it,
-    // which is the bug this arithmetic exists to avoid.
-    expect(seen.size).toBe(GROUND_FILL.length);
+  it("has a distinct ground frame for all sixteen edge combinations", () => {
+    // Sixteen frames for sixteen masks. Two masks sharing a frame would mean a
+    // room whose edge is shaded on the wrong side, which reads as a wall in
+    // the middle of the floor.
+    expect(FLOOR_BY_EDGE).toHaveLength(16);
+    expect(new Set(FLOOR_BY_EDGE).size).toBe(16);
   });
 
-  it("gives the same tile the same frame every time", () => {
-    // A floor that reshuffles its rivets every frame shimmers, and a
-    // screenshot of a seed should be the same screenshot every time.
-    expect(groundFrame(7, 4)).toBe(groundFrame(7, 4));
+  it("gives every ground mask a frame, including bits set outside the table", () => {
+    // `tilesFor` passes `~sides`, which sets bits well above EDGE_ALL. Masking
+    // is what stops that reading off the end of the table and drawing frame 0,
+    // which is transparent.
+    for (let mask = 0; mask < 64; mask += 1) {
+      expect(FLOOR_BY_EDGE).toContain(floorFrame(mask));
+    }
+    expect(floorFrame(~0)).toBe(floorFrame(EDGE_ALL));
+    expect(floorFrame(~EDGE_ALL)).toBe(floorFrame(0));
+  });
+
+  it("shades a ground tile on the sides its mask names", () => {
+    // The interior tile and the isolated tile are the two ends of the table,
+    // and getting either the wrong way round inverts every room.
+    expect(floorFrame(0)).toBe(20);
+    expect(floorFrame(EDGE_ALL)).toBe(40);
+    expect(floorFrame(EDGE.top | EDGE.left)).toBe(10);
+    expect(floorFrame(EDGE.bottom | EDGE.right)).toBe(30);
+  });
+
+  it("turns a wall to face the floor beside it", () => {
+    // Floor below means this is the room's top edge, not its bottom.
+    expect(wallFrame(EDGE.bottom, 0)).toBe(SLICE.top);
+    expect(wallFrame(EDGE.top, 0)).toBe(SLICE.bottom);
+    expect(wallFrame(EDGE.right, 0)).toBe(SLICE.left);
+    expect(wallFrame(EDGE.bottom | EDGE.right, 0)).toBe(SLICE.topLeft);
+  });
+
+  it("wraps a convex corner from the diagonal alone", () => {
+    // The tile outside a room's top-left corner touches floor only on its
+    // bottom-right diagonal. Drawn as solid fill it puts a notch in the
+    // outline, which is the one wall case a side mask cannot see.
+    expect(wallFrame(0, CORNER.bottomRight)).toBe(SLICE.topLeft);
+    expect(wallFrame(0, CORNER.topLeft)).toBe(SLICE.bottomRight);
+    expect(wallFrame(0, 0)).toBe(SLICE.centre);
   });
 });

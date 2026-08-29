@@ -27,10 +27,11 @@ import {
   INTERLUDE_PLAN,
   interlude,
   roomPlan,
+  tilesFor,
   type Device,
   type RoomPlan,
 } from "./room.js";
-import { LOAD, SLICE, TILE, groundFrame, textureKey } from "./atlas.js";
+import { LOAD, TILE, textureKey } from "./atlas.js";
 import { CHANNEL_COLOUR, PALETTE } from "./palette.js";
 import { TEXTURE, allSprites, toCanvas } from "./sprites.js";
 import type { StationModel } from "./station.js";
@@ -40,6 +41,17 @@ const FONT = { fontFamily: "monospace", fontSize: "8px" } as const;
 
 /** How far a device's caption sits below its tile. */
 const CAPTION_DROP = 1;
+
+/**
+ * Milliseconds a device spends on each frame of a state change.
+ *
+ * Twelve frames per second on game motion (doc 06 section 3), so a door's
+ * three leaves take a quarter of a second to swing.
+ */
+const MOTION_MS = 1000 / 12;
+
+/** How many frames the teleporter pad's flourish runs for. */
+const VFX_FRAMES = 4;
 
 /**
  * Load the art pack, and build the sprites that are still authored in source.
@@ -153,10 +165,9 @@ export class LandingScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor(PALETTE.void);
     installSprites(this);
 
-    const plan: RoomPlan = { ...INTERLUDE_PLAN, cols: 12, rows: 9 };
+    const plan: RoomPlan = { ...INTERLUDE_PLAN, cols: 12, rows: 9, tiles: tilesFor(12, 9, []) };
     const origin = originFor(plan);
-    paintFloor(this, plan, origin, 0.55);
-    paintWalls(this, plan, origin, 0.75);
+    paintTiles(this, plan, origin, 0.7);
 
     // The door they have not gone through yet, and the lamp above it.
     const doorCol = origin.col + Math.floor(plan.cols / 2) - 1;
@@ -211,6 +222,19 @@ export class ChamberScene extends Phaser.Scene {
   #keeper!: Phaser.GameObjects.Image;
   /** Where PILOT is standing, as a fraction across the room they are in. */
   #walk = 0.15;
+  /**
+   * The frame each device is currently showing, and when it last changed.
+   *
+   * The pack draws its doors, levers and pads as short strips rather than as
+   * two states, and snapping across one throws away the only motion in the
+   * game: the moment the thing KEEPER just did visibly happens. Keyed by where
+   * the device is rather than by the sprite drawing it, because the sprites
+   * are pooled and a given object is a different device from one frame to the
+   * next.
+   */
+  readonly #motion = new Map<string, { shown: number; at: number; vfx: number }>();
+  /** The room the motion table describes, so a new one starts from rest. */
+  #motionRoom: string | null = null;
 
   constructor(model: StationModel) {
     super("chamber");
@@ -237,10 +261,19 @@ export class ChamberScene extends Phaser.Scene {
     keyboard.addKeys("A,D,LEFT,RIGHT");
   }
 
-  override update(_time: number, deltaMs: number): void {
+  override update(time: number, deltaMs: number): void {
     const view = this.#model.view;
     const plan = view ? (roomPlan(view) ?? INTERLUDE_PLAN) : INTERLUDE_PLAN;
     const origin = originFor(plan);
+
+    // A device that has left the room has no state worth keeping, and a new
+    // chamber that happens to put the same kind of device on the same tile
+    // would otherwise inherit the old one's position and animate out of it.
+    const room = view?.chamber ?? null;
+    if (room !== this.#motionRoom) {
+      this.#motion.clear();
+      this.#motionRoom = room;
+    }
 
     this.#movePilot(deltaMs);
     this.#paint.clear();
@@ -248,8 +281,7 @@ export class ChamberScene extends Phaser.Scene {
     this.#sprites.begin();
     this.#text.begin();
 
-    paintFloor(this, plan, origin, 1, this.#tiles);
-    paintWalls(this, plan, origin, 1, this.#tiles);
+    paintTiles(this, plan, origin, 1, this.#tiles);
     for (const plate of plan.plates) {
       this.#tiles
         .next()
@@ -260,7 +292,7 @@ export class ChamberScene extends Phaser.Scene {
         .setVisible(true);
     }
 
-    for (const device of plan.devices) this.#drawDevice(device, origin, plan);
+    for (const device of plan.devices) this.#drawDevice(device, origin, plan, time);
     this.#drawBodies(plan, origin);
     if (!view || roomPlan(view) === null) this.#drawInterlude(plan, origin);
     if (plan.solved) this.#flash(plan, origin);
@@ -276,23 +308,70 @@ export class ChamberScene extends Phaser.Scene {
    * The channel picks the directory the sprite is loaded from, so the colour
    * and the meaning arrive together and cannot be made to disagree.
    */
-  #drawDevice(device: Device, origin: Origin, plan: RoomPlan): void {
+  #drawDevice(device: Device, origin: Origin, plan: RoomPlan, now: number): void {
     const x = px(origin.col + device.col);
     const y = px(origin.row + device.row);
     const colour = PALETTE[CHANNEL_COLOUR[device.channel]];
+    const motion = this.#stepFrame(device, now);
 
     this.#sprites
       .next()
       .setTexture(textureKey(device.channel, device.sheet))
-      .setFrame(device.frame)
+      .setFrame(motion.shown)
       .setPosition(x, y)
       .setAlpha(device.dim === true ? 0.55 : 1)
       .setVisible(true);
+
+    // The pad's flourish, over the pad, for the four frames after it lights.
+    const since = now - motion.vfx;
+    if (motion.vfx >= 0 && since < VFX_FRAMES * MOTION_MS) {
+      this.#sprites
+        .next()
+        .setTexture(textureKey(device.channel, "pad-vfx"))
+        .setFrame(Math.floor(since / MOTION_MS))
+        .setPosition(x, y)
+        .setAlpha(1)
+        .setVisible(true);
+    }
 
     if (device.glyph) this.#drawGlyph(device.glyph, x, y - TILE, colour);
     if (device.label !== undefined) {
       this.#caption(device.label, x + TILE / 2, y + TILE + CAPTION_DROP, colour, origin, plan);
     }
+  }
+
+  /**
+   * The frame a device is showing, walked one step toward the one it should be.
+   *
+   * The server is the only authority on what state a device is in, and this
+   * never argues with it: it converges on `device.frame` and stops. That is
+   * the whole reason this is a stepper rather than a set of Phaser animations.
+   * A played animation is a fixed sequence that has to be cancelled when the
+   * state changes underneath it, and a door caught halfway by a second update
+   * would either finish opening a door the server has shut or stall on a frame
+   * nobody chose. A stepper cannot: whatever happens, it is walking toward the
+   * truth, and the worst case is that it arrives a frame or two late.
+   *
+   * A device first seen is drawn at its real frame rather than animated up to
+   * it, so entering a room with a lever already thrown shows a thrown lever
+   * rather than one that throws itself on arrival.
+   */
+  #stepFrame(device: Device, now: number): { shown: number; vfx: number } {
+    const key = `${device.channel}:${device.sheet}:${String(device.col)}:${String(device.row)}`;
+    const state = this.#motion.get(key);
+    if (!state) {
+      const fresh = { shown: device.frame, at: now, vfx: -1 };
+      this.#motion.set(key, fresh);
+      return fresh;
+    }
+    if (state.shown === device.frame || now - state.at < MOTION_MS) return state;
+    state.shown += Math.sign(device.frame - state.shown);
+    state.at = now;
+    // A pad coming up is the one transition in the game that gets a flourish.
+    if (device.sheet === "pad" && state.shown === device.frame && device.frame > 0) {
+      state.vfx = now;
+    }
+    return state;
   }
 
   /**
@@ -448,76 +527,37 @@ function px(tile: number): number {
 }
 
 /**
- * The floor.
+ * The building: the room's floor and the wall around it, in one pass.
  *
- * Every tile is one of five interior frames, chosen from its own coordinates,
- * so the floor has rivets in different places without shimmering and without a
- * seed. A pool is passed in when the caller redraws every frame and omitted
- * when it draws once.
+ * This was `paintFloor` plus `paintWalls`, one flat tile repeated inside a
+ * nine-slice ring. Both are gone because both assumed the room was a
+ * rectangle. `room.ts` resolves every tile from its neighbours now, so this
+ * function no longer knows or cares what shape it is drawing, and a chamber
+ * can be notched into an L without a line changing here.
+ *
+ * The floor is always neutral and the wall always wears the room's accent.
+ * That is the channel law applied to the building rather than to a device: a
+ * room only PILOT can read is walled in amber, and the floor stays out of it
+ * because a floor is not a fact.
  */
-function paintFloor(
+function paintTiles(
   scene: Phaser.Scene,
   plan: RoomPlan,
   origin: Origin,
   alpha: number,
   pool?: Pool<Phaser.GameObjects.Image>,
 ): void {
-  const key = textureKey("shared", "ground");
-  for (let row = 0; row < plan.rows; row += 1) {
-    for (let col = 0; col < plan.cols; col += 1) {
-      const image = pool?.next() ?? scene.add.image(0, 0, key).setOrigin(0, 0).setDepth(0);
-      image
-        .setTexture(key)
-        .setFrame(groundFrame(col, row))
-        .setPosition(px(origin.col + col), px(origin.row + row))
-        .setAlpha(alpha)
-        .setVisible(true);
-    }
-  }
-}
-
-/**
- * The wall around the room, as a nine-slice.
- *
- * Corners placed, edges repeated. The pack draws its walls as one framed box,
- * which is a nine-slice whether or not it was authored as one, and building
- * the ring from it is what lets each chamber declare its own size without any
- * of them needing art of their own.
- */
-function paintWalls(
-  scene: Phaser.Scene,
-  plan: RoomPlan,
-  origin: Origin,
-  alpha: number,
-  pool?: Pool<Phaser.GameObjects.Image>,
-): void {
-  const key = textureKey("shared", "walls-out");
-  const left = origin.col - 1;
-  const right = origin.col + plan.cols;
-  const top = origin.row - 1;
-  const bottom = origin.row + plan.rows;
-
-  const place = (col: number, row: number, frame: number) => {
+  const floorKey = textureKey("shared", "ground");
+  const wallKey = textureKey(plan.accent, "walls-out");
+  for (const tile of plan.tiles) {
+    const key = tile.wall ? wallKey : floorKey;
     const image = pool?.next() ?? scene.add.image(0, 0, key).setOrigin(0, 0).setDepth(0);
     image
       .setTexture(key)
-      .setFrame(frame)
-      .setPosition(px(col), px(row))
+      .setFrame(tile.frame)
+      .setPosition(px(origin.col + tile.col), px(origin.row + tile.row))
       .setAlpha(alpha)
       .setVisible(true);
-  };
-
-  place(left, top, SLICE.topLeft);
-  place(right, top, SLICE.topRight);
-  place(left, bottom, SLICE.bottomLeft);
-  place(right, bottom, SLICE.bottomRight);
-  for (let col = origin.col; col < right; col += 1) {
-    place(col, top, SLICE.top);
-    place(col, bottom, SLICE.bottom);
-  }
-  for (let row = origin.row; row < bottom; row += 1) {
-    place(left, row, SLICE.left);
-    place(right, row, SLICE.right);
   }
 }
 

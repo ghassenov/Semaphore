@@ -28,7 +28,7 @@
 import type { PilotView } from "@semaphore/protocol";
 import type { ChannelSheet } from "./atlas.js";
 import type { RenderChannel } from "./palette.js";
-import { FRAMES, PLATE, TILE } from "./atlas.js";
+import { CORNER, EDGE, FRAMES, PLATE, TILE, floorFrame, wallFrame } from "./atlas.js";
 
 /**
  * The canvas, in tiles.
@@ -51,6 +51,79 @@ export const CANVAS = CANVAS_TILES * TILE;
 
 /** The wall is one tile thick, so this is the largest interior that fits. */
 export const MAX_INTERIOR = CANVAS_TILES - 2;
+
+/**
+ * A rectangle of tiles, in room-local coordinates.
+ *
+ * Used only to cut pieces *out* of a room. A chamber's device layout is
+ * written against its full `cols` by `rows` box, so a shape that added tiles
+ * outside that box would move the origin under every device in the room; a
+ * shape that removes tiles the chamber never puts anything on cannot.
+ */
+export interface Rect {
+  readonly col: number;
+  readonly row: number;
+  readonly cols: number;
+  readonly rows: number;
+}
+
+/** One tile of the building: a piece of floor, or a piece of the wall around it. */
+export interface Tile {
+  readonly col: number;
+  readonly row: number;
+  /** Which sheet. Walls are drawn in the room's accent, floors never are. */
+  readonly wall: boolean;
+  readonly frame: number;
+}
+
+/**
+ * The floor and the wall around it, for a room of a given shape.
+ *
+ * A room used to be a rectangle painted with one flat tile and ringed by a
+ * nine-slice. Both halves are chosen from the neighbours now, which is what
+ * buys the shape: notch a corner out and the floor grows its own inset edge
+ * along the cut and the wall turns the corner to follow it, with no per-chamber
+ * art and no per-chamber special case.
+ *
+ * Wall tiles are emitted only where they touch floor. A tile deep inside a
+ * notch is outside the building, and drawing solid fill there would put a grey
+ * block in the void instead of leaving the room's outline against it.
+ */
+export function tilesFor(cols: number, rows: number, notches: readonly Rect[]): readonly Tile[] {
+  const cut = (col: number, row: number): boolean =>
+    notches.some(
+      (n) => col >= n.col && col < n.col + n.cols && row >= n.row && row < n.row + n.rows,
+    );
+  const floor = (col: number, row: number): boolean =>
+    col >= 0 && col < cols && row >= 0 && row < rows && !cut(col, row);
+
+  const tiles: Tile[] = [];
+  for (let row = -1; row <= rows; row += 1) {
+    for (let col = -1; col <= cols; col += 1) {
+      // Which orthogonal neighbours are floor. The floor sheet is indexed by
+      // the sides that are *not*, so the two uses are one mask read twice.
+      const sides =
+        (floor(col, row - 1) ? EDGE.top : 0) |
+        (floor(col, row + 1) ? EDGE.bottom : 0) |
+        (floor(col - 1, row) ? EDGE.left : 0) |
+        (floor(col + 1, row) ? EDGE.right : 0);
+
+      if (floor(col, row)) {
+        tiles.push({ col, row, wall: false, frame: floorFrame(~sides) });
+        continue;
+      }
+
+      const corners =
+        (floor(col - 1, row - 1) ? CORNER.topLeft : 0) |
+        (floor(col + 1, row - 1) ? CORNER.topRight : 0) |
+        (floor(col - 1, row + 1) ? CORNER.bottomLeft : 0) |
+        (floor(col + 1, row + 1) ? CORNER.bottomRight : 0);
+      if (sides === 0 && corners === 0) continue;
+      tiles.push({ col, row, wall: true, frame: wallFrame(sides, corners) });
+    }
+  }
+  return tiles;
+}
 
 /**
  * One device on the floor.
@@ -91,6 +164,18 @@ export interface RoomPlan {
   readonly rows: number;
   readonly devices: readonly Device[];
   readonly plates: readonly Plate[];
+  /** The floor and the wall around it, already resolved to frames. */
+  readonly tiles: readonly Tile[];
+  /**
+   * The channel the room's walls wear.
+   *
+   * Not decoration and not a fifth colour: it is the same law the devices
+   * obey, applied to the building. A room whose puzzle is only PILOT's to read
+   * is walled in amber, a room only KEEPER can act in is walled in cyan, and a
+   * room both parties work in is bone. The pack ships the walls in all three,
+   * so this costs no art and cannot disagree with the devices inside it.
+   */
+  readonly accent: RenderChannel;
   /**
    * The `AUDIBLE` fact. Both parties perceive it, so it is the one thing on
    * screen PILOT never has to describe.
@@ -207,6 +292,87 @@ export const DOOR_WIDTH = 3;
 const THRESHOLD_ROW = 2;
 
 /**
+ * Each chamber's outline, as the pieces cut out of its box.
+ *
+ * Every notch is chosen against that chamber's own device layout and takes
+ * only tiles it never places anything on, which is what lets a room change
+ * shape without a single device moving. Two rows are load-bearing everywhere
+ * and are never cut: the bottom row, which is the floor PILOT walks across,
+ * and whichever row holds the door.
+ *
+ * Resolved to tiles once at module load rather than per frame. The shapes are
+ * constants, and re-deriving four hundred tiles sixty times a second to get
+ * the same answer is the kind of work that only shows up as a warm laptop.
+ */
+const SHAPES = {
+  // A shallow vestibule: the way out is a stub between two corners that are
+  // outside the building, rather than a gap in a flat wall.
+  airlock: {
+    cols: 16,
+    rows: 12,
+    notches: [
+      { col: 0, row: 0, cols: 4, rows: 2 },
+      { col: 12, row: 0, cols: 4, rows: 2 },
+    ],
+  },
+  // Narrow and deep, so the keypad sits in a bay of its own.
+  signal_room: {
+    cols: 16,
+    rows: 14,
+    notches: [
+      { col: 0, row: 0, cols: 3, rows: 3 },
+      { col: 13, row: 0, cols: 3, rows: 3 },
+    ],
+  },
+  // Barely chamfered. The gauge bank runs nearly the full width and the room
+  // is the boxy instrument housing it, so the corners are trimmed and no more.
+  blind_panel: {
+    cols: 16,
+    rows: 14,
+    notches: [
+      { col: 0, row: 0, cols: 3, rows: 2 },
+      { col: 13, row: 0, cols: 3, rows: 2 },
+    ],
+  },
+  // The deepest vestibule in the station, because this door is the one the
+  // pair has played the whole session to reach.
+  concord_lock: {
+    cols: 16,
+    rows: 14,
+    notches: [
+      { col: 0, row: 0, cols: 4, rows: 3 },
+      { col: 12, row: 0, cols: 4, rows: 3 },
+    ],
+  },
+} as const satisfies Record<string, { cols: number; rows: number; notches: readonly Rect[] }>;
+
+/**
+ * Every notch of every chamber, so the shape rule can be proved rather than
+ * remembered. Exported for the test and used nowhere else.
+ *
+ * **A notch may only be cut from a corner of the box.** `walls-out` is a
+ * nine-slice of *convex* corners; the pack has no concave wall corner at all.
+ * A notch cut into the middle of an edge therefore has to turn the wall inward
+ * and back out using two convex corners butted together, which draws the
+ * border twice and reads as a crack in the building. At a corner of the box
+ * the wall turns once, and the outline stays a single line.
+ */
+export const CHAMBER_NOTCHES: Readonly<
+  Record<
+    string,
+    { readonly cols: number; readonly rows: number; readonly notches: readonly Rect[] }
+  >
+> = SHAPES;
+
+/** Every chamber's tiles, resolved once. */
+const TILES: Readonly<Record<keyof typeof SHAPES, readonly Tile[]>> = Object.fromEntries(
+  Object.entries(SHAPES).map(([id, shape]) => [
+    id,
+    tilesFor(shape.cols, shape.rows, shape.notches),
+  ]),
+) as Readonly<Record<keyof typeof SHAPES, readonly Tile[]>>;
+
+/**
  * The Airlock: three levers and the door they open.
  *
  * The levers are PILOT's channel because their identity is the lit glyph and
@@ -266,6 +432,10 @@ function airlock(facts: Readonly<Record<string, unknown>>): RoomPlan {
     // whose whole task is finding the channel-coded object, decoration that
     // competes with it is not decoration, it is noise.
     plates: door.cols.map((col) => ({ col, row: THRESHOLD_ROW, frame: PLATE.chequer })),
+    tiles: TILES.airlock,
+    // Bone. Both parties work this room: PILOT reads the glyphs, KEEPER pulls
+    // the levers, and neither half is the room's own.
+    accent: "shared",
     sound: text(facts, "lastSound"),
     solved: doorOpen,
   };
@@ -314,7 +484,9 @@ function signalRoom(facts: Readonly<Record<string, unknown>>): RoomPlan {
   for (let i = 0; i < 3; i += 1) {
     devices.push({
       col: cols - 3,
-      row: 2 + i * 2,
+      // From row three, so the top lamp clears the chamfer the room's
+      // top-right corner is cut back to.
+      row: 3 + i * 2,
       sheet: "led",
       channel: "shared",
       frame: i < strikes ? FRAMES.led.on : FRAMES.led.off,
@@ -347,6 +519,10 @@ function signalRoom(facts: Readonly<Record<string, unknown>>): RoomPlan {
     rows,
     devices,
     plates,
+    tiles: TILES.signal_room,
+    // Amber. The six shapes on the keys are PILOT's alone, and the whole room
+    // is the problem of getting them across.
+    accent: "pilot",
     sound: text(facts, "lastSound"),
     // No `solved` fact reaches PILOT here, and the correct sequence is a
     // subset of the six keys whose size only the server knows. Deriving one
@@ -383,8 +559,9 @@ function blindPanel(facts: Readonly<Record<string, unknown>>): RoomPlan {
 
   const devices: Device[] = [];
   const plates: Plate[] = [];
-  /** The row the top lamp of every gauge sits on. */
-  const top = 1;
+  // The row the top lamp of every gauge sits on. Two rather than one, so the
+  // outer gauges clear the chamfer the room's top corners are cut back to.
+  const top = 2;
   const dialRow = rows - 2;
   // A span of thirteen for four gauges: the steps come out at exactly four
   // tiles rather than at the 4-4-5 an even span would round to.
@@ -429,6 +606,10 @@ function blindPanel(facts: Readonly<Record<string, unknown>>): RoomPlan {
     rows,
     devices,
     plates,
+    tiles: TILES.blind_panel,
+    // Cyan. PILOT can read every gauge and reach nothing; the only hands in
+    // this room are KEEPER's.
+    accent: "keeper",
     // Singular at one. The count is puzzle-critical in this room - it is how
     // KEEPER learns a linkage hit its bound - so the line that carries it
     // should not read like a placeholder.
@@ -534,6 +715,9 @@ function concordLock(facts: Readonly<Record<string, unknown>>): RoomPlan {
     rows,
     devices,
     plates: door.cols.map((col) => ({ col, row: THRESHOLD_ROW, frame: PLATE.chequer })),
+    tiles: TILES.concord_lock,
+    // Bone. The last room is the one they have to be in together.
+    accent: "shared",
     sound: text(facts, "lastSound"),
     solved: open,
   };
@@ -592,6 +776,8 @@ export const INTERLUDE_PLAN: RoomPlan = {
   rows: 8,
   devices: [],
   plates: [],
+  tiles: tilesFor(12, 8, []),
+  accent: "shared",
   sound: null,
   solved: false,
 };
