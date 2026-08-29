@@ -62,8 +62,27 @@ describe("which floor is lit", () => {
   });
 
   it("keeps the pair on the Concord Lock's floor through the ending", () => {
-    expect(activeFloor(view({ phase: "FINALE", chamber: "concord_lock" }))).toBe("concord_lock");
-    expect(activeFloor(view({ phase: "ESCAPED", chamber: "concord_lock" }))).toBe("concord_lock");
+    // **With a null chamber, because that is what the worker actually sends.**
+    // The machine clears `chamber` on the way into FINALE and again into
+    // ESCAPED (`machine.ts`, `transitionOut`). This test used to pass
+    // `chamber: "concord_lock"`, which the server never produces, so it
+    // asserted the right answer from an input that cannot occur and went on
+    // passing while the real path returned null for both phases.
+    expect(activeFloor(view({ phase: "FINALE", chamber: null }))).toBe("concord_lock");
+    expect(activeFloor(view({ phase: "ESCAPED", chamber: null }))).toBe("concord_lock");
+  });
+
+  it("marks the Concord Lock cleared-through at the ending, not the lobby", () => {
+    // The knock-on the console shows: with the ending reporting no floor, the
+    // whole list went unmarked at exactly the moment the pair had finished it.
+    const floors = stationFloors(view({ phase: "ESCAPED", chamber: null }));
+    expect(floors.find((f) => f.id === "concord_lock")?.active).toBe(true);
+    expect(floors.filter((f) => f.cleared).map((f) => f.id)).toEqual([
+      "airlock",
+      "signal_room",
+      "blind_panel",
+      "archive",
+    ]);
   });
 
   it("lights nothing in the lobby or a transition", () => {

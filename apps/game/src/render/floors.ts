@@ -73,13 +73,22 @@ export function floorsFor(mode: PilotView["mode"]): readonly FloorId[] {
  */
 export function activeFloor(view: PilotView): FloorId | null {
   if (view.phase === "ARCHIVE") return "archive";
+  // FINALE is the Concord Lock's floor with the door open at the end of it, so
+  // the pair is still standing there and the floor stays lit.
+  //
+  // **Before the null guard, not after it.** The machine clears `chamber` on
+  // the way into FINALE and again into ESCAPED (`machine.ts`, `transitionOut`),
+  // so a guard that returns early on a null chamber makes this line
+  // unreachable and the last two phases of the game report standing nowhere.
+  // It read as the console's floor list simply going quiet at the finale,
+  // which is a plausible enough thing for it to do that it survived two
+  // rewrites; it only became obvious once the camera started framing whatever
+  // this returns.
+  if (view.phase === "FINALE" || view.phase === "ESCAPED") return "concord_lock";
   if (view.chamber === null) return null;
   if (view.phase === "IN_CHAMBER" || view.phase === "PENALISED" || view.phase === "DEADLOCK") {
     return view.chamber;
   }
-  // FINALE is the Concord Lock's floor with the door open at the end of it,
-  // so the pair is still standing there and the floor stays lit.
-  if (view.phase === "FINALE" || view.phase === "ESCAPED") return "concord_lock";
   return null;
 }
 
