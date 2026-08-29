@@ -40,7 +40,8 @@ function loadTable() {
   };
   const sheets = [];
   for (const [sheet, frames] of table("CHANNEL_SHEETS")) {
-    for (const dir of ["pilot", "keeper", "shared"]) sheets.push([`art/${dir}/${sheet}.png`, frames]);
+    for (const dir of ["pilot", "keeper", "shared"])
+      sheets.push([`art/${dir}/${sheet}.png`, frames]);
   }
   for (const [sheet, frames] of table("SHARED_SHEETS")) {
     sheets.push([`art/shared/${sheet}.png`, frames]);
