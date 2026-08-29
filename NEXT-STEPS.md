@@ -13,9 +13,9 @@ It answers three questions and only three: where the repo is right now, what to 
 | **Last updated** | 2026-08-29, Ahmed Saad |
 | **Spike** | **Run** against Chrome 151, 2026-08-28. Doc 11 filled. Three findings, D-024. ChatGPT's in-app browser still untested. |
 | **Branch** | `feat/ui-redesign`, off `main` at `f443a0f`, **not pushed** |
-| **Pipeline** | Green: 600 tests, typecheck, lint, format, both `vite build`s plus the bundle budget and the new art check, real `wrangler deploy --dry-run` |
+| **Pipeline** | Green: 601 tests, typecheck, lint, format, both `vite build`s plus the bundle budget and the new art check, real `wrangler deploy --dry-run` |
 | **Played** | A full session, end to end, in Chrome 151 against a live `wrangler dev`: all four chambers, the Archive, the finale. The registry ends genuinely empty. |
-| **Interface** | **Rebuilt** (D-034 to D-038). Vendored art pack, a three-bay DOM console, and the station drawn as **one connected floor plan**: five rooms and the corridors between them, autotiled in a single pass, each room walled in its own channel colour (D-037, D-038). A camera frames the room the pair is in at 1x, holds the whole building for the walk between chambers, and pulls back whenever PILOT holds **M**. Driven in Chrome 151 against a live worker: the Airlock and the Signal Room framed and lit, the floor plan on M, and the walk between them. **The Blind Panel, the Archive and the Concord Lock have not been reached in a live run** - only rendered from their real `roomPlan` output as stills. |
+| **Interface** | **Rebuilt** (D-034 to D-038). Vendored art pack, a three-bay DOM console, and the station drawn as **one connected floor plan**: five rooms and the corridors between them, autotiled in a single pass, each room walled in its own channel colour (D-037, D-038). A camera frames the room the pair is in at 1x, holds the whole building for the walk between chambers, and pulls back whenever PILOT holds **M**. Driven in Chrome 151 against a live worker: the Airlock and the Signal Room framed and lit, the floor plan on M, and the walk between them. **A full session has now been played end to end in Chrome 151 against a live worker**: all four chambers, the Archive, the finale and the ending. It found four rendering bugs no unit test could (see the 2026-08-29 entry in [docs/lessons-learned.md](docs/lessons-learned.md)); all four are fixed. |
 | **Delegation** | **Working and proved.** `apps/archive` serves `read_manual` and `read_station_log` from a second origin. `tests/cross-origin-delegation.ts`: 17 checks, run twice (frame embedded, and fallback), both green on Chrome 151, 2026-08-29. `ARCHIVE_ORIGIN` stays `same` (D-033). |
 | **Verify with** | `pnpm install && pnpm typecheck && pnpm lint && pnpm test && pnpm build` |
 | **Run it** | `cd apps/worker && npx wrangler dev` in one shell, `cd apps/game && pnpm dev` in another. Vite proxies `/session` to `127.0.0.1:8787`, WebSocket included. For the cross-origin path, see `apps/archive/CLAUDE.md`. |
@@ -85,20 +85,25 @@ and which the game now genuinely uses.
 one-tool page gets discovered unprompted, whether `untrustedContentHint`
 changes behaviour, and the latency distribution that sizes Chamber III's window.
 
-### 3. Reach the Blind Panel, the Archive and the Concord Lock in a live run
+### 3. Playtest the console and the floor plan with a person
 
-The interface has now been driven in Chrome against a live worker as far as the
-Signal Room: the station renders as one building, the camera frames and walks,
-and the floor plan comes up on M. **The last three floors have not been seen in
-Phaser.** They are rendered correctly from their real `roomPlan` output as
-stills, which proves the geometry and proves nothing about the things only
-motion shows: the frame stepper on the Concord Lock's door, the pad flourish,
-the grip clock's shortening beam, and whether the Archive at ten by six is big
-enough for the two lines of interlude text drawn across it.
+The rendering is verified by machine: a full session now plays end to end in
+Chrome against a live worker, and every floor has been looked at. What has not
+been asked is whether any of it *reads*.
 
-Getting there means solving the Signal Room and the Blind Panel, which the
-scripted solver only brute-forces. `tests/cross-origin-delegation.ts` already
-plays a full session from Node and is the fastest way in.
+Two specific questions. Whether the three bays land as one instrument or as
+three lists - the layout is making a claim about the game (what the human
+perceives and what the agent can do are two surfaces, with the room between
+them) and a claim like that either lands in a second or does not. And whether
+anybody finds **M**. The floor plan is the clearest statement of the thesis in
+the whole client, PILOT can see the building and no tool of KEEPER's can, and
+right now it is one line of copy in the "Your hands" panel.
+
+**Before any further renderer change, replay the tour.** Four rendering bugs in
+the last pass were invisible to 600 unit tests and to stills composited from
+real `roomPlan` output, and three of them needed two chambers of history to
+appear at all. `tests/cross-origin-delegation.ts` has the chamber solvers; it
+is about forty lines to point them at a screenshot instead of an assertion.
 
 The interface rewrite was checked by driving a live session and looking at it,
 which found three bugs no test had (D-035). Three of the four chambers were
