@@ -13,9 +13,13 @@ The measurement layer. This is where the Potential Impact argument is paid for w
 - **Report it as a proposal, not an instrument.** One game and a few hundred sessions is preliminary evidence. The sentence is: we think this measures something no existing benchmark measures, here is our first evidence, here is the raw data, tell us if we are wrong.
 - **Record token spend per run.** LLM tokens are the only real cost centre in this project. Budget before running, not after.
 - `wasted` calls are computed from `keeperViewHash`, which captures what the agent actually knew at call time. That is what separates a model that reasons from a model that enumerates, and the two produce identical completion rates.
+- **`results/` is committed, and regenerated rather than edited.** `pnpm --filter @semaphore/bench ablation` rewrites all three files from one run. A hand-corrected number in `ablation.md` that no longer matches `ablation.jsonl` is the exact failure the rule about publishing raw logs exists to prevent.
+- **The ablation's solo condition is a ceiling, not a sample** (D-040). It draws uniformly from `consistentWorlds` at every step, so it beats any real model, and the gap it reports is a lower bound. Do not replace it with a sampled backend: add the backend to the Cooperative Benchmark, which is where per-model numbers belong.
+- **Report the agent's pacing with any number that depends on it.** `gapMs` is the one free parameter here and doc 11 sections 6 and 7 have not fixed it yet. Chamber II's cooperative ceiling falls from 4.00 to 2.00 between a four-second and a nine-second rhythm, so a completion figure quoted without its pace is not a figure.
 
 ## Change Log
 
 | Date | Author | What changed |
 |---|---|---|
 | 2026-08-27 | Ahmed Saad | Created. Benchmark rules recorded ahead of the build. |
+| 2026-08-29 | Ahmed Saad | The ablation is built (D-040). Added the rules on regenerating `results/`, on keeping the solo condition a possible-worlds ceiling, and on always quoting the agent's pacing. |
