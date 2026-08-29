@@ -67,6 +67,7 @@ import {
 import type { PilotView, SessionMode } from "@semaphore/protocol";
 import {
   ARCHIVE_SCREEN,
+  clearOf,
   interlude,
   lampReveal,
   nearestFixture,
@@ -401,6 +402,8 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
    * lamp could not reach any of them from the only line a body was allowed to
    * stand on. Walking existed and could not do the one thing walking is for.
    */
+  /** How hard PILOT is walking, 0 to 1, eased. Drives the stride. */
+  let stride = 0;
   let walk = 0.5;
   // Mid-room rather than at the back wall, and that is a teaching decision.
   // From here the nearest mechanism is inside the lamp's reach and the ones to
@@ -419,6 +422,8 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
   let pilotAt = { x: 0, z: 0 };
   /** What the lean-in is currently framing, so releasing the key returns. */
   let leaning: Fixture | null = null;
+  /** Which way PILOT is facing, held between steps. */
+  let facing = 0;
 
   const held = new Set<string>();
   const onKeyDown = (event: KeyboardEvent): void => {
@@ -696,14 +701,25 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
     walk = Math.max(0, Math.min(1, walk + acrossKeys * pace));
     walkZ = Math.max(0, Math.min(1, walkZ + intoKeys * pace));
 
+    // How hard PILOT is walking, eased. Drives the stride, and eased rather
+    // than switched because a body that snaps between standing and a full
+    // stride is worse than one that never moved.
+    const pressing = Math.min(1, Math.hypot(acrossKeys, intoKeys));
+    stride += (pressing - stride) * Math.min(1, (deltaMs / 1000) * 8);
+
     const standing = floor === null ? null : placementOf(mode, floor);
     if (standing !== null && plan !== null) {
       const span = plan.size.width * WALK_SPAN;
       const depth = plan.size.depth * WALK_SPAN_Z;
-      pilotAt = {
-        x: standing.x - span / 2 + walk * span,
-        z: standing.z - depth / 2 + walkZ * depth,
-      };
+      // The walkable box keeps a body out of the masonry; `clearOf` keeps it
+      // out of the furniture. Solved in room-local metres and then placed, so
+      // the collision never has to know where the room is.
+      const clear = clearOf(plan, -span / 2 + walk * span, -depth / 2 + walkZ * depth);
+      // Walked back into the fractions, so a body pushed off a lever stays
+      // pushed rather than sliding back into it on the next frame.
+      walk = span > 0 ? Math.max(0, Math.min(1, (clear.x + span / 2) / span)) : walk;
+      walkZ = depth > 0 ? Math.max(0, Math.min(1, (clear.z + depth / 2) / depth)) : walkZ;
+      pilotAt = { x: standing.x + clear.x, z: standing.z + clear.z };
     }
 
     // Whether the *shot* is wide, not whether one was asked for.
@@ -734,6 +750,7 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
           z: standing.z + leaning.at.z,
         },
         aspect(),
+        { centre: standing, size: plan?.size ?? footprintOf(floor ?? "airlock") },
       );
     } else {
       shot = shotFor(mode, view?.phase ?? "ENTRY", floor, asked, aspect(), pilotAt);
@@ -817,6 +834,12 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
       if (at) {
         pilot.root.visible = true;
         pilot.root.position.set(pilotAt.x, 0, pilotAt.z);
+        // Facing the way they are walking, and holding that heading when they
+        // stop: a body that snaps back to face the camera the moment you let go
+        // of a key reads as a token rather than as a person.
+        if (pressing > 0.01) facing = Math.atan2(acrossKeys, intoKeys);
+        pilot.root.rotation.y = facing;
+        if (!reduceMotion) pilot.step(now, stride);
         // KEEPER stands in the east wall of whichever room the pair is in. It
         // is not *in* the room: it is behind the station's panels, reaching
         // into every cavity at once. They can see each other and reach each

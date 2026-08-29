@@ -573,6 +573,78 @@ export function nearestFixture(plan: RoomPlan, pilotX: number, pilotZ: number): 
   return best;
 }
 
+/**
+ * How much floor a body takes up, in metres of radius.
+ *
+ * PILOT is a person in a heavy coat, not a point. Without this a body walks
+ * through a lever, stands inside the beacon, and ends up half inside the wall
+ * it was heading for, which is the one thing that makes a room stop reading as
+ * a place.
+ */
+export const BODY_RADIUS = 0.42;
+
+/** How much floor a fixture takes up, by kind, in metres of radius. */
+const FIXTURE_RADIUS: Readonly<Record<FixtureKind, number>> = {
+  lever: 0.4,
+  key: 0.55,
+  gauge: 0.45,
+  dial: 0.3,
+  // A grate is set into a wall and is not walked into; the wall stops you.
+  grate: 0,
+  wheel: 0.5,
+  bar: 0.35,
+  // Bolts are on the face of a door, several metres up.
+  bolt: 0,
+  door: 1.6,
+  page: 0.4,
+  beacon: 0.8,
+  monitor: 1.6,
+  crate: 0.55,
+  lamp: 0,
+};
+
+/**
+ * Slide a body to a position it is allowed to occupy.
+ *
+ * Pushed out of anything it overlaps rather than stopped dead, so walking into
+ * a lever at an angle slides along it instead of sticking. Solved by
+ * separation rather than by a physics step, because the only thing moving is
+ * one body at walking pace and a solver would be machinery for a problem that
+ * does not have it.
+ *
+ * The walls are not here: the walkable box is already inset from them
+ * (`WALK_SPAN` in `stage.ts`), which is a cheaper and more reliable way of
+ * keeping a body out of masonry than pushing it back out afterwards.
+ */
+export function clearOf(
+  plan: RoomPlan,
+  x: number,
+  z: number,
+): { readonly x: number; readonly z: number } {
+  let atX = x;
+  let atZ = z;
+  for (const fixture of plan.fixtures) {
+    const radius = FIXTURE_RADIUS[fixture.kind] + BODY_RADIUS;
+    if (radius <= BODY_RADIUS) continue;
+    // Only things standing on the floor block a body. A gauge two metres up a
+    // wall is above head height and a bolt is on a door.
+    if (fixture.at.y > 1.4) continue;
+    const dx = atX - fixture.at.x;
+    const dz = atZ - fixture.at.z;
+    const distance = Math.hypot(dx, dz);
+    if (distance >= radius) continue;
+    if (distance < 1e-4) {
+      // Exactly on top of it, which has no direction to be pushed along. Out
+      // toward the front of the room, which is where PILOT came from.
+      atZ = fixture.at.z + radius;
+      continue;
+    }
+    atX = fixture.at.x + (dx / distance) * radius;
+    atZ = fixture.at.z + (dz / distance) * radius;
+  }
+  return { x: atX, z: atZ };
+}
+
 /** Gauge travel, matching the chamber's own clamp of 0 to 8. */
 export const GAUGE_MAX = 8;
 

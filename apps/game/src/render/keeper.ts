@@ -36,6 +36,7 @@
 
 import {
   BoxGeometry,
+  CapsuleGeometry,
   ConeGeometry,
   CylinderGeometry,
   Group,
@@ -540,50 +541,170 @@ export class KeeperBody {
  * the first time somebody checked it against the screen. The lamp is the one
  * warm thing, and it is a lamp.
  */
-export function buildPilot(kit: Kit): { readonly root: Group; readonly lamp: Object3D } {
+export function buildPilot(kit: Kit): {
+  readonly root: Group;
+  readonly lamp: Object3D;
+  /** Advance the walk cycle. `speed` is 0 standing still, 1 walking. */
+  readonly step: (elapsedMs: number, speed: number) => void;
+} {
   const root = new Group();
+  const add = (parent: Object3D, mesh: Mesh): Mesh => {
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    parent.add(mesh);
+    return mesh;
+  };
 
-  const coat = new Mesh(new CylinderGeometry(0.2, 0.34, 1.1, 10), kit.stone);
-  coat.position.y = 0.55;
-  coat.castShadow = true;
-  root.add(coat);
+  /*
+   * Built on real proportions, at 1.75 metres.
+   *
+   * The first attempt was a cone with a ball on it, and the honest complaint
+   * about it was that it did not look like a person. The fix is not detail: at
+   * the distance a room shot stands at, a body is about forty pixels tall and
+   * no amount of modelling survives that. What survives is **proportion and
+   * silhouette**, so this is built to the ratios a figure drawing uses -
+   * roughly seven and a half heads tall, shoulders half again the width of the
+   * hips, legs a little over half the total height - and then made dark, so
+   * what reads is an outline rather than a shape.
+   *
+   * It is lit almost entirely by the lamp it is carrying, which is the whole
+   * image: a person in a dark room, holding up a light, looking at things.
+   */
+  const HEAD = 0.115;
+  const SHOULDER_Y = 1.44;
+  const HIP_Y = 0.94;
 
-  const shoulders = new Mesh(new CylinderGeometry(0.24, 0.2, 0.28, 10), kit.iron);
-  shoulders.position.y = 1.2;
-  shoulders.castShadow = true;
-  root.add(shoulders);
+  // ---- Legs. Long, and mostly hidden by the coat: what reads is the stride.
+  const legs = [-1, 1].map((side) => {
+    const leg = new Group();
+    leg.position.set(side * 0.085, HIP_Y, 0);
+    root.add(leg);
+    const thigh = add(leg, new Mesh(new CapsuleGeometry(0.072, 0.34, 4, 8), kit.coat));
+    thigh.position.y = -0.24;
+    const shin = add(leg, new Mesh(new CapsuleGeometry(0.062, 0.32, 4, 8), kit.coat));
+    shin.position.y = -0.66;
+    const boot = add(leg, new Mesh(new BoxGeometry(0.125, 0.11, 0.24), kit.iron));
+    boot.position.set(0, -0.88, 0.03);
+    return leg;
+  });
 
-  const head = new Mesh(new SphereGeometry(0.15, 12, 10), kit.stone);
-  head.position.y = 1.48;
-  head.castShadow = true;
-  root.add(head);
+  // ---- The coat. Open at the front and flaring below the knee, so the
+  // silhouette is a person in a coat rather than a bell.
+  const hips = new Group();
+  hips.position.y = HIP_Y;
+  root.add(hips);
+  const skirt = add(hips, new Mesh(new CylinderGeometry(0.19, 0.27, 0.66, 12, 1, true), kit.coat));
+  skirt.position.y = -0.26;
 
-  // The raised arm, and the lamp on the end of it.
-  const arm = new Mesh(new BoxGeometry(0.08, 0.5, 0.08), kit.iron);
-  arm.position.set(0.24, 1.32, 0.06);
-  arm.rotation.z = -0.5;
-  arm.castShadow = true;
-  root.add(arm);
+  // ---- Torso. Tapered up to the shoulders, which are the widest thing on a
+  // human silhouette and the first thing that says "person" at any distance.
+  const chest = new Group();
+  chest.position.y = HIP_Y;
+  root.add(chest);
+  add(chest, new Mesh(new CylinderGeometry(0.165, 0.155, 0.44, 10), kit.coat)).position.y = 0.22;
+  const shoulders = add(chest, new Mesh(new CapsuleGeometry(0.1, 0.3, 4, 10), kit.coat));
+  shoulders.position.y = SHOULDER_Y - HIP_Y;
+  shoulders.rotation.z = Math.PI / 2;
 
+  // A belt and a collar. Two bands of a lighter material, which is most of
+  // what stops a dark figure reading as one undifferentiated shape.
+  add(chest, new Mesh(new CylinderGeometry(0.172, 0.172, 0.065, 10), kit.iron)).position.y = 0.03;
+  const collar = add(
+    chest,
+    new Mesh(new CylinderGeometry(0.105, 0.145, 0.12, 10, 1, true), kit.iron),
+  );
+  collar.position.y = SHOULDER_Y - HIP_Y + 0.11;
+
+  // ---- Head. Small, which is what makes the body read as tall.
+  const neck = add(root, new Mesh(new CylinderGeometry(0.055, 0.06, 0.08, 8), kit.skin));
+  neck.position.y = SHOULDER_Y + 0.09;
+  const head = add(root, new Mesh(new SphereGeometry(HEAD, 14, 12), kit.skin));
+  head.position.y = SHOULDER_Y + 0.2;
+  // The hood, pushed back off the head. It gives the head a dark ground to
+  // read against and says what the weather is.
+  const hood = add(
+    root,
+    new Mesh(new SphereGeometry(0.135, 12, 10, 0, Math.PI * 2, 0, 1.5), kit.coat),
+  );
+  hood.position.set(0, SHOULDER_Y + 0.12, -0.16);
+  hood.rotation.x = -1.05;
+
+  // ---- Arms. One hanging and swinging, one raised holding the lamp. The
+  // raised arm is the whole read of the character: this is someone whose job
+  // is looking.
+  const swingArm = new Group();
+  swingArm.position.set(-0.175, SHOULDER_Y, 0);
+  root.add(swingArm);
+  add(swingArm, new Mesh(new CapsuleGeometry(0.048, 0.26, 4, 8), kit.coat)).position.y = -0.17;
+  const forearmL = add(swingArm, new Mesh(new CapsuleGeometry(0.042, 0.24, 4, 8), kit.coat));
+  forearmL.position.y = -0.44;
+  add(swingArm, new Mesh(new SphereGeometry(0.05, 8, 6), kit.skin)).position.y = -0.6;
+
+  const raised = new Group();
+  raised.position.set(0.175, SHOULDER_Y, 0);
+  raised.rotation.z = -0.95;
+  root.add(raised);
+  add(raised, new Mesh(new CapsuleGeometry(0.048, 0.24, 4, 8), kit.coat)).position.y = 0.16;
+  const forearmR = new Group();
+  forearmR.position.y = 0.31;
+  forearmR.rotation.z = 0.55;
+  raised.add(forearmR);
+  add(forearmR, new Mesh(new CapsuleGeometry(0.042, 0.22, 4, 8), kit.coat)).position.y = 0.13;
+  add(forearmR, new Mesh(new SphereGeometry(0.05, 8, 6), kit.skin)).position.y = 0.27;
+
+  // ---- The lamp, in the raised hand.
   const lamp = new Group();
-  lamp.position.set(0.46, 1.62, 0.06);
-  root.add(lamp);
+  lamp.position.y = 0.34;
+  forearmR.add(lamp);
 
-  const housing = new Mesh(new CylinderGeometry(0.09, 0.11, 0.2, 8), kit.brass);
-  housing.castShadow = true;
-  lamp.add(housing);
+  add(lamp, new Mesh(new CylinderGeometry(0.012, 0.012, 0.1, 6), kit.brass)).position.y = 0.06;
+  const housing = add(
+    lamp,
+    new Mesh(new CylinderGeometry(0.075, 0.09, 0.17, 10, 1, true), kit.brass),
+  );
+  housing.castShadow = false;
+  add(lamp, new Mesh(new CylinderGeometry(0.095, 0.095, 0.022, 10), kit.brass)).position.y = -0.095;
 
   const flame = new Mesh(
-    new SphereGeometry(0.07, 10, 8),
+    new SphereGeometry(0.055, 10, 8),
     new MeshStandardMaterial({
       color: PALETTE.lampBright,
       emissive: PALETTE.lamp,
-      emissiveIntensity: 3.4,
+      emissiveIntensity: 3.6,
       roughness: 0.2,
     }),
   );
   lamp.add(flame);
-  lamp.add(kit.halo("pilot", 1.9, 0.7));
+  lamp.add(kit.halo("pilot", 1.7, 0.75));
 
-  return { root, lamp };
+  /**
+   * The walk.
+   *
+   * Five parts moving off one phase: the legs swing opposite each other, the
+   * free arm counter-swings, the body rises twice per stride, the hips turn,
+   * and the coat's hem lags a quarter-phase behind them because that is what
+   * cloth does. None of it is animation data - it is five sines - and at this
+   * distance that is indistinguishable from one, because what reads is the
+   * *rhythm* rather than the pose.
+   *
+   * `speed` folds in rather than gating: a body that snaps between a still pose
+   * and a full stride is worse than one that never moved.
+   */
+  const step = (elapsedMs: number, speed: number): void => {
+    const phase = (elapsedMs / 520) * Math.PI * 2;
+    const swing = Math.sin(phase) * 0.55 * speed;
+    legs[0]?.rotation.set(swing, 0, 0);
+    legs[1]?.rotation.set(-swing, 0, 0);
+    swingArm.rotation.x = -swing * 0.8;
+    // Twice per stride: a body rises on each foot, not once per cycle.
+    root.position.y = Math.abs(Math.sin(phase)) * 0.03 * speed;
+    hips.rotation.y = Math.sin(phase) * 0.07 * speed;
+    chest.rotation.y = -Math.sin(phase) * 0.05 * speed;
+    skirt.rotation.z = Math.sin(phase - Math.PI / 2) * 0.06 * speed;
+    // The lamp arm swings least of anything: it is being held deliberately
+    // still, which is what someone carrying a light actually does.
+    raised.rotation.x = Math.sin(phase) * 0.05 * speed;
+  };
+
+  return { root, lamp, step };
 }
