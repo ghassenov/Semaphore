@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "ablation": "npx tsx ablation.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "benchmark": "npx tsx harness.ts"
   },
   "devDependencies": {
     "@semaphore/protocol": "workspace:*",
