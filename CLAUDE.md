@@ -44,7 +44,7 @@ Judging is four equally weighted criteria: **WebMCP Leverage**, **Execution**, *
 | [apps/archive/](apps/archive/) | Cross-origin tool provider: `read_manual` and `read_station_log`, registered on a second origin and exposed back to the game. | Built (D-033). Holds no content: both tools fetch the worker. |
 | [fixtures/ghosts/](fixtures/ghosts/) | Authored ghost session logs, generated from real play. | One ghost built |
 | [tests/](tests/) | Cross-cutting proofs: possible-worlds, asymmetry smoke, solvability, and the browser proof of cross-origin delegation. | Possible-worlds proof covers all four chambers; delegation proved on Chrome 151. The browser proof doubles as the screenshot tour (`SHOTS`, D-039). |
-| [bench/](bench/) | Ablation harness, scripted partners, the Cooperative Benchmark. | Ablation built and run (D-040): three conditions over twenty seeds, raw logs and chart in `bench/results/`. The Cooperative Benchmark is still to write. |
+| [bench/](bench/) | Ablation harness, scripted partners, the Cooperative Benchmark. | Both built and run. The ablation is three conditions over twenty seeds (D-040); the Cooperative Benchmark is four scripted partners over the same seeds (D-041). Raw logs, chart, tables and CSV in `bench/results/`. No model in either yet. |
 
 Root tooling: pnpm workspaces, strict TypeScript, ESLint, Prettier, Vitest, GitHub Actions.
 
@@ -153,3 +153,4 @@ Rules that follow from this:
 | 2026-08-29 | Ahmed Saad | The client's interface was rebuilt on a vendored art pack (D-034 to D-036). Repository map gained `apps/game/public/art/`, and the licence row now separates the MIT code from the separately-licensed art. |
 | 2026-08-29 | Ahmed Saad | Repository map: the Archive beat gained PILOT's half (D-039), and the browser proof doubles as the screenshot tour. |
 | 2026-08-29 | Ahmed Saad | Repository map: `bench/` holds the ablation (D-040), which is the third consumer of `worlds.ts`. |
+| 2026-08-29 | Ahmed Saad | Repository map: `bench/` also holds the Cooperative Benchmark (D-041), and the README now carries the ablation chart. |

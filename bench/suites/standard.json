@@ -1,0 +1,29 @@
+{
+  "name": "standard",
+  "note": "20 fixed seeds, four chambers, one row per scripted partner. The seed list is the ablation's, so the oracle row and the ablation's together bar are the same measurement and cannot disagree.",
+  "difficulty": "standard",
+  "mode": "full",
+  "gapMs": 6000,
+  "seeds": [
+    "ablation-1",
+    "ablation-2",
+    "ablation-3",
+    "ablation-4",
+    "ablation-5",
+    "ablation-6",
+    "ablation-7",
+    "ablation-8",
+    "ablation-9",
+    "ablation-10",
+    "ablation-11",
+    "ablation-12",
+    "ablation-13",
+    "ablation-14",
+    "ablation-15",
+    "ablation-16",
+    "ablation-17",
+    "ablation-18",
+    "ablation-19",
+    "ablation-20"
+  ]
+}
