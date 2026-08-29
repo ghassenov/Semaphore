@@ -5,10 +5,10 @@
  * **Not a chamber.** There is no `HIDDEN` secret here and no possible-worlds
  * proof: doc 02 is explicit that reading the log "is not itself a puzzle."
  * What it is instead is the asymmetry mechanic applied to the archive:
- * KEEPER reads what the ghost KEEPER called (`TACTILE`, this module);
- * PILOT watches where the ghost PILOT walked, rendered by the replay
- * component (`VISUAL`, not built yet, tracked in NEXT-STEPS). Neither half
- * is sufficient on its own, which is the point.
+ * KEEPER reads what the ghost KEEPER called (`TACTILE`, `keeperEntries`);
+ * PILOT watches where the ghost PILOT walked (`VISUAL`, `pilotTrack`).
+ * Neither half is sufficient on its own, which is the point, and the two
+ * halves are two filters over one log rather than two authored assets.
  *
  * **Temporary placement, documented as such.** Doc 03 section 7 specifies
  * `read_station_log` as a tool on the cross-origin archive origin, reading a
@@ -19,7 +19,7 @@
  * reducer's role shrinks to just recognising that the beat is complete.
  */
 
-import type { SessionEvent, ToolCallEvent } from "@semaphore/protocol";
+import type { GhostBeat, GhostTrack, SessionEvent, ToolCallEvent } from "@semaphore/protocol";
 import { GHOST_01 } from "./ghost-01.js";
 
 /** The one ghost session shipped for the submission (doc 08's cut order). */
@@ -48,4 +48,59 @@ export function describeEntry(log: readonly SessionEvent[], entry: number): stri
     `Entry ${entry} of ${entries.length}: the previous KEEPER called ${call.tool}` +
     `(${JSON.stringify(call.input)}). It ${outcome}. ${entry === entries.length ? "The log ends here, mid-attempt." : ""}`
   ).trim();
+}
+
+/**
+ * What PILOT's half of the archive watches: the ghost session as a person
+ * standing in the ghost's room would have perceived it.
+ *
+ * The mirror of `keeperEntries`, and the mirror is the whole design. That
+ * function keeps `tool_call` and drops everything else; this one drops
+ * `tool_call` and keeps what a body in the room produced. **The exclusion is
+ * the mechanic, not an optimisation**: a monitor that showed the ghost's tool
+ * calls would hand PILOT KEEPER's half and there would be nothing left for the
+ * pair to reconstruct together.
+ *
+ * `state_delta` is dropped too, and less obviously. Those events carry raw
+ * `WorldState` paths, which include `HIDDEN` fields like the Blind Panel's
+ * mapping; they are the replay viewer's business, behind a projection, and
+ * they have no business on a screen PILOT reads directly.
+ */
+export function pilotTrack(log: readonly SessionEvent[]): GhostTrack | null {
+  const start = log.find((event) => event.type === "session_start");
+  if (start === undefined) return null;
+
+  const beats: GhostBeat[] = [];
+  for (const event of log) {
+    if (event.type === "chamber_enter" || event.type === "chamber_solved") {
+      beats.push({
+        t: event.t,
+        kind: event.type === "chamber_enter" ? "enter" : "solved",
+        chamber: event.chamber,
+      });
+    } else if (event.type === "pilot_action") {
+      beats.push({
+        t: event.t,
+        kind: "action",
+        chamber: null,
+        action: event.action,
+        target: event.target,
+      });
+    }
+  }
+
+  const end = log.find((event) => event.type === "session_end");
+  return {
+    designation: start.designation,
+    // The last event of the whole log, not the last beat. A ghost whose final
+    // minute was all KEEPER's calls still spent that minute in the room, and a
+    // replay that stopped at PILOT's last movement would cut off exactly the
+    // stretch the pair is meant to notice: the ghost holding the bar while
+    // nothing else happens.
+    durationMs: log.at(-1)?.t ?? 0,
+    beats,
+    // No `session_end` line means the log stops mid-attempt, which is what
+    // doc 02 section 4 specifies and what the fixture actually contains.
+    outcome: end?.outcome ?? "cut",
+  };
 }
