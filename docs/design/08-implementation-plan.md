@@ -168,11 +168,11 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 
 ### 2.3 The Archive ★
 
-- [ ] Ghost session JSONL format finalised; **two ghost sessions authored** by recording real playtests
+- [x] Ghost session JSONL format finalised, and generated from the reducer rather than authored *(**one** ghost, which doc 08's own cut order allows and `fixtures/ghosts/CLAUDE.md` scopes to; a second is content, not mechanism, D-039)*
 - [x] `read_station_log({ entry })` on the archive origin *(and `read_manual` beside it; D-033)*
-- [ ] `ArchiveScene` with the CRT monitor running the replay renderer at 1:4
-- [ ] The split: PILOT sees ghost movement, KEEPER reads ghost calls, neither half sufficient
-- [x] Required-to-progress gating; teaches the Chamber III mechanic diegetically *(gating only; the scene that teaches it is not built)*
+- [x] The Archive's monitor, playing the ghost, drawn by `ChamberScene` beside every other room *(a schematic at a computed integer scale rather than the pack at 1:4, and no third scene, D-039)*
+- [x] The split: PILOT sees ghost movement, KEEPER reads ghost calls, neither half sufficient *(`pilotTrack` mirrors `keeperEntries`, and the exclusion is asserted in both directions, D-039)*
+- [x] Required-to-progress gating; teaches the Chamber III mechanic diegetically *(the room is built: the ghost is seen gripping the bar while their KEEPER's calls stop arriving, D-039. Whether a pair actually reads it that way is the playtest below.)*
 - [ ] Playtest — **does the pair actually reconstruct the release-bar mechanic from it?**
 
 ### 2.4 Chamber III — Concord Lock ★

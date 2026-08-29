@@ -393,13 +393,16 @@ export function spread(count: number, span: number, start = 0): readonly number[
  *
  * The caption rides on a second draw of the middle leaf so the bank reads as
  * one door rather than as three narrow ones, and it lands on the row below,
- * which is why nothing else may be placed on row 1.
+ * which is why nothing else may be placed on row 1. A door with no caption at
+ * all claims that row back, which is what the Archive needs it for: a room
+ * with one exit and one monitor does not need the exit labelled, and the
+ * monitor needs the height far more.
  */
 function doorway(
   cols: number,
   sheet: "door" | "door-locked",
   frame: number,
-  label: string,
+  label?: string,
 ): { readonly cols: readonly number[]; readonly devices: Device[] } {
   const start = Math.floor((cols - DOOR_WIDTH) / 2);
   const leaves = Array.from({ length: DOOR_WIDTH }, (_, i) => start + i);
@@ -411,7 +414,7 @@ function doorway(
     frame,
   }));
   const middle = leaves[1];
-  if (middle !== undefined) {
+  if (middle !== undefined && label !== undefined) {
     devices.push({ col: middle, row: 0, sheet, channel: "shared", frame, label });
   }
   return { cols: leaves, devices };
@@ -886,6 +889,70 @@ function concordLock(facts: Readonly<Record<string, unknown>>): RoomPlan {
 }
 
 /**
+ * Where the monitor's screen sits in the Archive, in room-local tiles.
+ *
+ * Exported because `ghost.ts` decides what is on the screen and `scenes.ts`
+ * paints it, and neither of them may hold a second opinion about where it is.
+ * Eight by four tiles, which is as large as the room allows: it claims every
+ * row between the door in the wall above and the floor PILOT walks along
+ * below. The size is not vanity. The tube has to hold a chamber's floor plan
+ * *and* a line of text under it, and a monitor one row shorter had room for
+ * the room at one pixel a tile, which is a dot in a box rather than a
+ * recording of anywhere.
+ */
+export const ARCHIVE_SCREEN = { col: 1, row: 1, cols: 8, rows: 4 } as const;
+
+/** The Archive's interior, which `plan.ts` also builds the station from. */
+const ARCHIVE_COLS = 10;
+const ARCHIVE_ROWS = 6;
+
+/**
+ * The Archive: a monitor, two crates of tape, and the way on.
+ *
+ * Not a chamber (doc 02 section 4), so this takes no facts and there is
+ * nothing here to solve. It is a room all the same, and it is the one room in
+ * the station whose furniture is the mechanic: the monitor is PILOT's half of
+ * the archive, and it is amber for the same reason every other amber thing is,
+ * because KEEPER has no tool that reaches it. What KEEPER has is
+ * `read_station_log`, which reaches nothing on this floor plan.
+ *
+ * A constant rather than a function. The room does not change during the beat:
+ * what changes is the recording playing on it, and that is `ghost.ts`.
+ */
+export const ARCHIVE_PLAN: RoomPlan = (() => {
+  const door = doorway(ARCHIVE_COLS, "door", FRAMES.door.open);
+  return {
+    cols: ARCHIVE_COLS,
+    rows: ARCHIVE_ROWS,
+    devices: [
+      ...door.devices,
+      // The monitor's own lamp, beside the screen: the room says the thing is
+      // powered even in the moment between two beats when nothing moves on it.
+      {
+        col: ARCHIVE_SCREEN.col + ARCHIVE_SCREEN.cols,
+        row: ARCHIVE_SCREEN.row,
+        sheet: "led",
+        channel: "pilot",
+        frame: FRAMES.led.on,
+      },
+      // Tape crates, either side of the floor. Shared, because a crate is
+      // furniture: it carries no fact and neither party can act on it.
+      { col: 0, row: ARCHIVE_ROWS - 1, sheet: "box", channel: "shared", frame: 0 },
+      { col: ARCHIVE_COLS - 1, row: ARCHIVE_ROWS - 1, sheet: "box", channel: "shared", frame: 0 },
+    ],
+    // No threshold plate, unlike every chamber. The plate would land under the
+    // monitor, and a floor pattern read through a screen is the one place in
+    // the station where decoration does not merely compete with the thing the
+    // room is for, it is drawn on top of it.
+    plates: [],
+    tiles: tilesFor(ARCHIVE_COLS, ARCHIVE_ROWS, [], "shared"),
+    accent: "shared",
+    sound: null,
+    solved: false,
+  };
+})();
+
+/**
  * The phases that have a title but no room, and what the console calls them.
  *
  * These are not chambers, so `facts` is empty by construction and there is
@@ -910,6 +977,10 @@ const PHASE_TITLES: Readonly<Record<string, string>> = {
  */
 export function roomPlan(view: PilotView): RoomPlan | null {
   const { facts, chamber } = view;
+  // Before the chamber check, not after it. `machine.chamber` still names the
+  // Blind Panel throughout the Archive (D-025), so asking the chamber first
+  // would draw the room the pair has just left behind the monitor.
+  if (view.phase === "ARCHIVE") return ARCHIVE_PLAN;
   // An empty `facts` is the server saying there is no room here, whatever
   // `machine.chamber` still names (D-025). Trusting the chamber alone would
   // draw the Blind Panel behind the Archive's dead monitor.
@@ -962,6 +1033,10 @@ export function roomTitle(view: PilotView): string {
  * Two lines: what is happening, and what to do about it. The second is empty
  * where there is nothing to do, because inventing an instruction for a beat
  * that has none is worse than silence.
+ *
+ * The Archive is not among them any more. It has a room of its own with a
+ * monitor in it, and a caption over a floor plan would be words competing with
+ * the one thing on this floor the pair is here to look at.
  */
 export function interlude(view: PilotView): readonly [string, string] {
   switch (view.phase) {
@@ -971,8 +1046,6 @@ export function interlude(view: PilotView): readonly [string, string] {
       return ["THE SHIFT HAS NOT BEGUN", "CHOOSE A SESSION LENGTH BELOW"];
     case "TRANSITIONING":
       return ["THE DOOR AHEAD IS OPENING", ""];
-    case "ARCHIVE":
-      return ["A DEAD MONITOR, STILL WARM", "KEEPER READS THE GHOST LOGS"];
     case "FINALE":
       return ["THE OUTER DOOR", "ONE THING LEFT TO DO"];
     case "ESCAPED":

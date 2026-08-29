@@ -191,6 +191,60 @@ export const NOTE_MAX_LENGTH = 240;
  */
 export const NOTE_CAPACITY = 20;
 
+/**
+ * One moment of a ghost session, as PILOT perceives it (doc 02 section 4).
+ *
+ * The Archive is the asymmetry mechanic applied to the archive itself: KEEPER
+ * reads what the ghost KEEPER called, PILOT watches where the ghost PILOT
+ * walked, and neither half is sufficient. This type is PILOT's half, and its
+ * whole design constraint is what it may **not** carry. A `tool_call` event is
+ * `TACTILE`: it belongs to `read_station_log` and reaches the monitor through
+ * no field here, not even as a count. What is left is what a person standing
+ * in the ghost's room would have seen: which room they were in, and what their
+ * hands did.
+ *
+ * `move` beats are the doors between rooms rather than footsteps. PILOT's
+ * position is client-local and never logged, so the walk between two beats is
+ * interpolated by the replay rather than recorded: the log knows the ghost
+ * gripped the release bar, not the path they took to it.
+ */
+export interface GhostBeat {
+  /** Milliseconds since the ghost's session started. The replay's clock. */
+  readonly t: number;
+  /** Entering a room, getting out of one, or doing something with your hands. */
+  readonly kind: "enter" | "solved" | "action";
+  /** The room, for `enter` and `solved`. Null on an action. */
+  readonly chamber: ChamberId | null;
+  /** What the hands did, for `action`. Absent otherwise. */
+  readonly action?: "move" | "inspect" | "grip" | "release" | "write_note";
+  /** What they did it to. A device, a door, or the author of a note. */
+  readonly target?: string;
+}
+
+/**
+ * A whole ghost session, reduced to what the Archive's monitor may show.
+ *
+ * Built by `pilotTrack` on the server, from the same JSONL the benchmark
+ * consumes, so the monitor and `read_station_log` are two projections of one
+ * log rather than two authored assets that can disagree.
+ */
+export interface GhostTrack {
+  /** The name the ghost's agent gave itself. Recorded, so it has a name. */
+  readonly designation: string;
+  /** When the last beat lands, so the replay knows how long it runs. */
+  readonly durationMs: number;
+  readonly beats: readonly GhostBeat[];
+  /**
+   * How the ghost's log ends.
+   *
+   * `cut` is the one that matters: the log stops mid-attempt with no
+   * `session_end` line at all (doc 02 section 4, "the log ends mid-call"). It
+   * is a literal absence, so it is reported as one rather than dressed up as a
+   * failure the log never recorded.
+   */
+  readonly outcome: "escaped" | "abandoned" | "deadlocked" | "cut";
+}
+
 export interface PilotView {
   readonly phase: Phase;
   readonly chamber: ChamberId | null;
@@ -213,4 +267,14 @@ export interface PilotView {
   readonly facts: Readonly<Record<string, unknown>>;
   /** The shared notepad, oldest first. Empty until somebody writes. */
   readonly notes: readonly Note[];
+  /**
+   * The ghost playing on the Archive's monitor, or null everywhere else.
+   *
+   * On the view rather than fetched by the client, so it travels the same
+   * socket every other rendered fact does and passes the same projection
+   * boundary. A client that fetched the ghost log for itself would be reaching
+   * around `projectForPilot` to get it, which is the one thing the design law
+   * forbids however convenient it looks.
+   */
+  readonly ghost: GhostTrack | null;
 }

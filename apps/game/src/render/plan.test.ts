@@ -31,7 +31,7 @@ import {
   stationCells,
   stationTiles,
 } from "./plan.js";
-import { cellKey, roomPlan } from "./room.js";
+import { ARCHIVE_PLAN, ARCHIVE_SCREEN, cellKey, roomPlan } from "./room.js";
 import { TILE } from "./atlas.js";
 import { floorsFor, type FloorId } from "./floors.js";
 
@@ -63,13 +63,17 @@ const FACTS: Readonly<Record<string, object>> = {
 
 function view(chamber: string, mode: SessionMode = "full"): PilotView {
   return {
-    phase: "IN_CHAMBER",
+    // The Archive is a floor with no chamber, and it is the phase rather than
+    // the chamber that gets its room drawn (D-025), so the helper has to name
+    // the phase the pair would actually be in when standing on that floor.
+    phase: chamber === "archive" ? "ARCHIVE" : "IN_CHAMBER",
     chamber: chamber as never,
     designation: "KEEPER",
     remainingMs: 1,
     retries: 0,
     facts: (FACTS[chamber] ?? {}) as never,
     notes: [],
+    ghost: null,
     mode,
   };
 }
@@ -194,7 +198,6 @@ describe("the station's plan", () => {
     for (const mode of MODES) {
       const cells = stationCells(mode);
       for (const floor of floorsOf(mode)) {
-        if (floor === "archive") continue;
         const at = placementOf(mode, floor);
         const plan = roomPlan(view(floor, mode));
         if (at === null || plan === null) continue;
@@ -207,6 +210,26 @@ describe("the station's plan", () => {
         }
       }
     }
+  });
+
+  it("hangs the Archive's monitor on the Archive's own floor", () => {
+    // The screen is painted rather than placed as a device, so the check that
+    // stands every device on floor does not cover it. A tube half outside the
+    // room would be a rectangle of amber over the corridor, which is exactly
+    // the kind of fault that reads as a deliberate design choice.
+    const cells = stationCells("full");
+    const at = placementOf("full", "archive");
+    expect(at).not.toBeNull();
+    if (at === null) return;
+    for (let row = 0; row < ARCHIVE_SCREEN.rows; row += 1) {
+      for (let col = 0; col < ARCHIVE_SCREEN.cols; col += 1) {
+        const key = cellKey(at.col + ARCHIVE_SCREEN.col + col, at.row + ARCHIVE_SCREEN.row + row);
+        expect(cells.get(key)?.owner, `screen at ${key}`).toBe("archive");
+      }
+    }
+    // The bottom row stays clear: PILOT walks it, and the ghost's own body is
+    // drawn along the bottom of the tube.
+    expect(ARCHIVE_SCREEN.row + ARCHIVE_SCREEN.rows).toBeLessThan(ARCHIVE_PLAN.rows);
   });
 
   it("fits both buildings inside the camera's wide shot", () => {

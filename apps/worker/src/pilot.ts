@@ -16,7 +16,8 @@
  * template later. `pilot.test.ts` asserts that for all four chambers.
  */
 
-import type { Phase, PilotView } from "@semaphore/protocol";
+import type { GhostTrack, Phase, PilotView } from "@semaphore/protocol";
+import { GHOST_LOG, pilotTrack } from "./archive/index.js";
 import * as airlock from "./chambers/airlock.js";
 import * as signalRoom from "./chambers/signal_room.js";
 import * as blindPanel from "./chambers/blind_panel.js";
@@ -105,5 +106,21 @@ export function pilotView(session: PersistedSession, nowMs: number): PilotView {
     // one of the two parties wrote it for the other to read - so there is no
     // channel for `projectForPilot` to strip and nothing it could hide.
     notes: session.notes,
+    ghost: ghostFor(session.machine.phase),
   };
+}
+
+/**
+ * The ghost the Archive's monitor is playing, and null in every other phase.
+ *
+ * Computed per call rather than cached. The track is a filter over a fixed
+ * fifteen-line fixture, so the arithmetic is free, and a module-level cache
+ * would be a second copy of the answer that a change to `GHOST_LOG` could
+ * leave stale. Null outside the Archive because the monitor is only in that
+ * one room: shipping the track on every frame of every chamber would put a
+ * prior session's movements on the wire for fifteen minutes to be drawn for
+ * three of them.
+ */
+function ghostFor(phase: Phase): GhostTrack | null {
+  return phase === "ARCHIVE" ? pilotTrack(GHOST_LOG) : null;
 }

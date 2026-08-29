@@ -39,11 +39,11 @@ Judging is four equally weighted criteria: **WebMCP Leverage**, **Execution**, *
 | `packages/seed/` | Deterministic xorshift128+ PRNG. Same seed, same puzzle, always. | Built |
 | `packages/protocol/` | Channel tags, error codes, wire types, and the two document-tool specs the game and the archive origin share. One definition each. | Built |
 | `apps/game/public/art/` | The vendored art pack, one directory per channel. **Not covered by this repository's MIT licence** (D-034); terms and provenance in its `CREDITS.md`. | Vendored |
-| [apps/game/](apps/game/) | Phaser client. Renders PILOT's view, hosts the WebMCP tool director. | Complete through plan 1.4. Interface rebuilt on the vendored art pack: one top-down room on the canvas, a three-bay DOM console around it (D-034 to D-036). All four chambers looked at in Chrome against a live worker. |
+| [apps/game/](apps/game/) | Phaser client. Renders PILOT's view, hosts the WebMCP tool director. | Complete through plan 1.4, plus the Archive's monitor (D-039). Interface rebuilt on the vendored art pack: one top-down room on the canvas, a three-bay DOM console around it (D-034 to D-036). All four chambers and the Archive looked at in Chrome against a live worker. |
 | [apps/worker/](apps/worker/) | Cloudflare Worker plus the Session Durable Object. Authoritative state. | Complete: four chambers, the reducer, the Archive beat, the timer, the read-only tool surface, the manual, PILOT's view socket, the CONCORD route and the shared notepad |
 | [apps/archive/](apps/archive/) | Cross-origin tool provider: `read_manual` and `read_station_log`, registered on a second origin and exposed back to the game. | Built (D-033). Holds no content: both tools fetch the worker. |
 | [fixtures/ghosts/](fixtures/ghosts/) | Authored ghost session logs, generated from real play. | One ghost built |
-| [tests/](tests/) | Cross-cutting proofs: possible-worlds, asymmetry smoke, solvability, and the browser proof of cross-origin delegation. | Possible-worlds proof covers all four chambers; delegation proved on Chrome 151 |
+| [tests/](tests/) | Cross-cutting proofs: possible-worlds, asymmetry smoke, solvability, and the browser proof of cross-origin delegation. | Possible-worlds proof covers all four chambers; delegation proved on Chrome 151. The browser proof doubles as the screenshot tour (`SHOTS`, D-039). |
 | [bench/](bench/) | Ablation harness, scripted partners, the Cooperative Benchmark. | To write |
 
 Root tooling: pnpm workspaces, strict TypeScript, ESLint, Prettier, Vitest, GitHub Actions.
@@ -151,3 +151,4 @@ Rules that follow from this:
 | 2026-08-28 | Ahmed Saad | Repository map: the declarative notepad, the first art, and a full session played end to end (D-028 to D-030). |
 | 2026-08-29 | Ahmed Saad | Repository map: `apps/archive` is built and the document tools are delegated across origins (D-033). `tests/` gained the browser proof. |
 | 2026-08-29 | Ahmed Saad | The client's interface was rebuilt on a vendored art pack (D-034 to D-036). Repository map gained `apps/game/public/art/`, and the licence row now separates the MIT code from the separately-licensed art. |
+| 2026-08-29 | Ahmed Saad | Repository map: the Archive beat gained PILOT's half (D-039), and the browser proof doubles as the screenshot tour. |
