@@ -71,35 +71,81 @@ export interface Rect {
 export interface Tile {
   readonly col: number;
   readonly row: number;
-  /** Which sheet. Walls are drawn in the room's accent, floors never are. */
+  /** Which sheet. Walls are drawn in a channel colour, floors never are. */
   readonly wall: boolean;
   readonly frame: number;
+  /**
+   * The channel a wall tile wears. Always `shared` on floor.
+   *
+   * Carried on the tile rather than looked up at paint time because in the
+   * station a single wall run can border two rooms of different channels, and
+   * the tile is the only thing that knows which side it is on.
+   */
+  readonly channel: RenderChannel;
+  /**
+   * Which floor of the station this tile belongs to, or null for a corridor
+   * and for a room drawn on its own. Drives dimming, not colour.
+   */
+  readonly owner: string | null;
+}
+
+/** A cell key. Coordinates are signed, so this is a string rather than an index. */
+export function cellKey(col: number, row: number): string {
+  return `${String(col)},${String(row)}`;
 }
 
 /**
- * The floor and the wall around it, for a room of a given shape.
+ * What a set of floor cells belongs to: its channel, and its floor of the
+ * station. Cells absent from the map are floor with no owner.
+ */
+export interface CellOwner {
+  readonly channel: RenderChannel;
+  readonly owner: string | null;
+}
+
+/**
+ * The floor and the wall around it, for any set of floor cells.
  *
  * A room used to be a rectangle painted with one flat tile and ringed by a
  * nine-slice. Both halves are chosen from the neighbours now, which is what
- * buys the shape: notch a corner out and the floor grows its own inset edge
- * along the cut and the wall turns the corner to follow it, with no per-chamber
- * art and no per-chamber special case.
+ * buys the shape: cut a corner away and the floor grows its own inset edge
+ * along the cut and the wall turns the corner to follow it, with no per-room
+ * art and no per-room special case.
  *
- * Wall tiles are emitted only where they touch floor. A tile deep inside a
- * notch is outside the building, and drawing solid fill there would put a grey
- * block in the void instead of leaving the room's outline against it.
+ * Taking a cell set rather than a rectangle is what lets the whole station be
+ * autotiled in **one pass**. That is not a convenience: a corridor meeting a
+ * room is a junction, and a junction resolved by two separate passes has each
+ * pass drawing a wall the other one wanted open. Resolved together, the wall
+ * simply ends in a corner on each side of the opening, which is a doorway.
+ *
+ * Wall tiles are emitted only where they touch floor. A tile in the middle of
+ * the empty space between two rooms is outside the building, and drawing solid
+ * fill there would put a grey block in the void instead of leaving the
+ * building's outline against it.
  */
-export function tilesFor(cols: number, rows: number, notches: readonly Rect[]): readonly Tile[] {
-  const cut = (col: number, row: number): boolean =>
-    notches.some(
-      (n) => col >= n.col && col < n.col + n.cols && row >= n.row && row < n.row + n.rows,
-    );
-  const floor = (col: number, row: number): boolean =>
-    col >= 0 && col < cols && row >= 0 && row < rows && !cut(col, row);
+export function tilesForCells(
+  cells: ReadonlySet<string>,
+  owners: ReadonlyMap<string, CellOwner> = new Map(),
+): readonly Tile[] {
+  const floor = (col: number, row: number): boolean => cells.has(cellKey(col, row));
+
+  // The bounding box of the floor, grown by one so the wall ring fits.
+  let minCol = Infinity;
+  let minRow = Infinity;
+  let maxCol = -Infinity;
+  let maxRow = -Infinity;
+  for (const key of cells) {
+    const [col, row] = key.split(",").map(Number) as [number, number];
+    minCol = Math.min(minCol, col);
+    maxCol = Math.max(maxCol, col);
+    minRow = Math.min(minRow, row);
+    maxRow = Math.max(maxRow, row);
+  }
+  if (!Number.isFinite(minCol)) return [];
 
   const tiles: Tile[] = [];
-  for (let row = -1; row <= rows; row += 1) {
-    for (let col = -1; col <= cols; col += 1) {
+  for (let row = minRow - 1; row <= maxRow + 1; row += 1) {
+    for (let col = minCol - 1; col <= maxCol + 1; col += 1) {
       // Which orthogonal neighbours are floor. The floor sheet is indexed by
       // the sides that are *not*, so the two uses are one mask read twice.
       const sides =
@@ -109,7 +155,15 @@ export function tilesFor(cols: number, rows: number, notches: readonly Rect[]): 
         (floor(col + 1, row) ? EDGE.right : 0);
 
       if (floor(col, row)) {
-        tiles.push({ col, row, wall: false, frame: floorFrame(~sides) });
+        const own = owners.get(cellKey(col, row));
+        tiles.push({
+          col,
+          row,
+          wall: false,
+          frame: floorFrame(~sides),
+          channel: "shared",
+          owner: own?.owner ?? null,
+        });
         continue;
       }
 
@@ -119,10 +173,94 @@ export function tilesFor(cols: number, rows: number, notches: readonly Rect[]): 
         (floor(col - 1, row + 1) ? CORNER.bottomLeft : 0) |
         (floor(col + 1, row + 1) ? CORNER.bottomRight : 0);
       if (sides === 0 && corners === 0) continue;
-      tiles.push({ col, row, wall: true, frame: wallFrame(sides, corners) });
+
+      // A wall takes the channel of the floor it borders, orthogonally first.
+      // In the station one wall run can have a room on one side and a corridor
+      // on the other, and the room is the side worth colouring.
+      const own = wallOwner(col, row, owners);
+      tiles.push({
+        col,
+        row,
+        wall: true,
+        frame: wallFrame(sides, corners),
+        channel: own?.channel ?? "shared",
+        owner: own?.owner ?? null,
+      });
     }
   }
   return tiles;
+}
+
+/**
+ * Which floor a wall tile borders.
+ *
+ * Orthogonal neighbours before diagonal ones, and an owned cell before an
+ * unowned one, so a wall between a room and a corridor takes the room. A wall
+ * that borders two rooms takes whichever comes first in this scan, which is
+ * arbitrary and has to be: the tile is one tile and the two rooms disagree.
+ */
+function wallOwner(
+  col: number,
+  row: number,
+  owners: ReadonlyMap<string, CellOwner>,
+): CellOwner | undefined {
+  const around = [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+    [-1, -1],
+    [1, -1],
+    [-1, 1],
+    [1, 1],
+  ] as const;
+  let fallback: CellOwner | undefined;
+  for (const [dc, dr] of around) {
+    const own = owners.get(cellKey(col + dc, row + dr));
+    if (own === undefined) continue;
+    if (own.owner !== null) return own;
+    fallback ??= own;
+  }
+  return fallback;
+}
+
+/**
+ * The floor cells of one rectangle, minus the pieces cut out of it.
+ *
+ * Exported because the station builds its rooms from the same shapes a room
+ * drawn on its own uses, and the two must not be able to disagree about what a
+ * chamber's outline is.
+ */
+export function shapeCells(
+  cols: number,
+  rows: number,
+  notches: readonly Rect[],
+  atCol = 0,
+  atRow = 0,
+): readonly string[] {
+  const cut = (col: number, row: number): boolean =>
+    notches.some(
+      (n) => col >= n.col && col < n.col + n.cols && row >= n.row && row < n.row + n.rows,
+    );
+  const keys: string[] = [];
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      if (!cut(col, row)) keys.push(cellKey(atCol + col, atRow + row));
+    }
+  }
+  return keys;
+}
+
+/** One room, drawn on its own, with every wall in one channel. */
+export function tilesFor(
+  cols: number,
+  rows: number,
+  notches: readonly Rect[],
+  accent: RenderChannel = "shared",
+): readonly Tile[] {
+  const keys = shapeCells(cols, rows, notches);
+  const owners = new Map<string, CellOwner>(keys.map((k) => [k, { channel: accent, owner: null }]));
+  return tilesForCells(new Set(keys), owners);
 }
 
 /**
@@ -292,6 +430,32 @@ export const DOOR_WIDTH = 3;
 const THRESHOLD_ROW = 2;
 
 /**
+ * Which channel each chamber's walls wear.
+ *
+ * Not decoration and not a fifth colour: it is the same law the devices obey,
+ * applied to the building. A room whose puzzle is only PILOT's to read is
+ * walled in amber, a room only KEEPER can act in is walled in cyan, and a room
+ * both parties work in is bone. The pack ships the walls in all three, so this
+ * costs no art and cannot disagree with the devices inside it.
+ *
+ * A table rather than a literal per chamber, because the station colours the
+ * same walls from the outside and the two must not be able to drift apart.
+ */
+export const CHAMBER_ACCENT = {
+  // Both parties work this room: PILOT reads the glyphs, KEEPER pulls the
+  // levers, and neither half is the room's own.
+  airlock: "shared",
+  // The six shapes on the keys are PILOT's alone, and the whole room is the
+  // problem of getting them across.
+  signal_room: "pilot",
+  // PILOT can read every gauge and reach nothing; the only hands here are
+  // KEEPER's.
+  blind_panel: "keeper",
+  // The last room is the one they have to be in together.
+  concord_lock: "shared",
+} as const satisfies Record<string, RenderChannel>;
+
+/**
  * Each chamber's outline, as the pieces cut out of its box.
  *
  * Every notch is chosen against that chamber's own device layout and takes
@@ -368,7 +532,12 @@ export const CHAMBER_NOTCHES: Readonly<
 const TILES: Readonly<Record<keyof typeof SHAPES, readonly Tile[]>> = Object.fromEntries(
   Object.entries(SHAPES).map(([id, shape]) => [
     id,
-    tilesFor(shape.cols, shape.rows, shape.notches),
+    tilesFor(
+      shape.cols,
+      shape.rows,
+      shape.notches,
+      CHAMBER_ACCENT[id as keyof typeof CHAMBER_ACCENT],
+    ),
   ]),
 ) as Readonly<Record<keyof typeof SHAPES, readonly Tile[]>>;
 
@@ -433,9 +602,7 @@ function airlock(facts: Readonly<Record<string, unknown>>): RoomPlan {
     // competes with it is not decoration, it is noise.
     plates: door.cols.map((col) => ({ col, row: THRESHOLD_ROW, frame: PLATE.chequer })),
     tiles: TILES.airlock,
-    // Bone. Both parties work this room: PILOT reads the glyphs, KEEPER pulls
-    // the levers, and neither half is the room's own.
-    accent: "shared",
+    accent: CHAMBER_ACCENT.airlock,
     sound: text(facts, "lastSound"),
     solved: doorOpen,
   };
@@ -520,9 +687,7 @@ function signalRoom(facts: Readonly<Record<string, unknown>>): RoomPlan {
     devices,
     plates,
     tiles: TILES.signal_room,
-    // Amber. The six shapes on the keys are PILOT's alone, and the whole room
-    // is the problem of getting them across.
-    accent: "pilot",
+    accent: CHAMBER_ACCENT.signal_room,
     sound: text(facts, "lastSound"),
     // No `solved` fact reaches PILOT here, and the correct sequence is a
     // subset of the six keys whose size only the server knows. Deriving one
@@ -607,9 +772,7 @@ function blindPanel(facts: Readonly<Record<string, unknown>>): RoomPlan {
     devices,
     plates,
     tiles: TILES.blind_panel,
-    // Cyan. PILOT can read every gauge and reach nothing; the only hands in
-    // this room are KEEPER's.
-    accent: "keeper",
+    accent: CHAMBER_ACCENT.blind_panel,
     // Singular at one. The count is puzzle-critical in this room - it is how
     // KEEPER learns a linkage hit its bound - so the line that carries it
     // should not read like a placeholder.
@@ -716,8 +879,7 @@ function concordLock(facts: Readonly<Record<string, unknown>>): RoomPlan {
     devices,
     plates: door.cols.map((col) => ({ col, row: THRESHOLD_ROW, frame: PLATE.chequer })),
     tiles: TILES.concord_lock,
-    // Bone. The last room is the one they have to be in together.
-    accent: "shared",
+    accent: CHAMBER_ACCENT.concord_lock,
     sound: text(facts, "lastSound"),
     solved: open,
   };
