@@ -89,8 +89,8 @@ describe("ghostFrame", () => {
     };
     const frame = ghostFrame(late, 0);
     expect(frame.chamber).toBeNull();
-    expect(frame.cols).toBeGreaterThan(0);
-    expect(frame.rows).toBeGreaterThan(0);
+    expect(frame.width).toBeGreaterThan(0);
+    expect(frame.depth).toBeGreaterThan(0);
   });
 
   it("survives a track with no beats and no length at all", () => {

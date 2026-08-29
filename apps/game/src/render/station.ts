@@ -1,23 +1,23 @@
 /**
- * The renderer's boot, and the one object every scene reads from.
+ * The renderer's boot, and the one object every frame reads from.
  *
- * Two things make this file worth its own module.
+ * Two things make this file worth its own module, and both survived the engine
+ * being replaced (D-042).
  *
- * **Phaser is loaded on demand, never at startup.** The engine is 365KB
- * gzipped against a 400KB budget (doc 07 section 6), and a browser without
- * WebMCP never reaches a canvas at all: it gets the gate screen, which is the
- * whole submission for some judges. Downloading a game engine to tell someone
- * they cannot play would be 365KB spent on nothing. The dynamic import in
- * `start()` keeps the initial bundle at roughly 10KB and pays for the engine
- * exactly once, when a session actually begins. It also happens to be the only
- * way to import Phaser at all in a module this file's tests can load, because
- * Phaser touches `window` at import time.
+ * **The engine is loaded on demand, never at startup.** A browser without
+ * WebMCP never reaches a viewport at all: it gets the gate screen, which is the
+ * whole submission for some judges (doc 07 section 6). Downloading a 3D engine
+ * in order to tell somebody they cannot play would be a few hundred kilobytes
+ * spent on nothing. The dynamic `import()` in `startStation` keeps the eager
+ * entry small and pays for the engine exactly once, when a session begins.
+ * `scripts/check-bundle.mjs` fails the build if a static import ever undoes
+ * this, because nothing about the resulting page would look wrong.
  *
- * **The scenes read a model rather than receiving events.** One mutable object
- * holds the latest frame, the latest machine state, the log and the registry;
- * scenes read it in `update()`. Push plumbing would mean a subscription per
- * scene per field, each of which is a listener to leak across a transition,
- * which doc 07 section 6 names as this project's likely frame-time bug. A
+ * **The stage reads a model rather than receiving events.** One mutable object
+ * holds the latest frame, the latest machine state, the log and the registry,
+ * and the render loop reads it. Push plumbing would mean a subscription per
+ * consumer per field, each of which is a listener to leak across a session,
+ * which doc 07 section 4.3 names as this project's likely frame-time bug. A
  * field read costs nothing at 60fps and cannot leak.
  */
 
@@ -25,21 +25,21 @@ import type { PilotView } from "@semaphore/protocol";
 import type { ConcordReport, SessionClient, StateSummary } from "../net/sessionClient.js";
 import type { CallRecord } from "../webmcp/director.js";
 import { listToolNames, onToolChange } from "../webmcp/adapter.js";
-import { CANVAS } from "./room.js";
 import { formatCall, pushLine } from "./hud.js";
 
 /** How long KEEPER's visor stays lit after a call returns, in milliseconds. */
-const VISOR_HOLD_MS = 220;
+const VISOR_HOLD_MS = 260;
 
-/** How often the HUD asks the server for the CONCORD measurement. */
+/** How often the console asks the server for the CONCORD measurement. */
 const CONCORD_POLL_MS = 2500;
 
 /**
- * Everything the scenes may read.
+ * Everything the stage and the console may read.
  *
- * Mutable by design and written only by `Station`. Nothing here is a puzzle
- * fact the server did not send: `view` is `projectForPilot` output verbatim,
- * `tools` is the registry's own answer, and the rest is machine state.
+ * Mutable by design and written only by `startStation`. Nothing here is a
+ * puzzle fact the server did not send: `view` is `projectForPilot` output
+ * verbatim, `tools` is the registry's own answer, and the rest is machine
+ * state.
  */
 export interface StationModel {
   /** The latest frame off the view socket, or null before the first arrives. */
@@ -59,13 +59,13 @@ export interface StationModel {
    * Derived rather than fetched: the chamber's base timer is scaled by the
    * difficulty preset, and the client is not told which preset was chosen. The
    * first frame of a room carries very nearly the full clock, so the maximum
-   * observed is the total to within a network hop, and it costs no new field
-   * on a wire whose whole point is that it carries as little as possible.
+   * observed is the total to within a network hop, and it costs no new field on
+   * a wire whose whole point is that it carries as little as possible.
    */
   chamberTimerMs: number;
 }
 
-/** What `main.ts` holds once the station is up. Mirrors the console's handle. */
+/** What `main.ts` holds once the station is up. */
 export interface StationHandle {
   setState(state: StateSummary): void;
   setView(view: PilotView): void;
@@ -73,14 +73,14 @@ export interface StationHandle {
   callStarted(tool: string): void;
   recordCall(call: CallRecord): void;
   /**
-   * Re-read the registry into the manifest plate.
+   * Re-read the registry into the manifest plate and KEEPER's body.
    *
-   * Needed because one source of registry change happens on another origin:
-   * the archive frame registers `read_manual` and `read_station_log`, and
-   * whether that fires `toolchange` here is unverified (doc 11 section 4). The
-   * frame reports what it holds, and `main.ts` calls this. It reads
-   * `getTools()` like every other refresh, so the plate still shows the
-   * registry rather than what anybody intended.
+   * Needed because one source of registry change happens on another origin: the
+   * archive frame registers `read_manual` and `read_station_log`, and whether
+   * that fires `toolchange` here is unverified (doc 11 section 4). The frame
+   * reports what it holds, and `main.ts` calls this. It reads `getTools()` like
+   * every other refresh, so the plate and the body still show the registry
+   * rather than what anybody intended.
    */
   refreshTools(): void;
   dispose(): void;
@@ -89,9 +89,9 @@ export interface StationHandle {
 /**
  * Bring the station up inside `parent`.
  *
- * Resolves once Phaser has been fetched and the game created. The caller is
- * free to keep using the returned handle before the first frame arrives; the
- * model simply holds nulls and the scenes draw the waiting state.
+ * Resolves once the engine has been fetched and the scene created. The caller
+ * is free to use the returned handle before the first frame arrives; the model
+ * simply holds nulls and the stage draws the waiting state.
  */
 export async function startStation(
   parent: HTMLElement,
@@ -104,10 +104,10 @@ export async function startStation(
   /**
    * Called after every change to the model, so the DOM console can repaint.
    *
-   * A callback rather than the console polling, because the model changes a
-   * few times a minute and a repaint per animation frame would be several
-   * hundred pointless DOM writes a second. The scenes still read the model
-   * every frame; they are drawing a canvas, where that is what drawing is.
+   * A callback rather than the console polling, because the model changes a few
+   * times a minute and a repaint per animation frame would be several hundred
+   * pointless DOM writes a second. The stage still reads the model every frame;
+   * it is drawing, where that is what drawing is.
    */
   onChange: (model: StationModel) => void = () => {},
 ): Promise<StationHandle> {
@@ -121,41 +121,27 @@ export async function startStation(
     chamberTimerMs: 0,
   };
 
-  // The engine and the scenes together, in one chunk, off the critical path.
-  const [Phaser, scenes] = await Promise.all([import("phaser"), import("./scenes.js")]);
+  // The engine and the scene together, in one chunk, off the critical path.
+  const { createStage } = await import("./stage.js");
+  const stage = createStage(parent, model);
 
-  const game = new Phaser.Game({
-    type: Phaser.AUTO,
-    parent,
-    width: CANVAS,
-    height: CANVAS,
-    backgroundColor: "#0d0f14",
-    // Nearest-neighbour, no sub-pixel positions. Fractional scaling produces
-    // half-pixel shimmer that reads as carelessness (doc 06 section 3).
-    pixelArt: true,
-    roundPixels: true,
-    scale: {
-      mode: Phaser.Scale.FIT,
-      autoCenter: Phaser.Scale.CENTER_BOTH,
-      // Snapping to whole multiples of the native size is what makes the
-      // scaling integer: FIT alone would happily land on x3.4.
-      snap: { width: CANVAS, height: CANVAS },
-      autoRound: true,
-    },
-    scene: [new scenes.LandingScene(model), new scenes.ChamberScene(model)],
+  // The viewport is a flexible box in a responsive console, so its size is not
+  // a constant anybody can be told once. A `ResizeObserver` is the only thing
+  // that catches every cause: a window resize, the console reflowing at a
+  // breakpoint, and a panel above it growing by one line.
+  const resizer = new ResizeObserver(() => {
+    stage.resize();
   });
-  game.scene.start(scenes.SCENE_LANDING);
-  let showing: string = scenes.SCENE_LANDING;
+  resizer.observe(parent);
 
   /**
    * The registry, read from the page rather than remembered.
    *
    * `toolchange` fires on every registration and every abort, so this is the
-   * only thing that has to keep the manifest plate and KEEPER's limb count
-   * honest. Reading `getTools()` inside the listener is the point: a plate
-   * drawn from a parallel record of intended registrations would show a tool
-   * that failed to register, which is exactly the bug the plate exists to
-   * expose.
+   * only thing that has to keep the manifest plate and KEEPER's body honest.
+   * Reading `getTools()` inside the listener is the point: a body drawn from a
+   * parallel record of intended registrations would grow a limb for a tool that
+   * failed to register, which is exactly the bug the manifest exists to expose.
    */
   const refreshTools = (): void => {
     void listToolNames(toolOrigins).then((names) => {
@@ -177,18 +163,9 @@ export async function startStation(
     });
   }, CONCORD_POLL_MS);
 
-  /** Swap to the interior once there is a session, and never swap back. */
-  function showChamber(): void {
-    if (showing === scenes.SCENE_CHAMBER) return;
-    showing = scenes.SCENE_CHAMBER;
-    game.scene.stop(scenes.SCENE_LANDING);
-    game.scene.start(scenes.SCENE_CHAMBER);
-  }
-
   return {
     setState(state: StateSummary) {
       model.state = state;
-      if (state.phase !== "LOBBY") showChamber();
       onChange(model);
     },
     setView(view: PilotView) {
@@ -200,7 +177,6 @@ export async function startStation(
         model.chamberTimerMs = Math.max(model.chamberTimerMs, view.remainingMs);
       }
       model.view = view;
-      if (view.phase !== "LOBBY") showChamber();
       onChange(model);
     },
     note(line: string) {
@@ -210,7 +186,8 @@ export async function startStation(
     callStarted(_tool: string) {
       // Held rather than set true and cleared, so a call that returns in four
       // milliseconds still produces a visible pulse. The human's only cue that
-      // their partner is doing something must not depend on the call being slow.
+      // their partner is doing something must not depend on the call being
+      // slow.
       model.busyUntilMs = performance.now() + VISOR_HOLD_MS;
     },
     recordCall(call: CallRecord) {
@@ -222,7 +199,8 @@ export async function startStation(
     dispose() {
       clearInterval(concordTimer);
       stopWatchingTools();
-      game.destroy(true);
+      resizer.disconnect();
+      stage.dispose();
     },
   };
 }

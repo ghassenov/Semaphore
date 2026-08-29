@@ -22,15 +22,17 @@ SOFTWARE.
 
 ---
 
-## Third-party art
+## Everything here is ours
 
-This MIT licence covers the source code in this repository. It does not cover
-the image files under `apps/game/public/art/`, which are not ours to relicense.
+This MIT licence covers the whole repository, with no carve-out.
 
-Those come from "[FREE] 16x16 Top Down Puzzle System - Asset Pack" by LorisC
-(https://lorisc.itch.io/puzzle-system-asset-pack) and are used under the pack's
-own terms, which permit use in a game and withhold redistribution. Full detail,
-and what was and was not taken, is in `apps/game/public/art/CREDITS.md`.
+That was not true between D-034 and D-042. The client's art was a vendored
+third-party pixel pack whose terms permit use in a game and withhold
+redistribution, so a section here had to say which half of the tree the licence
+did not reach. The 3D rework removed it: every surface in the station is now
+geometry built in code and textures drawn into a canvas at runtime, and the
+twelve glyphs and both bodies were always authored in this repository.
 
-The distinction matters: MIT grants redistribution and the pack's terms do not,
-so nothing in this file should be read as permission to redistribute that art.
+There are no image files in this project at all. Getting the carve-out back is
+therefore a decision somebody would have to make deliberately, which is the
+point of writing it down.
