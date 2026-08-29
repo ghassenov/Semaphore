@@ -15,7 +15,7 @@ Repo-wide law. Everything on this page applies in every directory. A subdirector
 | Submission deadline | 2026-09-03, 13:00 PDT (hard) |
 | Judging period ends | 2026-09-21 (the live URL must stay up until then) |
 | Live URL must work in | ChatGPT in-app browser (GPT-5.6 Sol or Terra) and Chrome 149+ with `chrome://flags/#enable-webmcp-testing` |
-| License | MIT for the code. `apps/game/public/art/` is third-party and separately licensed (D-034). |
+| License | MIT, for the whole repository. The third-party art carve-out went with the pixel renderer (D-044). |
 
 The thesis every decision is checked against:
 
@@ -38,12 +38,11 @@ Judging is four equally weighted criteria: **WebMCP Leverage**, **Execution**, *
 | [packages/](packages/) | Code shared by client, worker, archive and bench. Pure, no I/O. | `seed`, `protocol` built |
 | `packages/seed/` | Deterministic xorshift128+ PRNG. Same seed, same puzzle, always. | Built |
 | `packages/protocol/` | Channel tags, error codes, wire types, and the two document-tool specs the game and the archive origin share. One definition each. | Built |
-| `apps/game/public/art/` | The vendored art pack, one directory per channel. **Not covered by this repository's MIT licence** (D-034); terms and provenance in its `CREDITS.md`. | Vendored |
-| [apps/game/](apps/game/) | Phaser client. Renders PILOT's view, hosts the WebMCP tool director. | Complete through plan 1.4, plus the Archive's monitor (D-039). Interface rebuilt on the vendored art pack: one top-down room on the canvas, a three-bay DOM console around it (D-034 to D-036). All four chambers and the Archive looked at in Chrome against a live worker. |
+| [apps/game/](apps/game/) | Three.js client. Renders PILOT's view, hosts the WebMCP tool director. | Complete through plan 1.4, plus the Archive's monitor (D-039). **Interface rebuilt in real-time 3D** (D-042 to D-045): the station as a lit cutaway model, a new colour language, procedural assets and no asset files at all, and a console laid out as two surfaces with the room between them. A full session played end to end in Chrome 152 against a live worker and every frame looked at. |
 | [apps/worker/](apps/worker/) | Cloudflare Worker plus the Session Durable Object. Authoritative state. | Complete: four chambers, the reducer, the Archive beat, the timer, the read-only tool surface, the manual, PILOT's view socket, the CONCORD route and the shared notepad |
 | [apps/archive/](apps/archive/) | Cross-origin tool provider: `read_manual` and `read_station_log`, registered on a second origin and exposed back to the game. | Built (D-033). Holds no content: both tools fetch the worker. |
 | [fixtures/ghosts/](fixtures/ghosts/) | Authored ghost session logs, generated from real play. | One ghost built |
-| [tests/](tests/) | Cross-cutting proofs: possible-worlds, asymmetry smoke, solvability, and the browser proof of cross-origin delegation. | Possible-worlds proof covers all four chambers; delegation proved on Chrome 151. The browser proof doubles as the screenshot tour (`SHOTS`, D-039). |
+| [tests/](tests/) | Cross-cutting proofs: possible-worlds, asymmetry smoke, solvability, and the browser proof of cross-origin delegation. | Possible-worlds proof covers all four chambers; delegation proved on Chrome 151 and re-run on 152. The browser proof doubles as the screenshot tour (`SHOTS`, D-039), which is how a rendering change gets looked at. |
 | [bench/](bench/) | Ablation harness, scripted partners, the Cooperative Benchmark. | Both built and run. The ablation is three conditions over twenty seeds (D-040); the Cooperative Benchmark is four scripted partners over the same seeds (D-041). Raw logs, chart, tables and CSV in `bench/results/`. No model in either yet. |
 
 Root tooling: pnpm workspaces, strict TypeScript, ESLint, Prettier, Vitest, GitHub Actions.
@@ -154,3 +153,4 @@ Rules that follow from this:
 | 2026-08-29 | Ahmed Saad | Repository map: the Archive beat gained PILOT's half (D-039), and the browser proof doubles as the screenshot tour. |
 | 2026-08-29 | Ahmed Saad | Repository map: `bench/` holds the ablation (D-040), which is the third consumer of `worlds.ts`. |
 | 2026-08-29 | Ahmed Saad | Repository map: `bench/` also holds the Cooperative Benchmark (D-041), and the README now carries the ablation chart. |
+| 2026-08-29 | Ahmed Saad | The interface was rebuilt in real-time 3D on Three.js (D-042 to D-045). The licence row loses its art carve-out: `apps/game/public/art/` is gone and the repository is MIT throughout. |
