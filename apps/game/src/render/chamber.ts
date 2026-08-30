@@ -33,9 +33,10 @@
  * moved or resized without every fixture in it being wrong by the same amount.
  */
 
-import type { PilotView } from "@semaphore/protocol";
+import type { PilotView, SessionMode } from "@semaphore/protocol";
 import type { RenderChannel } from "./palette.js";
-import type { FloorId } from "./floors.js";
+import { FLOOR_NAMES, previousFloor, type FloorId } from "./floors.js";
+import { doorsOf, type Doorway, type Wall } from "./doorways.js";
 
 /** A point in room-local metres. */
 export interface Vec3 {
@@ -161,6 +162,16 @@ export type DressingKind =
   | "bulkhead"
   /** A card index: drawers, brass pulls, and a few left open. */
   | "cabinet"
+  /**
+   * A fixed ladder up a wall, to a hatch nobody is going to open.
+   *
+   * The two tall rooms are the two doc 06 section 6 asks for height in, and
+   * height that nothing is measured against is not height: a nine-metre
+   * cathedral and a four-metre room look the same from a camera that frames
+   * both to fill the viewport. A ladder is a human-sized rule laid up the
+   * wall, which is what makes the wall read as tall.
+   */
+  | "ladder"
   /** One bare bulb on a flex. */
   | "bulb";
 
@@ -368,6 +379,108 @@ export function facingCentre(at: Vec3): number {
  * never competes with the vertical mechanisms, and it is material-coloured, so
  * it can never be mistaken for a fact.
  */
+/**
+ * Which way a door in each wall faces.
+ *
+ * Zero faces the front of the room (`Fixture.facing`), which is toward the
+ * camera, so a wall's door faces in from that wall.
+ */
+const WALL_FACING: Readonly<Record<Wall, number>> = {
+  north: 0,
+  east: -Math.PI / 2,
+  south: Math.PI,
+  west: Math.PI / 2,
+};
+
+/**
+ * Where a doorway stands in a room, in the room's own metres.
+ *
+ * `doorways.ts` holds an opening as a wall and a distance along it, because
+ * that is the only form a room can be told about its own openings in without
+ * being told where in the station it stands. This is the one place that turns
+ * that back into a position, so a door, the bulkhead frame around it and the
+ * chevrons painted in front of it all come off one number.
+ */
+export function doorPlacement(size: RoomSize, door: Doorway): { at: Vec3; facing: number } {
+  const halfWidth = size.width / 2;
+  const halfDepth = size.depth / 2;
+  const at =
+    door.wall === "north"
+      ? { x: door.along, y: 0, z: -halfDepth }
+      : door.wall === "south"
+        ? { x: door.along, y: 0, z: halfDepth }
+        : door.wall === "west"
+          ? { x: -halfWidth, y: 0, z: door.along }
+          : { x: halfWidth, y: 0, z: door.along };
+  return { at, facing: WALL_FACING[door.wall] };
+}
+
+/**
+ * The door back to the room before this one, or nothing for the first room.
+ *
+ * Always open, and that is not a shortcut: it is the door the pair walked in
+ * through, so a sealed one would be a claim about the building that the walk
+ * they just took contradicts. It is `SHARED` like every other door, it says
+ * where it goes, and `study` marks it worth leaning in on - a player looking
+ * for the way out should find that `E` reaches it from across the room.
+ */
+function backDoor(mode: SessionMode, floor: FloorId, size: RoomSize): readonly Fixture[] {
+  const doorway = doorsOf(mode, floor).back;
+  if (doorway === undefined) return [];
+  const behind = previousFloor(mode, floor);
+  const { at, facing } = doorPlacement(size, doorway);
+  return [
+    {
+      id: "door-back",
+      kind: "door",
+      at,
+      facing,
+      channel: "shared",
+      on: true,
+      label: behind === null ? "THE WAY BACK" : `BACK TO ${FLOOR_NAMES[behind]}`,
+      // Higher in a taller room, and that is a legibility fix rather than a
+      // flourish. A caption on a side wall cannot be separated from another
+      // one *horizontally*, because a wall running away from the camera barely
+      // moves across the frame - so height is the only axis there is, and a
+      // fixed 3.25m put this sign a dozen pixels off the Concord Lock's cipher
+      // wheel at every window shape. Half the room's height also happens to be
+      // where a sign in a nine-metre room belongs.
+      captionAt: Math.max(3.25, size.height * 0.5),
+      study: true,
+    },
+  ];
+}
+
+/**
+ * The bulkhead frame and threshold paint that make an opening read as a way
+ * through rather than as a gap in a wall.
+ *
+ * Both were authored by hand around the Airlock's door, and both are wanted at
+ * every doorway in the station, so they come off the doorway instead. The
+ * chevrons stand a metre and a half *inside* the room, because paint on the
+ * threshold itself is under the door leaves and invisible.
+ */
+function doorDressing(size: RoomSize, doorway: Doorway): readonly Dressing[] {
+  const { at, facing } = doorPlacement(size, doorway);
+  // Into the room is the direction the door faces, which `facing` encodes.
+  const inX = Math.sin(facing);
+  const inZ = Math.cos(facing);
+  return [
+    {
+      kind: "bulkhead",
+      at: { x: at.x + inX * 0.08, y: 0, z: at.z + inZ * 0.08 },
+      facing,
+      length: 3.4,
+    },
+    {
+      kind: "chevron",
+      at: { x: at.x + inX * 1.9, y: 0, z: at.z + inZ * 1.9 },
+      facing,
+      length: 3.6,
+    },
+  ];
+}
+
 function pipeRun(
   y: number,
   z: number,
@@ -406,18 +519,25 @@ function beams(size: RoomSize, count: number): readonly Dressing[] {
  * which is exactly the asymmetry the room is built on, so the warm light is not
  * decoration: it is the statement that this is the half only PILOT holds.
  */
-function airlock(facts: Readonly<Record<string, unknown>>): RoomPlan {
+function airlock(mode: SessionMode, facts: Readonly<Record<string, unknown>>): RoomPlan {
   const size = ROOM_SIZES.airlock;
   const glyphByLever = record(facts, "glyphByLever");
   const pulled = new Set(list(facts, "pulled").map(String));
   const doorOpen = bool(facts, "doorOpen");
   const levers = Object.keys(glyphByLever).sort();
 
+  // The way on, standing in the hole the corridor to the Signal Room actually
+  // makes. It was on the north wall until D-053, which is solid masonry: the
+  // room announced DOOR OPEN somewhere nobody could ever walk through, and the
+  // place they could walk through was an unmarked gap in the side.
+  const out = doorsOf(mode, "airlock").out;
+  const outAt = out === undefined ? null : doorPlacement(size, out);
   const fixtures: Fixture[] = [
     {
       id: "door",
       kind: "door",
-      at: { x: 0, y: 0, z: -size.depth / 2 },
+      at: outAt?.at ?? { x: 0, y: 0, z: -size.depth / 2 },
+      facing: outAt?.facing ?? 0,
       channel: "shared",
       on: doorOpen,
       label: doorOpen ? "DOOR OPEN" : "DOOR SEALED",
@@ -464,17 +584,31 @@ function airlock(facts: Readonly<Record<string, unknown>>): RoomPlan {
     // airlock has and none of them is channel-coloured, so the room gets busier
     // without a single new thing for the eye to mistake for a fact.
     dressing: [
-      { kind: "bulkhead", at: { x: 0, y: 0, z: -size.depth / 2 + 0.08 }, length: 3.4 },
-      { kind: "chevron", at: { x: 0, y: 0, z: -size.depth / 2 + 1.9 }, length: 3.6 },
-      // The one view out of the station, and the reason the room is cold.
-      { kind: "porthole", at: { x: size.width / 2 - 0.2, y: 2.05, z: 1.4 }, facing: -Math.PI / 2 },
+      ...(out === undefined ? [] : doorDressing(size, out)),
+      // The one view out of the station, and the reason the room is cold. On
+      // the west wall: the east wall is the doorway and KEEPER's body now.
+      { kind: "porthole", at: { x: -size.width / 2 + 0.2, y: 2.05, z: -2.2 }, facing: Math.PI / 2 },
       { kind: "locker", at: { x: -size.width / 2 + 0.45, y: 0, z: 1.1 }, facing: Math.PI / 2 },
       ...pipeRun(2.62, -size.depth / 2 + 0.3, size.width - 1.2, [-4.4, 1.6]),
       ...pipeRun(3.0, -size.depth / 2 + 0.3, size.width - 1.2),
-      { kind: "vent", at: { x: size.width / 2 - 0.35, y: 2.3, z: -1.6 }, facing: -Math.PI / 2 },
-      { kind: "cable", at: { x: -2.6, y: size.height, z: -1.2 }, length: 1.1 },
+      // South end of the east wall, clear of both the doorway and the alcove.
+      { kind: "vent", at: { x: size.width / 2 - 0.35, y: 2.3, z: 2.9 }, facing: -Math.PI / 2 },
+      { kind: "cable", at: { x: -2.6, y: size.height, z: -1.2 }, height: 1.1 },
+      { kind: "cable", at: { x: 3.1, y: size.height, z: 1.4 }, height: 1.3 },
+      // A hand valve on the upper run, at head height beside the door. It is
+      // the thing in the room that says the pipes carry something.
+      { kind: "valve", at: { x: 1.8, y: 3.0, z: -size.depth / 2 + 0.3 } },
+      // A tide chart and a shelf of gear on the west wall, under the porthole.
+      { kind: "chart", at: { x: -size.width / 2 + 0.35, y: 2.2, z: 3.0 }, facing: Math.PI / 2 },
+      {
+        kind: "shelf",
+        at: { x: -size.width / 2 + 0.35, y: 0, z: -1.0 },
+        facing: Math.PI / 2,
+        length: 1.6,
+      },
       { kind: "puddle", at: { x: -3.4, y: 0, z: 1.9 }, length: 2.6 },
       { kind: "puddle", at: { x: 2.9, y: 0, z: 2.4 }, length: 2 },
+      { kind: "puddle", at: { x: 4.6, y: 0, z: -1.4 }, length: 1.6 },
       ...beams(size, 3),
     ],
     accent: CHAMBER_ACCENT.airlock,
@@ -495,7 +629,7 @@ function airlock(facts: Readonly<Record<string, unknown>>): RoomPlan {
  * and leaving it undrawn would remove the only cue the human has that their
  * partner is reading something false.
  */
-function signalRoom(facts: Readonly<Record<string, unknown>>): RoomPlan {
+function signalRoom(mode: SessionMode, facts: Readonly<Record<string, unknown>>): RoomPlan {
   const size = ROOM_SIZES.signal_room;
   const glyphByKey = record(facts, "glyphByKey");
   const pressed = new Set(list(facts, "pressedSequence").map(String));
@@ -552,13 +686,43 @@ function signalRoom(facts: Readonly<Record<string, unknown>>): RoomPlan {
     });
   });
 
+  const doors = doorsOf(mode, "signal_room");
+  fixtures.push(...backDoor(mode, "signal_room", size));
+  if (doors.out !== undefined) {
+    // Sealed, and it stays sealed on screen for the whole beat. This room has
+    // no `solved` fact - the correct sequence is a subset of the keys, and
+    // only the server knows how long it is - so the door cannot say otherwise
+    // without the client guessing at the answer. `asCleared` opens it once the
+    // pair has walked through it, which is the one moment it is knowable.
+    const { at, facing } = doorPlacement(size, doors.out);
+    fixtures.push({
+      id: "door",
+      kind: "door",
+      at,
+      facing,
+      channel: "shared",
+      on: false,
+      label: "DOOR SEALED",
+      captionAt: 3.25,
+    });
+  }
+
   const page = text(facts, "manualPageState");
   if (page !== null) {
     const marked = page === "vandalised";
     fixtures.push({
       id: "page",
       kind: "page",
-      at: { x: -size.width / 2 + 0.4, y: 1.9, z: 1.4 },
+      // The **south** end of the west wall, nearest the camera.
+      //
+      // It hung at z 1.4, which the way back is cut through now, so the page
+      // was screwed across a doorway. Moving it to the other end of the same
+      // wall put it three metres from the door and the tour showed BACK TO
+      // AIRLOCK printed straight across PAGE MARKED: a wall running away from
+      // the camera foreshortens, so two captions metres apart on it land on
+      // the same row of pixels. Down at the near end they separate, and the
+      // page ends up where a page nobody is meant to miss should be.
+      at: { x: -size.width / 2 + 0.4, y: 1.9, z: 4.2 },
       channel: "pilot",
       on: marked,
       facing: Math.PI / 2,
@@ -577,11 +741,34 @@ function signalRoom(facts: Readonly<Record<string, unknown>>): RoomPlan {
     // Doc 06 section 6 calls this room tall and vertiginous, and a rail at
     // waist height with seven metres of air above it is what says so.
     dressing: [
+      ...(doors.back === undefined ? [] : doorDressing(size, doors.back)),
+      ...(doors.out === undefined ? [] : doorDressing(size, doors.out)),
       { kind: "rail", at: { x: 0, y: 1.05, z: 2.1 }, length: 6.5 },
-      { kind: "cable", at: { x: -1.5, y: size.height, z: -1 }, length: 3.4 },
-      { kind: "cable", at: { x: 2.1, y: size.height, z: 0.4 }, length: 4.2 },
+      { kind: "cable", at: { x: -1.5, y: size.height, z: -1 }, height: 3.4 },
+      { kind: "cable", at: { x: 2.1, y: size.height, z: 0.4 }, height: 4.2 },
+      // Long drops down the side walls, well clear of the key ring, because
+      // the room is seven and a half metres tall and nothing in it said so.
+      { kind: "cable", at: { x: -5.4, y: size.height, z: -1.2 }, height: 5.0 },
+      { kind: "cable", at: { x: 5.4, y: size.height, z: -3.0 }, height: 4.4 },
       ...pipeRun(5.4, -size.depth / 2 + 0.35, size.width - 2, [-3.5, 3.5]),
+      // A second run under the ceiling. Two runs at different heights is what
+      // turns a wall into a wall with a gallery above it.
+      ...pipeRun(6.6, -size.depth / 2 + 0.35, size.width - 4, [-2.2, 2.2]),
+      // The ladder to the hatch nobody is going to open. A rung every third of
+      // a metre is a human dimension laid up the wall, and it is the only
+      // thing in the station that makes a tall room measurably tall.
+      {
+        kind: "ladder",
+        at: { x: -size.width / 2 + 0.3, y: 0, z: -5.4 },
+        facing: Math.PI / 2,
+        height: 6.4,
+      },
+      { kind: "vent", at: { x: size.width / 2 - 0.35, y: 3.4, z: 3.4 }, facing: -Math.PI / 2 },
+      // North end, now the page has the south end of this wall.
+      { kind: "chart", at: { x: -size.width / 2 + 0.35, y: 2.2, z: -4.4 }, facing: Math.PI / 2 },
       { kind: "puddle", at: { x: -4.4, y: 0, z: 3.4 }, length: 2.2 },
+      { kind: "puddle", at: { x: 3.8, y: 0, z: -4.4 }, length: 2.4 },
+      { kind: "puddle", at: { x: -2.2, y: 0, z: 5.2 }, length: 3.0 },
       ...beams(size, 4),
     ],
     accent: CHAMBER_ACCENT.signal_room,
@@ -702,18 +889,49 @@ export const KEEPER_ALCOVE = {
 } as const;
 
 /** KEEPER's alcove as a room-local box, for placement and for the check. */
-export function keeperAlcove(size: RoomSize): {
+export function keeperAlcove(
+  size: RoomSize,
+  eastDoorAlong: number | null = null,
+): {
   x0: number;
   x1: number;
   z0: number;
   z1: number;
 } {
+  // Centred, unless the east wall also carries the way in or the way out - in
+  // which case the body stands at the far end of that wall from it.
+  //
+  // Three of the five rooms have an east doorway now the doors are in the
+  // holes (D-053), and the body was standing in every one: KEEPER is drawn
+  // *inside* the wall, so a doorway at the same place is a torso in a
+  // doorframe. Which end is picked follows the door rather than being
+  // authored, because the Concord Lock's doorway is on opposite halves of the
+  // same wall in the two modes.
+  const end = size.depth / 2 - KEEPER_ALCOVE.reach - 0.4;
+  const centre = eastDoorAlong === null ? 0 : eastDoorAlong > 0 ? -end : end;
   return {
     x0: size.width / 2 - KEEPER_ALCOVE.depth,
     x1: size.width / 2,
-    z0: -KEEPER_ALCOVE.reach,
-    z1: KEEPER_ALCOVE.reach,
+    z0: centre - KEEPER_ALCOVE.reach,
+    z1: centre + KEEPER_ALCOVE.reach,
   };
+}
+
+/**
+ * Where KEEPER's body stands in a room, given which of that room's walls have
+ * holes in them.
+ *
+ * The one place that answers it, so the renderer, the collision solver and the
+ * test that keeps the alcove clear cannot each work it out differently.
+ */
+export function alcoveOf(
+  mode: SessionMode,
+  floor: FloorId,
+  size: RoomSize,
+): ReturnType<typeof keeperAlcove> {
+  const doors = doorsOf(mode, floor);
+  const east = [doors.back, doors.out].find((door) => door?.wall === "east");
+  return keeperAlcove(size, east?.along ?? null);
 }
 
 /** How much floor a fixture takes up, by kind, in metres of radius. */
@@ -767,6 +985,7 @@ const DRESSING_RADIUS: Readonly<Record<DressingKind, number>> = {
   // A rail is a barrier at waist height, and being able to stroll through one
   // is the single clearest way a room stops reading as a place.
   rail: 0.3,
+  ladder: 0.24,
 };
 
 /** The closest point to `(x, z)` on a horizontal segment, as a distance. */
@@ -896,7 +1115,7 @@ const DIAL_COUNT = 4;
  * is the human half of that puzzle. The dial fixtures deliberately carry no
  * value.
  */
-function blindPanel(facts: Readonly<Record<string, unknown>>): RoomPlan {
+function blindPanel(mode: SessionMode, facts: Readonly<Record<string, unknown>>): RoomPlan {
   const size = ROOM_SIZES.blind_panel;
   const values = record(facts, "gaugeValues");
   const targets = record(facts, "targets");
@@ -979,20 +1198,25 @@ function blindPanel(facts: Readonly<Record<string, unknown>>): RoomPlan {
     on: true,
   });
 
-  // On the west wall, not the south one. The station is a cutaway model and
-  // every room is open on its south face (`camera.ts`), so a door there is not
-  // a way out, it is a panel hanging in the gap the camera looks through. The
-  // north wall is spoken for by the gauge bank, which leaves the side.
-  fixtures.push({
-    id: "door",
-    kind: "door",
-    at: { x: -size.width / 2, y: 0, z: 0 },
-    channel: "shared",
-    on: solved,
-    facing: Math.PI / 2,
-    label: solved ? "DOOR OPEN" : "DOOR SEALED",
-    captionAt: 3.25,
-  });
+  // The two side walls. Neither the south face (which the camera looks
+  // through) nor the north wall (which is eleven metres of gauge bank) can
+  // carry a door, and the corridors were routed to the sides for exactly that
+  // reason (D-053). The room is walked in at one end and out at the other.
+  const doors = doorsOf(mode, "blind_panel");
+  fixtures.push(...backDoor(mode, "blind_panel", size));
+  if (doors.out !== undefined) {
+    const { at, facing } = doorPlacement(size, doors.out);
+    fixtures.push({
+      id: "door",
+      kind: "door",
+      at,
+      facing,
+      channel: "shared",
+      on: solved,
+      label: solved ? "DOOR OPEN" : "DOOR SEALED",
+      captionAt: 3.25,
+    });
+  }
 
   const clicks = facts.lastClicks;
   return {
@@ -1015,12 +1239,30 @@ function blindPanel(facts: Readonly<Record<string, unknown>>): RoomPlan {
       { kind: "console", at: { x: 0, y: 0, z: -size.depth / 2 + 0.75 }, length: size.width - 2.4 },
       // The header the gauges feed from, with a drop into each column.
       ...pipeRun(4.05, -size.depth / 2 + 0.5, size.width - 1, [-5.5, -1.8, 1.8, 5.5]),
-      { kind: "chart", at: { x: -size.width / 2 + 0.35, y: 2.2, z: -0.6 }, facing: Math.PI / 2 },
-      { kind: "chart", at: { x: size.width / 2 - 0.35, y: 2.2, z: -0.6 }, facing: -Math.PI / 2 },
-      { kind: "vent", at: { x: -size.width / 2 + 0.4, y: 2.5, z: 1.8 }, facing: Math.PI / 2 },
-      { kind: "vent", at: { x: size.width / 2 - 0.4, y: 2.5, z: 1.8 }, facing: -Math.PI / 2 },
-      { kind: "cable", at: { x: -4.6, y: size.height, z: -0.4 }, length: 1.5 },
-      { kind: "cable", at: { x: 5.1, y: size.height, z: -0.2 }, length: 1.2 },
+      ...(doors.back === undefined ? [] : doorDressing(size, doors.back)),
+      ...(doors.out === undefined ? [] : doorDressing(size, doors.out)),
+      // Both on the west wall, either side of the way out. The east wall is
+      // seven metres, of which the doorway takes three and KEEPER's body
+      // another two, so a chart hung there is a chart drawn over one of them.
+      { kind: "chart", at: { x: -size.width / 2 + 0.35, y: 2.2, z: -2.6 }, facing: Math.PI / 2 },
+      { kind: "vent", at: { x: -size.width / 2 + 0.4, y: 2.5, z: 2.9 }, facing: Math.PI / 2 },
+      { kind: "cable", at: { x: -4.6, y: size.height, z: -0.4 }, height: 1.5 },
+      { kind: "cable", at: { x: 5.1, y: size.height, z: -0.2 }, height: 1.2 },
+      { kind: "cable", at: { x: 1.4, y: size.height, z: 1.1 }, height: 1.4 },
+      // Spares and paperwork, both on the west wall either side of the way
+      // out. An instrument hall is a place somebody works in, and until this
+      // there was nothing in it that anybody could have put down.
+      {
+        kind: "locker",
+        at: { x: -size.width / 2 + 0.45, y: 0, z: 3.0 },
+        facing: Math.PI / 2,
+      },
+      {
+        kind: "shelf",
+        at: { x: -size.width / 2 + 0.35, y: 0, z: -2.4 },
+        facing: Math.PI / 2,
+        length: 1.4,
+      },
       { kind: "puddle", at: { x: 4.2, y: 0, z: 1.6 }, length: 2.8 },
       { kind: "puddle", at: { x: -4.8, y: 0, z: 2.1 }, length: 2.2 },
       ...beams(size, 3),
@@ -1060,7 +1302,7 @@ function blindPanel(facts: Readonly<Record<string, unknown>>): RoomPlan {
  * Nothing here is a leak. The door being open is what `view.phase` already
  * says, and the console's own rail prints it.
  */
-function finale(): RoomPlan {
+function finale(mode: SessionMode): RoomPlan {
   const size = ROOM_SIZES.concord_lock;
   const fixtures: Fixture[] = [
     {
@@ -1072,6 +1314,11 @@ function finale(): RoomPlan {
       label: "THE DOOR IS OPEN",
       captionAt: 5.6,
     },
+    // The way back is still there at the end. The station behind the pair does
+    // not stop existing because the door in front of them opened, and a room
+    // that quietly loses a doorway between one phase and the next reads as a
+    // rendering fault.
+    ...backDoor(mode, "concord_lock", size),
   ];
   for (const [index, at] of boltRing(size).entries()) {
     // Home and **unlit**. `on` retracts them into the door, which is what
@@ -1091,7 +1338,7 @@ function finale(): RoomPlan {
     id: "concord_lock",
     size,
     fixtures,
-    dressing: concordDressing(size),
+    dressing: [...concordDressing(size), ...finaleDoorDressing(mode, size)],
     accent: CHAMBER_ACCENT.concord_lock,
     sound: null,
     solved: true,
@@ -1114,14 +1361,56 @@ function concordDressing(size: RoomSize): readonly Dressing[] {
     {
       kind: "cable" as const,
       at: { x: -2.4, y: size.height, z: -size.depth / 2 + 1.4 },
-      length: 4.6,
+      height: 4.6,
     },
     {
       kind: "cable" as const,
       at: { x: 2.9, y: size.height, z: -size.depth / 2 + 1.1 },
-      length: 3.8,
+      height: 3.8,
     },
     { kind: "puddle" as const, at: { x: 0, y: 0, z: 2.4 }, length: 4.5 },
+    { kind: "puddle" as const, at: { x: 4.0, y: 0, z: -2.2 }, length: 3.2 },
+    // Lockers flanking the great door, hard against the north wall and well
+    // outside the bolt ring. **Nothing goes on the floor down the middle**:
+    // the room's whole job is to make the last twelve metres feel like a walk,
+    // so what it gets is a wider frame around the thing it walks toward.
+    ...[-1, 1].map((side) => ({
+      kind: "locker" as const,
+      at: { x: side * 4.6, y: 0, z: -size.depth / 2 + 0.5 },
+    })),
+    // The ladder up the west wall, for the reason the Signal Room has one: a
+    // nine-metre room and a four-metre room are the same picture from a camera
+    // that frames both to fill the viewport, unless something in them is a
+    // known size.
+    {
+      kind: "ladder" as const,
+      at: { x: -size.width / 2 + 0.3, y: 0, z: 4.4 },
+      facing: Math.PI / 2,
+      height: 7.8,
+    },
+    // Two charts on the west wall. The east wall is spoken for twice over -
+    // the cipher wheel is on it and so is the way back, on opposite halves of
+    // it in the two modes - so nothing else may be hung there.
+    // At z plus and minus 1.65, which is the midpoint between the columns.
+    // The first pass put one at -3.4 and a column stands at -3.3, so a chart
+    // 350mm off the wall was hung inside a 550mm column.
+    ...[-1, 1].map((side) => ({
+      kind: "chart" as const,
+      at: { x: -size.width / 2 + 0.35, y: 2.6, z: side * 1.65 },
+      facing: Math.PI / 2,
+    })),
+    // A service run high above the door, above the bolt ring and well above
+    // the doorway, which is what stops the top eight metres of the room being
+    // an empty grey field.
+    ...pipeRun(7.4, -size.depth / 2 + 0.45, size.width - 3, [-3.2, 3.2]),
+    // A pair, off the centre line, for the reason the Archive's are: a pendant
+    // at x 0 in a room whose whole content is at the far end is a lamp
+    // swinging between the camera and the thing you are walking toward.
+    ...[-1, 1].map((side) => ({
+      kind: "bulb" as const,
+      at: { x: side * 5.0, y: size.height, z: 1.0 },
+      height: 1.2,
+    })),
     ...beams(size, 4),
   ];
 }
@@ -1165,7 +1454,7 @@ export const TOP_BOLT = DOOR_BOLTS / 2;
  * grip is drawn as a bar that visibly drains rather than as a number: it is
  * legible from anywhere in the room, at a glance, mid-sentence.
  */
-function concordLock(facts: Readonly<Record<string, unknown>>): RoomPlan {
+function concordLock(mode: SessionMode, facts: Readonly<Record<string, unknown>>): RoomPlan {
   const size = ROOM_SIZES.concord_lock;
   const offset = num(facts, "cipherOffset");
   const bolts = num(facts, "boltsAligned");
@@ -1206,12 +1495,17 @@ function concordLock(facts: Readonly<Record<string, unknown>>): RoomPlan {
     });
   }
 
+  // The way back, on the east wall, which is also the wall the cipher wheel is
+  // on. The wheel stands on whichever half of that wall the doorway leaves.
+  const back = doorsOf(mode, "concord_lock").back;
+  fixtures.push(...backDoor(mode, "concord_lock", size));
+
   // The cipher wheel: PILOT's, because the offset is on its face and KEEPER has
   // only the enciphered phrase.
   fixtures.push({
     id: "wheel",
     kind: "wheel",
-    at: { x: size.width / 2 - 0.5, y: 1.8, z: -1 },
+    at: { x: size.width / 2 - 0.5, y: 1.8, z: (back?.along ?? 0) > 0 ? -1 : 1.4 },
     channel: "pilot",
     on: true,
     facing: -Math.PI / 2,
@@ -1250,7 +1544,7 @@ function concordLock(facts: Readonly<Record<string, unknown>>): RoomPlan {
     // from the dark above the door, and nothing on the floor between PILOT and
     // the door: the room's whole job is to make the last twelve metres feel
     // like a walk.
-    dressing: concordDressing(size),
+    dressing: [...concordDressing(size), ...(back === undefined ? [] : doorDressing(size, back))],
     accent: CHAMBER_ACCENT.concord_lock,
     sound: text(facts, "lastSound"),
     solved: open,
@@ -1328,15 +1622,10 @@ export const ARCHIVE_PLAN: RoomPlan = {
     },
     // West wall, for the same reason the Blind Panel's is: a door on the south
     // face stands in the opening the camera looks through, and the north wall
-    // is the monitor's.
-    {
-      id: "door",
-      kind: "door",
-      at: { x: -ROOM_SIZES.archive.width / 2, y: 0, z: 0 },
-      channel: "shared",
-      on: true,
-      facing: Math.PI / 2,
-    },
+    // is the monitor's. The corridor was rerouted to arrive at this wall
+    // rather than at the monitor's, so the door and the hole are the same
+    // thing now (D-053).
+    ...backDoor("full", "archive", ROOM_SIZES.archive),
   ],
   // Small, cluttered and close (doc 06 section 6): shelving down both walls,
   // cable hanging over the monitor, a puddle under it. This is the one room in
@@ -1388,8 +1677,9 @@ export const ARCHIVE_PLAN: RoomPlan = {
     // both sides, which a records room wants more than a bulb in the middle.
     { kind: "bulb", at: { x: -2.6, y: ROOM_SIZES.archive.height, z: 0.6 }, height: 0.7 },
     { kind: "bulb", at: { x: 2.6, y: ROOM_SIZES.archive.height, z: 0.6 }, height: 0.7 },
-    { kind: "cable", at: { x: 2.1, y: ROOM_SIZES.archive.height, z: 1.6 }, length: 1.1 },
+    { kind: "cable", at: { x: 2.1, y: ROOM_SIZES.archive.height, z: 1.6 }, height: 1.1 },
     { kind: "puddle", at: { x: -0.5, y: 0, z: 1.9 }, length: 2.4 },
+    ...archiveDoorDressing(),
     // **No beams.** The room is 3.2m tall and the monitor is 2.9m of that, so
     // a beam under the ceiling is a girder drawn straight across the screen -
     // in the one room whose whole content is that screen. The bulb on its flex
@@ -1433,7 +1723,7 @@ export function roomPlan(view: PilotView): RoomPlan | null {
   // the Concord Lock's bare shell, with the caption THE DOOR IS OPEN over it
   // and no door, no bolts, no columns and nobody standing there. That is the
   // payoff of the entire game and it was a grey box.
-  if (view.phase === "FINALE" || view.phase === "ESCAPED") return finale();
+  if (view.phase === "FINALE" || view.phase === "ESCAPED") return finale(view.mode);
 
   // Before the chamber check, not after it. `machine.chamber` still names the
   // Blind Panel throughout the Archive (D-025), so asking the chamber first
@@ -1444,14 +1734,58 @@ export function roomPlan(view: PilotView): RoomPlan | null {
   if (chamber === null || Object.keys(facts).length === 0) return null;
   switch (chamber) {
     case "airlock":
-      return airlock(facts);
+      return airlock(view.mode, facts);
     case "signal_room":
-      return signalRoom(facts);
+      return signalRoom(view.mode, facts);
     case "blind_panel":
-      return blindPanel(facts);
+      return blindPanel(view.mode, facts);
     case "concord_lock":
-      return concordLock(facts);
+      return concordLock(view.mode, facts);
   }
+}
+
+/** The finale is the Concord Lock's shell, so it wears the same doorframe. */
+function finaleDoorDressing(mode: SessionMode, size: RoomSize): readonly Dressing[] {
+  const back = doorsOf(mode, "concord_lock").back;
+  return back === undefined ? [] : doorDressing(size, back);
+}
+
+/** The Archive's doorframe. A function only because `ARCHIVE_PLAN` is a const. */
+function archiveDoorDressing(): readonly Dressing[] {
+  const back = doorsOf("full", "archive").back;
+  return back === undefined ? [] : doorDressing(ROOM_SIZES.archive, back);
+}
+
+/**
+ * A room the pair has already walked out of.
+ *
+ * PILOT can walk back through an open door (D-054), and a room behind them is
+ * drawn from the last frame the server sent for it. That frame is honest about
+ * everything but one thing: a chamber's own door is built from the facts, and
+ * the Signal Room has no `solved` fact at all, so a room the pair demonstrably
+ * left would be drawn with its exit sealed and the player standing on the far
+ * side of it.
+ *
+ * Having got out of a room is the one thing knowable without asking the
+ * server, because the pair is in the next one. So every door opens and the
+ * room reads as solved. **Nothing else is touched**: the levers, the gauges,
+ * the keys and the page stay exactly as they were last seen, which is what
+ * PILOT actually saw, and no fact that was withheld becomes visible.
+ */
+export function asCleared(plan: RoomPlan): RoomPlan {
+  if (plan.solved && plan.fixtures.every((fixture) => fixture.kind !== "door" || fixture.on)) {
+    return plan;
+  }
+  return {
+    ...plan,
+    solved: true,
+    flood: 0,
+    fixtures: plan.fixtures.map((fixture) =>
+      fixture.kind === "door" && !fixture.on
+        ? { ...fixture, on: true, ...(fixture.label === undefined ? {} : { label: "DOOR OPEN" }) }
+        : fixture,
+    ),
+  };
 }
 
 /**

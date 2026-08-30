@@ -53,7 +53,7 @@ import {
   meterFill,
 } from "./render/hud.js";
 import { roomPlan, roomTitle } from "./render/chamber.js";
-import { stationFloors } from "./render/floors.js";
+import { FLOOR_NAMES, activeFloor, stationFloors, type FloorId } from "./render/floors.js";
 import { CHANNEL_MARKER } from "./render/palette.js";
 
 const STARTER_PROMPT =
@@ -402,6 +402,7 @@ const PILOT_ACTIONS: readonly {
 const PILOT_KEYS: readonly (readonly [string, string])[] = [
   ["W A S D", "walk the room, in any direction"],
   ["E", "lean in and study what you are standing at"],
+  ["Q", "at an open door, go through it"],
   ["M", "step back and see the whole station"],
   ["F", "fullscreen"],
 ] as const;
@@ -858,7 +859,19 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
       const remaining = view?.remainingMs ?? model.state?.remainingMs ?? null;
       const phase = view?.phase ?? model.state?.phase ?? null;
 
-      room.textContent = view ? roomTitle(view) : (phase ?? "CONNECTING");
+      // The room the viewport is showing, which is the room the session is in
+      // unless PILOT has walked back through a door they already opened.
+      // Naming the chamber the pair is working on over a picture of a room two
+      // chambers back reads as a bug in whichever of the two you trust less.
+      const away =
+        view !== null && model.standing !== null && model.standing !== activeFloor(view)
+          ? model.standing
+          : null;
+      room.textContent = away
+        ? `${FLOOR_NAMES[away]} - REVISITED`
+        : view
+          ? roomTitle(view)
+          : (phase ?? "CONNECTING");
       clock.textContent = formatTimer(remaining);
       const total = model.chamberTimerMs;
       clock.classList.toggle(
@@ -871,7 +884,7 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
       // exists, and three buttons that can no longer do anything afterwards.
       launch.hidden = phase !== null && phase !== "ENTRY" && phase !== "LOBBY";
 
-      paintFloors(floorList, view);
+      paintFloors(floorList, view, model.standing);
       paintGauge();
       // The subtitle and the sound, one line apart, from one frame. Doc 06
       // section 11 requires every cue to have a text equivalent; keeping them
@@ -961,7 +974,7 @@ function fill<T>(list: HTMLElement, items: readonly T[], make: (item: T) => HTML
  * yet, because knowing the station has a Concord Lock in it is part of knowing
  * what you are in for.
  */
-function paintFloors(list: HTMLElement, view: PilotView | null): void {
+function paintFloors(list: HTMLElement, view: PilotView | null, standing: FloorId | null): void {
   if (!view) {
     list.replaceChildren();
     return;
@@ -971,10 +984,11 @@ function paintFloors(list: HTMLElement, view: PilotView | null): void {
     if (floor.active) classes.push("here");
     if (floor.cleared) classes.push("cleared");
     const item = el("li", { class: classes.join(" ") });
-    item.append(
-      el("span", { class: "pip" }, floor.cleared ? "+" : floor.active ? ">" : "-"),
-      el("span", {}, floor.name),
-    );
+    // `>` is where the body is and `*` is where the session is. They are the
+    // same room until PILOT walks back through a door (D-054), and while they
+    // differ the rail is the only thing on the page that says both.
+    const pip = floor.id === standing ? ">" : floor.active ? "*" : floor.cleared ? "+" : "-";
+    item.append(el("span", { class: "pip" }, pip), el("span", {}, floor.name));
     return item;
   });
 }
