@@ -992,6 +992,80 @@ function blindPanel(facts: Readonly<Record<string, unknown>>): RoomPlan {
  * fiction; drawing twelve and lighting them in thirds is the same fiction with
  * the mechanism's real granularity visible in it.
  */
+/**
+ * The Concord Lock at the end, with the puzzle gone out of it.
+ *
+ * Built rather than derived from facts, and the *absence* of the mechanisms is
+ * the point. The wheel and the release bar carried readings - `WHEEL 14`,
+ * `UNDER TENSION` - and a phase with no facts behind it would print `WHEEL 0`
+ * and `SLACK`, which is not a stale number but a false one. What is left is
+ * what is still true: twelve bolts home, and a door standing open.
+ *
+ * Nothing here is a leak. The door being open is what `view.phase` already
+ * says, and the console's own rail prints it.
+ */
+function finale(): RoomPlan {
+  const size = ROOM_SIZES.concord_lock;
+  const fixtures: Fixture[] = [
+    {
+      id: "door",
+      kind: "door",
+      at: { x: 0, y: 0, z: -size.depth / 2 },
+      channel: "shared",
+      on: true,
+      label: "THE DOOR IS OPEN",
+      captionAt: 5.6,
+    },
+  ];
+  for (let index = 0; index < DOOR_BOLTS; index += 1) {
+    const angle = (index / DOOR_BOLTS) * Math.PI * 2 - Math.PI / 2;
+    fixtures.push({
+      id: `bolt-${String(index)}`,
+      kind: "bolt",
+      at: { x: Math.cos(angle) * 2.5, y: 3.4 + Math.sin(angle) * 2.5, z: -size.depth / 2 + 0.35 },
+      channel: "shared",
+      on: true,
+    });
+  }
+  return {
+    id: "concord_lock",
+    size,
+    fixtures,
+    dressing: concordDressing(size),
+    accent: CHAMBER_ACCENT.concord_lock,
+    sound: null,
+    solved: true,
+    flood: 0,
+  };
+}
+
+/**
+ * The Concord Lock's cathedral, shared by the chamber and by the finale.
+ *
+ * One definition, because the ending is the same room and a second copy of the
+ * columns is a second thing to forget to change.
+ */
+function concordDressing(size: RoomSize): readonly Dressing[] {
+  return [
+    ...spread(3, size.depth * 0.55).flatMap((z) => [
+      { kind: "column" as const, at: { x: -size.width / 2 + 0.6, y: 0, z }, height: size.height },
+      { kind: "column" as const, at: { x: size.width / 2 - 0.6, y: 0, z }, height: size.height },
+    ]),
+    {
+      kind: "cable" as const,
+      at: { x: -2.4, y: size.height, z: -size.depth / 2 + 1.4 },
+      length: 4.6,
+    },
+    {
+      kind: "cable" as const,
+      at: { x: 2.9, y: size.height, z: -size.depth / 2 + 1.1 },
+      length: 3.8,
+    },
+    { kind: "puddle" as const, at: { x: 0, y: 0, z: 2.4 }, length: 4.5 },
+    ...beams(size, 4),
+  ];
+}
+
 export const DOOR_BOLTS = 12;
 
 /** How many bolts `align_bolt` can land. The array is a multiple of this. */
@@ -1091,16 +1165,7 @@ function concordLock(facts: Readonly<Record<string, unknown>>): RoomPlan {
     // from the dark above the door, and nothing on the floor between PILOT and
     // the door: the room's whole job is to make the last twelve metres feel
     // like a walk.
-    dressing: [
-      ...spread(3, size.depth * 0.55).flatMap((z) => [
-        { kind: "column" as const, at: { x: -size.width / 2 + 0.6, y: 0, z }, height: size.height },
-        { kind: "column" as const, at: { x: size.width / 2 - 0.6, y: 0, z }, height: size.height },
-      ]),
-      { kind: "cable", at: { x: -2.4, y: size.height, z: -size.depth / 2 + 1.4 }, length: 4.6 },
-      { kind: "cable", at: { x: 2.9, y: size.height, z: -size.depth / 2 + 1.1 }, length: 3.8 },
-      { kind: "puddle", at: { x: 0, y: 0, z: 2.4 }, length: 4.5 },
-      ...beams(size, 4),
-    ],
+    dressing: concordDressing(size),
     accent: CHAMBER_ACCENT.concord_lock,
     sound: text(facts, "lastSound"),
     solved: open,
@@ -1276,6 +1341,15 @@ const PHASE_TITLES: Readonly<Record<string, string>> = {
  */
 export function roomPlan(view: PilotView): RoomPlan | null {
   const { facts, chamber } = view;
+  // The last two beats, before the chamber check, for the same reason the
+  // Archive is: the machine clears `chamber` on the way into FINALE and again
+  // into ESCAPED, and the worker sends no facts for a phase with no puzzle
+  // left in it. Asking the chamber first therefore drew **an empty room** -
+  // the Concord Lock's bare shell, with the caption THE DOOR IS OPEN over it
+  // and no door, no bolts, no columns and nobody standing there. That is the
+  // payoff of the entire game and it was a grey box.
+  if (view.phase === "FINALE" || view.phase === "ESCAPED") return finale();
+
   // Before the chamber check, not after it. `machine.chamber` still names the
   // Blind Panel throughout the Archive (D-025), so asking the chamber first
   // would build the room the pair has just left behind the monitor.
@@ -1342,6 +1416,19 @@ export function interlude(view: PilotView): readonly [string, string] {
       // The last frame of the game. It is worth a sentence.
       return ["THE DOOR IS OPEN", "COLD AIR, AND THE SOUND OF THE SEA"];
     default:
-      return ["NOTHING TO SEE FROM HERE", ""];
+      return ["", ""];
   }
+}
+
+/**
+ * Whether this phase's own words are the thing on screen.
+ *
+ * The band used to be shown wherever there was no room to draw, which was the
+ * same set until the finale grew a room. The moment it did, the last two
+ * headlines in the game - THE OUTER DOOR, and THE DOOR IS OPEN - stopped being
+ * printed at all. What the band is actually for is a phase whose content is the
+ * phase, so that is what it asks.
+ */
+export function hasInterlude(view: PilotView): boolean {
+  return interlude(view)[0].length > 0;
 }

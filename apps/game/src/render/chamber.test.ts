@@ -32,6 +32,7 @@ import {
   lampReveal,
   nearestFixture,
   roomPlan,
+  hasInterlude,
   roomTitle,
   spread,
   type RoomPlan,
@@ -347,9 +348,44 @@ describe("the phases with no room", () => {
     expect(roomTitle(impossible)).toBe("THE ARCHIVE");
   });
 
-  it("has no room where the server sends no facts", () => {
-    expect(roomPlan(viewOf({ phase: "FINALE", chamber: "concord_lock", facts: {} }))).toBeNull();
-    expect(roomPlan(viewOf({ phase: "LOBBY", chamber: null }))).toBeNull();
+  it("has no room in the phases where the pair is nowhere", () => {
+    for (const phase of ["ENTRY", "LOBBY", "TRANSITIONING"] as const) {
+      expect(roomPlan(viewOf({ phase, chamber: null })), phase).toBeNull();
+    }
+  });
+
+  it("draws the Concord Lock at the finale, where the server sends no facts", () => {
+    /*
+     * The machine clears `chamber` on the way into FINALE and again into
+     * ESCAPED, and the worker sends no facts for a phase with no puzzle left in
+     * it. Reading the chamber first therefore drew an empty room: the Concord
+     * Lock's bare shell with THE DOOR IS OPEN written over it and no door, no
+     * bolts, no columns and nobody standing there. It is the payoff of the
+     * whole game and it was a grey box.
+     */
+    for (const phase of ["FINALE", "ESCAPED"] as const) {
+      const plan = roomPlan(viewOf({ phase, chamber: null, facts: {} }));
+      expect(plan, phase).not.toBeNull();
+      expect(plan?.id).toBe("concord_lock");
+      expect(plan?.solved).toBe(true);
+      const door = plan?.fixtures.find((fixture) => fixture.kind === "door");
+      expect(door?.on, `${phase} shuts the door`).toBe(true);
+      expect(plan?.fixtures.filter((f) => f.kind === "bolt").every((f) => f.on)).toBe(true);
+      expect(plan?.dressing.length, `${phase} has no cathedral`).toBeGreaterThan(4);
+    }
+  });
+
+  it("takes the mechanisms out of the finale rather than zeroing them", () => {
+    // The wheel and the release bar carry readings. With no facts behind them
+    // they would print WHEEL 0 and SLACK, which is not a stale number but a
+    // false one, so they are absent instead.
+    const plan = roomPlan(viewOf({ phase: "FINALE", chamber: null, facts: {} }));
+    for (const gone of ["wheel", "bar", "attempts"]) {
+      expect(
+        plan?.fixtures.some((f) => f.id === gone),
+        `finale still has ${gone}`,
+      ).toBe(false);
+    }
   });
 
   it("says something in every phase that has no room", () => {
@@ -687,6 +723,23 @@ describe("the Archive's sightline to its monitor", () => {
         }
       }
       expect(size.height).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("the caption band", () => {
+  it("speaks in exactly the phases whose content is the phase", () => {
+    /*
+     * The band used to be shown wherever there was no room to draw. That was
+     * the same set until the finale grew a room, and the moment it did, the
+     * last two headlines in the game stopped being printed at all - the ending
+     * showed a room and said nothing over it.
+     */
+    for (const phase of ["ENTRY", "LOBBY", "TRANSITIONING", "FINALE", "ESCAPED"] as const) {
+      expect(hasInterlude(viewOf({ phase })), `${phase} says nothing`).toBe(true);
+    }
+    for (const phase of ["IN_CHAMBER", "PENALISED", "DEADLOCK", "ARCHIVE"] as const) {
+      expect(hasInterlude(viewOf({ phase })), `${phase} talks over the room`).toBe(false);
     }
   });
 });
