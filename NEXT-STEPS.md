@@ -12,12 +12,13 @@ It answers three questions and only three: where the repo is right now, what to 
 |---|---|
 | **Last updated** | 2026-08-30, Ahmed Saad |
 | **Branch** | `feat/audible-channel`, off `main` at `94cbcca` |
-| **Pipeline** | Green: 677 tests, typecheck, lint, format, both `vite build`s plus the bundle budget and the palette check, real `wrangler deploy --dry-run` |
+| **Pipeline** | Green: 680 tests, typecheck, lint, format, both `vite build`s plus the bundle budget and the palette check, real `wrangler deploy --dry-run` |
 | **Sound** | **Built and heard** (D-050, D-051). Listened to on a real machine on 2026-08-30 and signed off. Plan phase 5.2 in full: eight mechanism cues, the ambience bed, four timer-keyed tension layers, a behind-the-wall thump per KEEPER tool call, and a mix with a mute. Plus **a warm unresolved theme** on top, always on, which is a deliberate departure from doc 06's chiptune direction (D-051). All synthesised in `apps/game/src/audio/`; still no asset file of any kind. `PilotView` gained `seq`, without which the detents cannot repeat. |
+| **Console** | **Rebuilt around the room** (D-052). The room fills the deck and is centred; panels live behind labelled tabs on the two edges, open on demand, one per edge, resizable by drag or arrow keys, closed with Escape. Deeper ground, a grain layer, a beacon sweep on the start card and the gate, and PILOT has four poses and a flickering lamp. Channel colours untouched. |
 | **Interface** | **Rebuilt in real-time 3D** (D-042 to D-045). Phaser and the tile renderer are gone. The station is a lit cutaway model: rooms open at the top and on their south face, camera always to the south, four lights and no post-processing. New colour language (D-043), procedural assets and **no asset files at all** (D-044), and a console laid out as two surfaces with the room between them (D-045). |
 | **Licence** | **MIT throughout again.** The vendored art pack went with the tile renderer, so `LICENSE` has no carve-out (D-044). |
 | **Played** | A full session end to end in Chrome 152 against a live `wrangler dev`: all four chambers, the Archive, the finale, the ending. 17/17 browser checks green on the single-origin path. **A second pass on a real machine found five more defects, all of them things a frame shows and no test does** (D-046, D-047): neighbouring rooms crowding a room shot, hidden masonry left as lit plates, the Archive's beams across its own monitor, KEEPER's body sharing a wall with a shelf rack, and every fixture carrying two stacked captions. All fixed. **A third pass then found six more in the two beats nobody had inspected** (D-048): the finale drew an empty room for its last two phases, an open door showed a crack instead of its opening, the bolt ring floated over the lintel, its count printed on top of the door sign, the room lit itself flat with the door open, and a pendant hung between the camera and the Archive monitor. All fixed. The tour now also presses `E`. **A fourth pass was *played* rather than looked at** - one person as PILOT in the browser, one driving KEEPER over the worker's HTTP tool surface - and found a twelfth that no frame could show (D-049): the Blind Panel drew `DIAL n` directly beneath `GAUGE n`, asserting the one thing that chamber exists to withhold. Fixed. |
-| **Bundle** | Entry **22.4KB** gzipped of a 400KB budget, up 5.5KB for the audio layer. Three.js is a **143KB** chunk fetched only when a shift starts, against Phaser's 358KB. No images, no fonts, no asset requests at all. |
+| **Bundle** | Entry **24.2KB** gzipped of a 400KB budget: 5.5KB of audio and 1.8KB of the console rework. Three.js is a **143KB** chunk fetched only when a shift starts, against Phaser's 358KB. No images, no fonts, no asset requests at all. |
 | **Archive** | Both halves still built (D-039). KEEPER calls `read_station_log`; PILOT watches the same log on a CRT drawn to a canvas. The exclusion is asserted in both directions, on the projection and again on the wire. |
 | **Delegation** | Working and proved. `ARCHIVE_ORIGIN` stays `same` (D-033). `tests/cross-origin-delegation.ts` is also the screenshot tour: `SHOTS=<dir>` writes a frame at every beat and is a no-op without it. |
 | **Ablation / Benchmark** | Unchanged and still published (D-040, D-041). Nothing in this rework touched `bench/`, `apps/worker/`, `packages/` or the possible-worlds proof. |
@@ -30,7 +31,7 @@ It answers three questions and only three: where the repo is right now, what to 
 | Path | State |
 |---|---|
 | `docs/design/` | Numbered set 00-12. **Doc 06 rewritten for 3D**; the rest unchanged. |
-| `docs/` | Decision log at D-051, lessons journal live. |
+| `docs/` | Decision log at D-052, lessons journal live. |
 | `packages/seed` | Done. Untouched. |
 | `packages/protocol` | Done. Gained the `Cue` vocabulary and `PilotView.seq` for the audio layer (D-050). |
 | `apps/worker/**` | Done. The only change since the 3D rework is that each chamber's `lastSound` now returns a cue beside its prose, from one branch (D-050). Four chambers, the reducer, the Archive beat, the timer, the read-only tool surface, the manual, PILOT's view socket, CONCORD, the notepad. |
@@ -46,7 +47,7 @@ It answers three questions and only three: where the repo is right now, what to 
 | `apps/game/src/render/fixtures.ts` | One geometry builder per fixture kind, and the converge-toward-the-server stepper. |
 | `apps/game/src/render/keeper.ts` | **KEEPER's body as the registry**, and PILOT. The never-cut beat. |
 | `apps/game/src/render/stage.ts` | The scene, the lights, the camera and the loop. The only file that owns a renderer. |
-| `apps/game/src/ui.ts`, `style.css` | The console and the gate screen, rebuilt (D-045). The gate screen now carries the ablation and the split-lamp mark. The console gained the mixer under the audible strip. |
+| `apps/game/src/ui.ts`, `style.css` | The console and the gate screen. **Rebuilt again around the room (D-052)**: `edge()` builds a tab rail and its drawer, and the layout is a deck with two edges rather than three bays. The gate carries the ablation, the split-lamp mark and the beacon sweep. |
 | `apps/game/src/audio/*` | **New** (D-050, D-051). `plan.ts` is pure and tested; `engine.ts` owns the only `AudioContext`; `voices.ts` synthesises everything, including the theme's note tables; `index.ts` schedules. Has its own `CLAUDE.md`. |
 | `apps/game/scripts/check-palette.mjs` | **New.** Holds `style.css` and `palette.ts` to the same values, both directions, on every build. Replaces `check-art.mjs`. |
 | `tests/possible-worlds.test.ts` | Done and passing for all four chambers. Untouched. |
@@ -235,6 +236,13 @@ seconds with zero tokens. Budget the tokens before running, not after.
 - **`scripts/check-palette.mjs` is the only thing that notices a colour changed in `style.css` and not in `palette.ts`.** The drift does not throw; the console just quietly stops matching the room.
 - **Never import Three.js from a module the entry chunk reaches.** `render/station.ts`'s dynamic `import("./stage.js")` is the boundary. `scripts/check-bundle.mjs` fails the build when it is crossed, which is the only thing that will tell you.
 - **A sentinel guard is only as good as the number of ways a value can arrive.** The camera's "do not hold the building on the first room" guard tested `wasOn !== undefined`, and the lobby frame set it to `null` first, so every room shot in the first tour was the wide shot.
+
+### The console
+
+- **A drawer overlays the deck and must never push it.** The camera frames against the viewport's measured shape, so a panel that squeezed it would re-frame the shot every time somebody opened one, and the room would jump.
+- **`display: flex` beats the user agent's `[hidden]`.** The first build of the drawers came up with both of them open and empty, because `drawer.hidden = true` did nothing against `display: flex`.
+- **The palette was not what made the page feel flat** (D-052). Depth, layering and motion were. Check that what is being fixed is actually a colour before touching a set that carries the design law and the colourblind guarantee.
+- **A body at rest must not be a body at zero.** Every walk term multiplies by speed, so a standing figure was perfectly still, which reads as a broken renderer rather than as a person waiting.
 
 ### The audio
 
