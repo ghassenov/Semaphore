@@ -13,6 +13,13 @@ import { DETENT_MS, scoreFor, soundingFor } from "./plan.js";
 
 const CHAMBER_MS = 180_000;
 
+/**
+ * What plays whatever the clock says: the ambience, the warm theme and the
+ * drone. Named rather than repeated, because the point of most of these
+ * assertions is what is added *to* it.
+ */
+const BASE = ["bed", "theme", "drone"] as const;
+
 function viewOf(over: Partial<PilotView>): PilotView {
   return {
     phase: "IN_CHAMBER",
@@ -32,11 +39,11 @@ function viewOf(over: Partial<PilotView>): PilotView {
 describe("the tension layers", () => {
   it("adds each layer at the fraction doc 06 names", () => {
     const at = (left: number) => scoreFor(CHAMBER_MS * left, CHAMBER_MS).layers;
-    expect(at(1)).toEqual(["bed", "drone"]);
-    expect(at(0.75)).toEqual(["bed", "drone"]);
-    expect(at(0.4)).toEqual(["bed", "drone", "pulse"]);
-    expect(at(0.2)).toEqual(["bed", "drone", "pulse", "arpeggio"]);
-    expect(at(0.05)).toEqual(["bed", "drone", "pulse", "arpeggio", "heartbeat"]);
+    expect(at(1)).toEqual(BASE);
+    expect(at(0.75)).toEqual(BASE);
+    expect(at(0.4)).toEqual([...BASE, "pulse"]);
+    expect(at(0.2)).toEqual([...BASE, "pulse", "arpeggio"]);
+    expect(at(0.05)).toEqual([...BASE, "pulse", "arpeggio", "heartbeat"]);
   });
 
   it("only ever adds, never swaps", () => {
@@ -50,6 +57,17 @@ describe("the tension layers", () => {
     }
   });
 
+  it("never takes the theme away, at any point on the clock", () => {
+    // It is the station's resting state rather than a tension layer: what
+    // happens as the clock drains is that harder things arrive on top of it.
+    // Under the heartbeat it ducks, which is `bed`, not a layer leaving.
+    for (let left = 100; left >= -20; left -= 1) {
+      const score = scoreFor((CHAMBER_MS * left) / 100, CHAMBER_MS);
+      expect(score.layers, `lost the theme at ${String(left)}%`).toContain("theme");
+    }
+    expect(scoreFor(null, 0).layers).toContain("theme");
+  });
+
   it("ducks the bed only under the heartbeat", () => {
     expect(scoreFor(CHAMBER_MS * 0.2, CHAMBER_MS).bed).toBe(1);
     expect(scoreFor(CHAMBER_MS * 0.05, CHAMBER_MS).bed).toBeLessThan(1);
@@ -58,9 +76,9 @@ describe("the tension layers", () => {
   it("never escalates an untimed session", () => {
     // Practice is the preset for looking at the station without being hurried
     // (doc 02 section 7). A heartbeat would hurry it.
-    expect(scoreFor(null, 0).layers).toEqual(["bed", "drone"]);
-    expect(scoreFor(null, CHAMBER_MS).layers).toEqual(["bed", "drone"]);
-    expect(scoreFor(CHAMBER_MS, 0).layers).toEqual(["bed", "drone"]);
+    expect(scoreFor(null, 0).layers).toEqual(BASE);
+    expect(scoreFor(null, CHAMBER_MS).layers).toEqual(BASE);
+    expect(scoreFor(CHAMBER_MS, 0).layers).toEqual(BASE);
   });
 
   it("treats a chamber past its deadline as the last tenth, not as fresh", () => {

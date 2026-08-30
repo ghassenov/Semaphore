@@ -25,6 +25,7 @@ import {
   playDrip,
   playHeartbeat,
   playPulse,
+  playTheme,
   playToolCall,
   startBed,
   startDrone,
@@ -59,7 +60,7 @@ export interface StationAudio {
 }
 
 /** The layers that are scheduled onto the grid rather than held open. */
-const SCHEDULED: readonly Layer[] = ["pulse", "arpeggio", "heartbeat"];
+const SCHEDULED: readonly Layer[] = ["theme", "pulse", "arpeggio", "heartbeat"];
 
 export function createStationAudio(): StationAudio {
   let engine: Engine | null = null;
@@ -72,7 +73,7 @@ export function createStationAudio(): StationAudio {
   let mix: Mix = DEFAULT_MIX;
 
   /** Where each scheduled layer currently sits, 0 to 1, eased toward `wanted`. */
-  const level: Record<string, number> = { pulse: 0, arpeggio: 0, heartbeat: 0 };
+  const level: Record<string, number> = { theme: 0, pulse: 0, arpeggio: 0, heartbeat: 0 };
   let wanted: ReadonlySet<Layer> = new Set();
 
   /** The next grid step to schedule, in context time, and its index. */
@@ -103,6 +104,10 @@ export function createStationAudio(): StationAudio {
       // which happens whenever the tab was hidden. Catch up rather than
       // scheduling a burst of everything that was missed.
       if (nextAt < ctx.currentTime) nextAt = ctx.currentTime + 0.05;
+
+      // The theme first, because it is the bed the rest sits on and it is the
+      // only scheduled layer that is on from the first bar to the last.
+      playTheme(engine, nextAt, step, level["theme"] ?? 0);
 
       const beat = step % 2 === 0;
       if (beat && (level["pulse"] ?? 0) > 0.01) playPulse(engine, nextAt, level["pulse"] ?? 0);
