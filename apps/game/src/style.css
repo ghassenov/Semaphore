@@ -594,6 +594,22 @@ body {
   background: color-mix(in srgb, var(--pearl) 16%, transparent);
 }
 
+.mixer .fader {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.mixer .fader-name {
+  flex: 0 0 auto;
+  color: var(--mist);
+  font-family: var(--mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.14em;
+}
+
 .mixer input[type="range"] {
   flex: 1 1 0;
   min-width: 0;

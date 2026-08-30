@@ -412,10 +412,10 @@ const PILOT_KEYS: readonly (readonly [string, string])[] = [
  * `AUDIBLE` channel carries puzzle information, so a player has to be able to
  * turn the score down without turning the answer down with it.
  */
-const MIX_SLIDERS: readonly (readonly [Fader, string])[] = [
-  ["master", "Master volume"],
-  ["music", "Music volume"],
-  ["sfx", "Mechanism volume"],
+const MIX_SLIDERS: readonly (readonly [Fader, string, string])[] = [
+  ["master", "ALL", "Master volume"],
+  ["music", "SCORE", "Music volume"],
+  ["sfx", "MECH", "Mechanism volume"],
 ] as const;
 
 /** The session lengths, and what each one is, for the button's tooltip. */
@@ -570,7 +570,7 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
     mute.setAttribute("aria-pressed", String(muted));
   });
   mixer.append(mute);
-  for (const [key, label] of MIX_SLIDERS) {
+  for (const [key, short, label] of MIX_SLIDERS) {
     const slider = el("input", {
       type: "range",
       min: "0",
@@ -583,7 +583,14 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
     slider.addEventListener("input", () => {
       deps.audio.setMix({ [key]: Number(slider.value) / 100 });
     });
-    mixer.append(slider);
+    // Named in the frame, not only in the tooltip. Three identical sliders is
+    // one control repeated three times as far as anybody looking at it is
+    // concerned, and the one that has to be findable is MECH: the detents in
+    // Chamber II are a puzzle mechanism, so a player who cannot hear them
+    // needs to turn the score down off the answer without hunting.
+    const named = el("label", { class: "fader" });
+    named.append(el("span", { class: "fader-name" }, short), slider);
+    mixer.append(named);
   }
 
   const underdeck = el("div", { class: "underdeck" });
