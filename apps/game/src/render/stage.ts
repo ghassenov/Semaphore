@@ -1339,6 +1339,22 @@ export function createStage(
     }
 
     frame(shot, now);
+
+    // Whether the camera has stopped travelling, published on the canvas so
+    // something outside the loop can wait for it.
+    //
+    // The browser tour used to sleep for a hand-copied `WALK_MS + SHOT_MS`
+    // before every screenshot, and a frame grabbed one tick early is the
+    // previous room wearing the next room's name, or the whole station seen
+    // from four hundred metres up. That has now shipped three times, most
+    // recently as an Archive frame taken at 2000ms against a 2400ms arrival:
+    // the constants moved and the sleeps did not, because a number copied out
+    // of another module has no way to hear that it changed. A flag the camera
+    // sets itself cannot drift, and it is the only honest answer to "is the
+    // shot ready" - the shot's own easing is the thing being asked about.
+    renderer.domElement.dataset.settled =
+      now >= shotAt + SHOT_MS && now >= walkUntil ? "true" : "false";
+
     renderer.render(scene, camera);
     globalThis.requestAnimationFrame(tick);
   }
