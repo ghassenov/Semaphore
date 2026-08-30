@@ -1,0 +1,15 @@
+# Cloudflare Pages routing.
+#
+# The replay viewer is a route the client owns, not a file on disk, so Pages
+# has to be told to serve the app for it (doc 08 phase 7.2, repo CLAUDE.md
+# section 3: "Replay served under /replay").
+#
+# Only `/replay` is routed, deliberately, and not `/replay/*`. The build uses
+# `base: "./"` so one bundle works from a project root and from a preview
+# deployment's sub-path, which means asset references are relative and resolve
+# against the current URL's directory. `/replay` has directory `/` and loads
+# the same assets the game does; `/replay/abc-123` has directory `/replay/`
+# and would ask for `/replay/assets/index-*.js`, which does not exist. Routing
+# that shape here would turn a 404 into a blank page, which is worse. The
+# canonical link is `/replay?id=...` and it is what the viewer hands out.
+/replay  /index.html  200

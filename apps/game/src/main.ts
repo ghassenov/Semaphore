@@ -20,13 +20,21 @@ import { SessionClient, sessionIdFrom } from "./net/sessionClient.js";
 import { SessionSocket } from "./net/socket.js";
 import { ToolDirector } from "./webmcp/director.js";
 import { renderGate, renderStation } from "./ui.js";
+import { renderReplay, replayIdFrom } from "./replay.js";
 import { createStationAudio } from "./audio/index.js";
 import { startStation, type StationHandle } from "./render/station.js";
 
 const root = document.getElementById("app");
 if (!root) throw new Error("The page is missing its #app root");
 
-if (!isSupported()) {
+const replaying = replayIdFrom(globalThis.location.pathname, globalThis.location.search);
+if (replaying !== null) {
+  // `/replay/:id` (doc 08 phase 7.2). It comes before the WebMCP check on
+  // purpose: a replay is a finished session being read, so it needs no
+  // registry, no session and no agent, and a judge on a browser that cannot
+  // play the game can still watch one. Nothing here reaches the renderer.
+  void renderReplay(root, replaying);
+} else if (!isSupported()) {
   // Never a throw, and never a broken canvas. For some judges this screen is
   // the whole submission (doc 07 section 6), and it must not cost them a
   // 365KB game engine to be told they cannot play: the renderer is behind a

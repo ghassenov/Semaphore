@@ -59,6 +59,29 @@ export default defineConfig({
         target: process.env.WORKER_DEV_ORIGIN ?? "http://127.0.0.1:8787",
         changeOrigin: true,
       },
+      // A finished session's log, for the replay viewer.
+      //
+      // Only the API path is forwarded. The *page* at `/replay/:id` is this
+      // dev server's own index.html, served by Vite's history fallback, and
+      // the client tells them apart the same way production does: the page is
+      // an HTML navigation and this is a `fetch`. That works here only because
+      // the client asks for `/replay/:id` with an `Accept: application/json`
+      // preference and the proxy is keyed on the path - see `bypass`.
+      // Only the API lives under this prefix. The *page* is `/replay?id=...`,
+      // which has no trailing slash and so does not match: Vite's history
+      // fallback serves the app for it, and this forwards only the data
+      // request the app then makes.
+      //
+      // The separation is not tidiness. The page and the API shared
+      // `/replay/:id` at first, and because the API answers with a
+      // `cache-control` header, a navigation to a URL the app had already
+      // fetched was served the cached JSON instead of the app: one request,
+      // 200, and no modules loaded at all. `src/replay.ts` has the other
+      // reason the path form had to go.
+      "/replay/": {
+        target: process.env.WORKER_DEV_ORIGIN ?? "http://127.0.0.1:8787",
+        changeOrigin: true,
+      },
     },
     // Over a tunnel the page is served on https:443 while Vite still listens
     // on 5173, so the hot-reload socket has to be told where to call home or
