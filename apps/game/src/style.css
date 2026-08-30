@@ -66,6 +66,16 @@
   --alarm: #e05a4f;
 
   --gap: 0.85rem;
+  /*
+   * How wide the two tab rails are.
+   *
+   * Authoritative rather than descriptive: `.tabs` is set to it, so anything
+   * that has to stand clear of a rail can measure against one number instead
+   * of guessing at what vertical text plus padding came out to. The fullscreen
+   * button is the reason - it sat in the same corner as the east rail, under
+   * it, and lost its last letter in every frame the tour has ever written.
+   */
+  --rail-width: 1.6rem;
   --radius: 3px;
   --edge: 1px solid color-mix(in srgb, var(--iron) 42%, transparent);
 
@@ -167,7 +177,24 @@ body::after {
   grid-template-columns: minmax(0, 1fr);
   gap: var(--gap);
   max-width: 108rem;
-  min-height: calc(100vh - var(--gap) * 2);
+  /*
+   * A **definite** height, not a floor, and that is the whole of why the page
+   * used to scroll on a window that could show all of it.
+   *
+   * `minmax(0, 1fr)` can only divide space that exists. With `min-height`
+   * alone the container's height is `auto`, so the middle row sized itself to
+   * its content instead - and its content is a canvas styled `height: 100%`
+   * against an indefinite parent, which falls back to the intrinsic size of
+   * its drawing buffer. The deck therefore asked for the buffer's height, the
+   * container grew to give it, and the page gained sixty-four pixels of
+   * scroll that nothing on it needed.
+   *
+   * `dvh` rather than `vh` because the small-viewport unit is the one that is
+   * correct while a mobile browser's chrome is on screen, and ChatGPT's
+   * in-app browser is on the target list.
+   */
+  height: calc(100vh - var(--gap) * 2);
+  height: calc(100dvh - var(--gap) * 2);
   margin: 0 auto;
 }
 
@@ -193,6 +220,7 @@ body::after {
   position: absolute;
   top: 0;
   z-index: 3;
+  width: var(--rail-width);
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
@@ -654,7 +682,14 @@ body::after {
 .fullscreen {
   position: absolute;
   top: 0.6rem;
-  right: 0.6rem;
+  /*
+   * Clear of the east tab rail, which stands in this same corner at a higher
+   * stacking level. At `0.6rem` the button ran underneath it and lost its last
+   * letter to "YOUR AGENT" - visible in every frame the tour has ever written.
+   * Raising the button over the rail instead would only trade a clipped word
+   * for a covered tab, so it moves inboard by the rail's width.
+   */
+  right: calc(0.6rem + var(--rail-width));
   z-index: 2;
   padding: 0.3rem 0.6rem;
   font-size: 0.66rem;
