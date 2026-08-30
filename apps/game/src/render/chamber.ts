@@ -1017,14 +1017,18 @@ function finale(): RoomPlan {
       captionAt: 5.6,
     },
   ];
-  for (let index = 0; index < DOOR_BOLTS; index += 1) {
-    const angle = (index / DOOR_BOLTS) * Math.PI * 2 - Math.PI / 2;
+  for (const [index, at] of boltRing(size).entries()) {
+    // Home and **unlit**. `on` retracts them into the door, which is what
+    // aligned means; `dim` takes the glow off, because their glow is the signal
+    // that they are moving and nothing here is moving any more. Twelve lit
+    // bolts ringing an open doorway read as a mirror rather than as a way out.
     fixtures.push({
       id: `bolt-${String(index)}`,
       kind: "bolt",
-      at: { x: Math.cos(angle) * 2.5, y: 3.4 + Math.sin(angle) * 2.5, z: -size.depth / 2 + 0.35 },
+      at,
       channel: "shared",
       on: true,
+      dim: true,
     });
   }
   return {
@@ -1066,10 +1070,36 @@ function concordDressing(size: RoomSize): readonly Dressing[] {
   ];
 }
 
+/**
+ * Where the twelve bolts sit, which is **on the door's own frame**.
+ *
+ * One definition, used by the chamber and by the finale. The first pass rang
+ * them at radius 2.5 about y 3.4, which is centred nearly two metres above a
+ * door 2.9m tall: the ring floated on the blank wall over the doorway and read
+ * as a row of lamps rather than as the bolts holding a door shut. Sized to the
+ * door instead, the side bolts land just outside its jambs and the top one just
+ * over its lintel, which is where a bolt on a door actually is.
+ */
+export function boltRing(size: RoomSize): readonly Vec3[] {
+  const RADIUS = 1.8;
+  const CENTRE_Y = 2.0;
+  return Array.from({ length: DOOR_BOLTS }, (_unused, index) => {
+    const angle = (index / DOOR_BOLTS) * Math.PI * 2 - Math.PI / 2;
+    return {
+      x: Math.cos(angle) * RADIUS,
+      y: CENTRE_Y + Math.sin(angle) * RADIUS,
+      z: -size.depth / 2 + 0.35,
+    };
+  });
+}
+
 export const DOOR_BOLTS = 12;
 
 /** How many bolts `align_bolt` can land. The array is a multiple of this. */
 export const ALIGNABLE_BOLTS = 3;
+
+/** Which bolt is at the top of the ring, and so is the one that carries the count. */
+export const TOP_BOLT = DOOR_BOLTS / 2;
 
 /**
  * The Concord Lock: the cipher wheel, the bolt ring, the release bar, the door.
@@ -1103,21 +1133,20 @@ function concordLock(facts: Readonly<Record<string, unknown>>): RoomPlan {
   // The bolt ring, on the face of the door. Each aligned bolt lands a third of
   // the array, which is why this counts in quarters of the way round.
   const perBolt = DOOR_BOLTS / ALIGNABLE_BOLTS;
-  for (let index = 0; index < DOOR_BOLTS; index += 1) {
-    const angle = (index / DOOR_BOLTS) * Math.PI * 2 - Math.PI / 2;
-    const radius = 2.5;
+  for (const [index, at] of boltRing(size).entries()) {
     fixtures.push({
       id: `bolt-${String(index)}`,
       kind: "bolt",
-      at: {
-        x: Math.cos(angle) * radius,
-        y: 3.4 + Math.sin(angle) * radius,
-        z: -size.depth / 2 + 0.35,
-      },
+      at,
       channel: "shared",
       on: index < bolts * perBolt,
       dim: index >= bolts * perBolt,
-      ...(index === 0 ? { label: `${String(bolts)}/${String(ALIGNABLE_BOLTS)} ALIGNED` } : {}),
+      // On the bolt at the **top** of the ring. Bolt 0 is at the bottom, where
+      // its caption clamps to the same floor height as the door's own sign
+      // directly below it, and the two printed on top of each other.
+      ...(index === TOP_BOLT
+        ? { label: `${String(bolts)}/${String(ALIGNABLE_BOLTS)} ALIGNED` }
+        : {}),
     });
   }
 

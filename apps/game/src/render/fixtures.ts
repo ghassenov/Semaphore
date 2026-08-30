@@ -541,12 +541,17 @@ function buildBolt(kit: Kit, fixture: Fixture, root: Group): Animator {
   const halo = kit.halo(fixture.channel, 0.8, 0);
   root.add(halo);
 
+  // A dim bolt has no halo. `dim` already takes the emissive off the body, and
+  // leaving the halo behind turned an unlit bolt into a bare ring of glow -
+  // which at the finale, where all twelve are home around a lit doorway, made
+  // the last frame of the game look like a dressing-room mirror.
+  const glow = fixture.dim === true ? 0 : 0.7;
   return (progress) => {
     // Retracts into the door as it aligns, which is what "the bolts retract in
     // sequence" means when there is a door for them to retract into.
     shaft.position.z = -progress * 0.22;
     material.emissiveIntensity = 0.06 + progress * 2;
-    halo.material.opacity = progress * 0.7;
+    halo.material.opacity = progress * glow;
   };
 }
 
@@ -577,7 +582,8 @@ function buildDoor(kit: Kit, fixture: Fixture, root: Group): Animator {
   // of full brightness against dark copper, which put a hard white stripe down
   // the middle of every closed door in the station and read as a crack in the
   // model rather than as light.
-  const seam = solid(root, new Mesh(new BoxGeometry(0.05, height * 0.92, 0.05), material));
+  const SEAM = 0.05;
+  const seam = solid(root, new Mesh(new BoxGeometry(SEAM, height * 0.92, 0.05), material));
   seam.position.set(0, height / 2, 0.115);
   const halo = kit.halo(fixture.channel, 2.4, 0);
   halo.position.set(0, height / 2, 0.3);
@@ -588,8 +594,17 @@ function buildDoor(kit: Kit, fixture: Fixture, root: Group): Animator {
       const side = index === 0 ? -1 : 1;
       leaf.position.x = (side * width) / 4 - (side * progress * width) / 2.1;
     });
-    material.emissiveIntensity = 0.05 + progress * 2.6;
-    seam.scale.x = 1 + progress * 8;
+    // Held well under the tone curve's shoulder. 2.6 was tuned when the lit
+    // area was a five-centimetre seam; across the whole doorway it clips to
+    // flat white and the opening loses every bit of its colour.
+    material.emissiveIntensity = 0.05 + progress * 1.05;
+    // **Open means the whole opening, not a wider crack.** The leaves slide the
+    // full width apart, and the seam behind them used to grow to 0.45m of a
+    // 3.2m doorway - so a door the game had just announced as open showed a
+    // thin bright slit with two copper slabs either side of it. It is the last
+    // image in the game. Scaled to the doorway, an open door is a lit rectangle
+    // the size of the hole in the wall, which is what an open door looks like.
+    seam.scale.x = 1 + progress * (width / SEAM - 1);
     halo.material.opacity = progress * 0.5;
   };
 }
@@ -738,7 +753,10 @@ function buildLamp(kit: Kit, fixture: Fixture, root: Group): Animator {
   root.add(halo);
 
   return (progress) => {
-    material.emissiveIntensity = 0.05 + progress * 2.6;
+    // Held well under the tone curve's shoulder. 2.6 was tuned when the lit
+    // area was a five-centimetre seam; across the whole doorway it clips to
+    // flat white and the opening loses every bit of its colour.
+    material.emissiveIntensity = 0.05 + progress * 1.05;
     halo.material.opacity = progress * 0.75;
   };
 }
