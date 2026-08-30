@@ -613,6 +613,17 @@ function edge(side: "left" | "right"): {
   }
 
   function show(name: string | null): void {
+    // Where focus was, before anything is hidden underneath it.
+    //
+    // A drawer that closes while the keyboard is inside it leaves focus on an
+    // element that is no longer rendered, and the browser's answer to that is
+    // to drop the user at the top of the document - so Escape, which exists to
+    // get back to the room, instead costs a keyboard player their place
+    // entirely. Returning focus to the tab that opened the panel is where they
+    // were before they opened it, and it is the control that reopens it.
+    const wasInside = drawer.contains(document.activeElement);
+    const previous = open;
+
     open = name;
     for (const [id, section] of panels) section.hidden = id !== name;
     for (const [id, button] of buttons) {
@@ -621,6 +632,8 @@ function edge(side: "left" | "right"): {
       button.setAttribute("aria-expanded", String(on));
     }
     drawer.hidden = name === null;
+
+    if (name === null && wasInside && previous !== null) buttons.get(previous)?.focus();
   }
 
   grip.addEventListener("pointerdown", (event) => {
@@ -872,17 +885,23 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   // ESCAPED, which is the one phase where the pair has stopped playing and has
   // something to take away. The session's own id is the replay's id, so there
   // is nothing to look up.
-  const ending = el("div", { class: "launch ending" });
+  //
+  // It is *not* a `.launch` veil. The first build reused that class and put a
+  // dimmed full-bleed card over the last shot of the game, printing "The door
+  // is open" a second time across the caption band that was already saying it.
+  // Doc 08 phase 3.2 asks for the opposite: hold the balcony, let it breathe,
+  // and only then offer the stats. So this is a strip along the foot of the
+  // room that takes a little of the frame and covers none of the middle.
+  const ending = el("div", { class: "ending" });
   ending.hidden = true;
   const replayHref = replayUrl(deps.client.sessionId);
   const replayLink = el("a", { class: "spectate", href: replayHref }, "WATCH THE REPLAY");
   ending.append(
-    el("h3", {}, "The door is open"),
     el(
       "p",
       { class: "note" },
       "The whole shift is on the station's log: what you did, what your agent " +
-        "called, and the ambiguity between you. The link is shareable.",
+        "called, and the ambiguity between you.",
     ),
     replayLink,
   );

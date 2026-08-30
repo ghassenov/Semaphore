@@ -1760,3 +1760,202 @@ cable's drop out sideways through the wall, and passed only because no cable had
 ever been hung near enough to one. The Archive's sightline check was reading the
 same field and had to be corrected with it, or moving cables onto `height` would
 have silently made that check see every cable as a point with no drop at all.
+
+---
+
+### D-056 The tour waits on the camera instead of copying its clock
+
+**2026-08-30.** The browser tour slept a hand-typed `WALK_MS + SHOT_MS` before
+every screenshot. That number lived in `tests/`, and the constants it was copied
+from live in `apps/game/src/render/camera.ts`, so it could not hear them change.
+
+It had already gone wrong. The Archive's first frame was taken at 2000ms against
+a 2400ms arrival, and every tour since the doors landed photographed that beat
+as the whole station seen from four hundred metres up - in runs whose twenty-one
+assertions were all green. The file's own header states the rule the file was
+breaking. That is the shape of this defect: not a wrong number, but a number
+with no way to be told it is wrong.
+
+**The stage now publishes `data-settled` on its canvas** once the walk hold and
+the shot's easing are both over, and the tour polls it. A flag the camera sets
+itself cannot drift, and it is the honest answer to "is the shot ready", because
+the shot's own easing is the thing being asked about.
+
+Two details the first attempt got wrong. Node reaches the line the moment *its*
+socket saw the state change, and the browser has its own socket, so a poll with
+no grace period reads a flag that still describes the previous shot; and a
+single true reading can land inside a walk hold, so the flag has to stay true
+for a quarter second before it counts. The tour also got a third faster, because
+most beats no longer sleep out a fixed 2.8 seconds.
+
+**Importing the constants was tried first and rejected.** `camera.ts` is pure,
+but its siblings are imported with `.js` specifiers that Node's type stripping
+does not resolve back to `.ts`, so it would have cost a loader to save a
+comment.
+
+---
+
+### D-057 An absent field is reported as absent
+
+**2026-08-30.** Playing KEEPER's half through the WebMCP surface rather than
+over HTTP - which nothing in this repository had done for a mutating tool -
+turned up the message an agent gets for `inspect({target})` when the parameter
+is called `object_id`:
+
+```
+E_INVALID_INPUT: object_id must be one of lever_a, lever_b, lever_c. Received .
+```
+
+Every route reads its arguments off a query string and coerces a missing one to
+`""` on the way in, so the shared formatter rendered absence as an empty string.
+The result is a sentence with a hole in it, and it asserts the wrong thing: that
+an empty value was sent, when none was. Those are different repairs, and
+misspelling a parameter name is the common way to arrive here, because
+`inspect({target})` and `inspect({object_id})` are equally plausible guesses.
+
+Fixed in the one helper all eleven call sites route through, rather than at the
+eleven boundaries that each coerce differently. `undefined`, `null` and `""` all
+report as `nothing`; a value that really was sent is still quoted back, zero
+included.
+
+---
+
+### D-058 SPECTATE, attract mode and the replay are one picture
+
+**2026-08-30.** Doc 08 phase 4 asks for a SPECTATE button and an attract mode,
+and phase 7.2 asks for a replay viewer. All three play a recorded session, and
+the station already had a surface that plays one: the Archive's monitor.
+
+So the monitor's painter moved out of `stage.ts` into `render/monitor.ts` and
+all three use it. It draws with a 2D context and nothing else, which is the
+property that matters: nothing on that path imports Three.js, so **the gate
+screen can show the game without fetching the 143KB engine** it exists to spare
+that browser. Entry went from 25.4KB to 30.4KB of a 400KB budget across all of
+phase 4, 6 and 7.2.
+
+The worker gained `GET /ghost`, its one route with no session behind it, because
+the gate screen has no session and cannot start one.
+
+**One defect, and the first check passed on it.** In development the client asks
+its own origin for `/ghost`, and the Vite proxy only forwarded `/session`, so
+the monitor drew `NO TAPE`. That is a *prop*, not an error - it is what a null
+track is meant to look like - so nothing anywhere reported a failure, and a
+check asking "is anything lit" passed. It took a screenshot to notice. The check
+now requires the recording to be the real one and to be moving.
+
+---
+
+### D-059 A deep link walks the real path
+
+**2026-08-30.** `?chamber=N` (doc 08 phase 4), so a judge with ten minutes can
+look at the Concord Lock without solving three chambers to reach it.
+
+**It replays the transitions rather than assigning a state.** Each hop is the
+same `CHAMBER_SOLVED` a chamber's own solve raises, the same `settleTransition`
+that runs inside it, and the same `ARCHIVE_COMPLETE` that leaving the Archive
+raises. A deep-linked session therefore arrives with the chamber's generated
+puzzle state and its real deadline, and there is no second way into a chamber
+for a proof or a test to disagree about. The alternative - writing the machine
+state directly - would have been fewer lines and a second entry point that
+nothing else in the project knows exists.
+
+The skipped chambers are logged as entered and solved, because the session did
+pass through them and a replay reading that log must not be told otherwise.
+What records that they were not earned is `deepLinked` on the session, so the
+benchmark corpus can tell a demonstration from a run without every consumer
+re-deriving the rule from the timestamps.
+
+`?chamber=` takes the id or the 1-based position. Anything else, including a
+chamber the mode does not contain, starts a normal session: it is a URL people
+hand-edit, not a trust boundary, and the server validates independently.
+
+---
+
+### D-060 The replay is a projection, and its URL is a query
+
+**2026-08-30.** The replay viewer (doc 08 phase 7.2) reads the gzipped row D1
+already holds and draws it as two tracks over one axis - amber for what PILOT
+did and heard, cyan for what KEEPER called - with the CONCORD trace underneath.
+A merged event list would have been a log viewer and would have said nothing
+about the thing the game is about. The room beside it is the station's own
+monitor, driven by the same `pilotTrack` projection the Archive's CRT plays, so
+"the same monitor the ghosts were on" is true of the code and not only of doc 08
+phase 3.2's copy.
+
+**The raw log may not leave the server, and the session being over is exactly
+the argument that would justify it.** `state_delta` events carry raw
+`WorldState` paths, which include `HIDDEN` fields: Chamber II's permutation,
+Chamber I's answer, Chamber III's passphrase. A seed is reproducible by
+construction (doc 05 section 9) and a replay URL is meant to be shared, so a raw
+replay of seed `s` is a solution key for every future session on seed `s`. The
+projection drops them, and a test asserts the permutation cannot be found in the
+payload.
+
+**Three defects, all found by running it.**
+
+D1 hands a BLOB back as a plain array of byte numbers, not the `ArrayBuffer` the
+types suggest or the `Uint8Array` the write side produced. Passing that array to
+`Blob` does not fail - it stringifies it - so the only symptom was
+`TypeError: Decompression failed` from a line that looked correct.
+
+`base: "./"` and a nested route are incompatible. That base exists so one build
+works from a Pages project root and from a preview deployment's sub-path, which
+means asset references resolve against the current URL's *directory*: at
+`/replay/abc-123` the browser asks for `/replay/assets/index-*.js` and gets a
+404. The page is blank in production and perfect in development, where Vite
+serves an absolute `/src/main.ts`. Verified against a real build.
+
+And the page and the API shared that URL, with the API answering with a
+`cache-control` header, so a navigation to a URL the page had already fetched
+was served the cached JSON instead of the app: one request, 200, no modules
+loaded.
+
+**So the canonical URL is `/replay?id=...`**, which has directory `/`, loads the
+same assets the game does, and does not collide with the API. Doc 08 writes
+`/replay/:sessionId`; that shape is refused rather than half-supported, because
+accepting it would mean handing somebody a link that comes up blank. `_redirects`
+routes only the shape that works, deliberately, since routing the other one would
+turn an honest 404 into a blank page.
+
+---
+
+### D-061 The accessibility mirror, and what it costs
+
+**2026-08-30.** Doc 08 phase 6. The Access panel carries three switches, all off
+by default and all session-only.
+
+**The mirror breaks the design law on purpose, and it is the one place that is
+allowed.** Puzzle-critical visuals render to the canvas and never to the DOM,
+because a text node holding a fixture is one an agent with page access can
+scrape, and KEEPER not being able to see is the entire game. A blind player
+needs exactly that text. `apps/game/CLAUDE.md` already sanctioned the exception;
+this is it, and the README states it as a limitation rather than a footnote.
+
+Three things keep it honest. It is off until the person it is for turns it on,
+in a panel that says what it does before it does it. It **never names a glyph**:
+it says a plate carries a mark and leaves the describing to the player, exactly
+as the picture does, asserted for every chamber. And it changes nothing on the
+server - it renders the same `projectForPilot` frame the canvas does, in a
+different medium.
+
+Contrast and motion are switches rather than only media queries, because a
+system preference is not something somebody should have to change desktop-wide
+to still one game. The stage reads the motion attribute every frame so the
+switch works mid-session. The contrast palette is **derived from the locked set
+with `color-mix` rather than declared as new hex**: `check-palette.mjs` rejected
+the first attempt, correctly, and deriving turned out to be the better answer
+anyway, because the channel hues carry the design law and the colourblind
+guarantee and a contrast mode that quietly re-hued them would break the thing
+its own users most need to stay stable.
+
+**Colourblind verification is now measured rather than argued.** A Vienot
+dichromat simulation covers protanopia, deuteranopia and tritanopia - the one
+doc 08 bolds, because it destroys the blue-yellow axis the two channels were
+chosen for. They survive it comfortably: the key tones separate by 265 under
+tritanopia against 151 in normal vision, since the collapse sends them in
+opposite directions. The tightest case anywhere is the bright pair under
+protanopia at 59.3, and the test's floor is 40.
+
+The detent count Chamber II is built on already had its text equivalent - "3
+clicks registered" beside the room - so the pip counter doc 08 phase 2.2 asks
+for is satisfied by prose rather than by pips.
