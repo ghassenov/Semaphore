@@ -12,12 +12,12 @@ It answers three questions and only three: where the repo is right now, what to 
 |---|---|
 | **Last updated** | 2026-08-30, Ahmed Saad |
 | **Branch** | `feat/audible-channel`, off `main` at `94cbcca` |
-| **Pipeline** | Green: 671 tests, typecheck, lint, format, both `vite build`s plus the bundle budget and the palette check, real `wrangler deploy --dry-run` |
-| **Sound** | **Built** (D-050). Doc 06 section 11 and plan phase 5.2 in full: eight mechanism cues, the ambience bed, four timer-keyed tension layers, a behind-the-wall thump per KEEPER tool call, and a mix with a mute. All synthesised in `apps/game/src/audio/`; still no asset file of any kind. `PilotView` gained `seq`, without which the detents cannot repeat. |
+| **Pipeline** | Green: 677 tests, typecheck, lint, format, both `vite build`s plus the bundle budget and the palette check, real `wrangler deploy --dry-run` |
+| **Sound** | **Built** (D-050, D-051). Plan phase 5.2 in full: eight mechanism cues, the ambience bed, four timer-keyed tension layers, a behind-the-wall thump per KEEPER tool call, and a mix with a mute. Plus **a warm unresolved theme** on top, always on, which is a deliberate departure from doc 06's chiptune direction (D-051). All synthesised in `apps/game/src/audio/`; still no asset file of any kind. `PilotView` gained `seq`, without which the detents cannot repeat. |
 | **Interface** | **Rebuilt in real-time 3D** (D-042 to D-045). Phaser and the tile renderer are gone. The station is a lit cutaway model: rooms open at the top and on their south face, camera always to the south, four lights and no post-processing. New colour language (D-043), procedural assets and **no asset files at all** (D-044), and a console laid out as two surfaces with the room between them (D-045). |
 | **Licence** | **MIT throughout again.** The vendored art pack went with the tile renderer, so `LICENSE` has no carve-out (D-044). |
 | **Played** | A full session end to end in Chrome 152 against a live `wrangler dev`: all four chambers, the Archive, the finale, the ending. 17/17 browser checks green on the single-origin path. **A second pass on a real machine found five more defects, all of them things a frame shows and no test does** (D-046, D-047): neighbouring rooms crowding a room shot, hidden masonry left as lit plates, the Archive's beams across its own monitor, KEEPER's body sharing a wall with a shelf rack, and every fixture carrying two stacked captions. All fixed. **A third pass then found six more in the two beats nobody had inspected** (D-048): the finale drew an empty room for its last two phases, an open door showed a crack instead of its opening, the bolt ring floated over the lintel, its count printed on top of the door sign, the room lit itself flat with the door open, and a pendant hung between the camera and the Archive monitor. All fixed. The tour now also presses `E`. **A fourth pass was *played* rather than looked at** - one person as PILOT in the browser, one driving KEEPER over the worker's HTTP tool surface - and found a twelfth that no frame could show (D-049): the Blind Panel drew `DIAL n` directly beneath `GAUGE n`, asserting the one thing that chamber exists to withhold. Fixed. |
-| **Bundle** | Entry **22.1KB** gzipped of a 400KB budget, up 5.2KB for the audio layer. Three.js is a **143KB** chunk fetched only when a shift starts, against Phaser's 358KB. No images, no fonts, no asset requests at all. |
+| **Bundle** | Entry **22.4KB** gzipped of a 400KB budget, up 5.5KB for the audio layer. Three.js is a **143KB** chunk fetched only when a shift starts, against Phaser's 358KB. No images, no fonts, no asset requests at all. |
 | **Archive** | Both halves still built (D-039). KEEPER calls `read_station_log`; PILOT watches the same log on a CRT drawn to a canvas. The exclusion is asserted in both directions, on the projection and again on the wire. |
 | **Delegation** | Working and proved. `ARCHIVE_ORIGIN` stays `same` (D-033). `tests/cross-origin-delegation.ts` is also the screenshot tour: `SHOTS=<dir>` writes a frame at every beat and is a no-op without it. |
 | **Ablation / Benchmark** | Unchanged and still published (D-040, D-041). Nothing in this rework touched `bench/`, `apps/worker/`, `packages/` or the possible-worlds proof. |
@@ -30,7 +30,7 @@ It answers three questions and only three: where the repo is right now, what to 
 | Path | State |
 |---|---|
 | `docs/design/` | Numbered set 00-12. **Doc 06 rewritten for 3D**; the rest unchanged. |
-| `docs/` | Decision log at D-050, lessons journal live. |
+| `docs/` | Decision log at D-051, lessons journal live. |
 | `packages/seed` | Done. Untouched. |
 | `packages/protocol` | Done. Gained the `Cue` vocabulary and `PilotView.seq` for the audio layer (D-050). |
 | `apps/worker/**` | Done. The only change since the 3D rework is that each chamber's `lastSound` now returns a cue beside its prose, from one branch (D-050). Four chambers, the reducer, the Archive beat, the timer, the read-only tool surface, the manual, PILOT's view socket, CONCORD, the notepad. |
@@ -47,7 +47,7 @@ It answers three questions and only three: where the repo is right now, what to 
 | `apps/game/src/render/keeper.ts` | **KEEPER's body as the registry**, and PILOT. The never-cut beat. |
 | `apps/game/src/render/stage.ts` | The scene, the lights, the camera and the loop. The only file that owns a renderer. |
 | `apps/game/src/ui.ts`, `style.css` | The console and the gate screen, rebuilt (D-045). The gate screen now carries the ablation and the split-lamp mark. The console gained the mixer under the audible strip. |
-| `apps/game/src/audio/*` | **New** (D-050). `plan.ts` is pure and tested; `engine.ts` owns the only `AudioContext`; `voices.ts` synthesises everything; `index.ts` schedules. Has its own `CLAUDE.md`. |
+| `apps/game/src/audio/*` | **New** (D-050, D-051). `plan.ts` is pure and tested; `engine.ts` owns the only `AudioContext`; `voices.ts` synthesises everything, including the theme's note tables; `index.ts` schedules. Has its own `CLAUDE.md`. |
 | `apps/game/scripts/check-palette.mjs` | **New.** Holds `style.css` and `palette.ts` to the same values, both directions, on every build. Replaces `check-art.mjs`. |
 | `tests/possible-worlds.test.ts` | Done and passing for all four chambers. Untouched. |
 | `tests/cross-origin-delegation.ts` | The browser proof and the screenshot tour. Its wait is stated against the camera's own constants, and `shotHolding` presses `E` so the lean-in has a frame (D-047). |
@@ -145,13 +145,14 @@ pass. And every tuned renderer constant - ambient at 0.62, the doorway spotlight
 at 110, the caption's 0.032 of viewport height - was set by looking at a
 1400x900 desktop window and has been checked at no other size.
 
-**One thing nobody has heard.** The audio layer (D-050) has been driven in a
-headless browser, which has no audio device: it was verified not to throw and
-not one cue has actually been listened to. Everything about how it *sounds* -
-whether eight detents at 180ms are countable by ear, whether the klaxon is
-unpleasant enough, whether the bed is too loud under the arpeggio - is
-unverified. Put headphones on and play a session. That is the whole test, and
-`MECH` on the mixer is the fader to reach for.
+**One thing nobody has heard.** The audio layer (D-050, D-051) has been driven
+in a headless browser, which has no audio device: it was verified not to throw
+and not one note has actually been listened to. Everything about how it *sounds*
+is unverified - whether eight detents at 180ms are countable by ear, whether the
+klaxon is unpleasant enough, whether the theme is too present under a room the
+player is trying to describe out loud, and whether the arpeggio fights it at a
+quarter of the clock. Put headphones on and play a session. That is the whole
+test, and `MECH` on the mixer is the fader to reach for.
 
 ### 2. Playtest with humans [needs people]
 
@@ -179,17 +180,23 @@ Two spike rows still decide things: `crossorigin.delegation`, which flips
 `ARCHIVE_ORIGIN`, and `declarative.agentinvoked`, which the notepad's per-line
 authorship depends on.
 
-### 4. Listen to it, then decide whether the score earns its place
+### 4. Listen to it, then settle the two things only an ear can settle
 
-Sound is **built** (D-050) and phase 5.2 is closed, so this is no longer a hole:
-it is a judgement that needs one person and a pair of headphones. See the last
-paragraph of item 1 for what is actually unverified.
+Sound is **built** (D-050, D-051) and phase 5.2 is closed, so this is no longer
+a hole: it is a judgement that needs one person and a pair of headphones. See
+the last paragraph of item 1 for the full list of what is unverified.
 
-The one real decision waiting: the four tension layers are the half of 5.2 that
-moves no judging criterion the cues do not already move. If they turn out to
-fight the detents, **cut the arpeggio first and the pulse second** - the cues,
-the bed and the ducking are the part that carries the `AUDIBLE` channel and none
-of that may be cut.
+**The balance between the theme and the tension layers.** The theme is warm and
+unresolved and always on; the arpeggio that arrives at a quarter of the clock is
+a square wave and is meant to be alarming. Nobody has heard them together. If
+they fight, **cut the arpeggio first and the pulse second** - the cues, the bed
+and the ducking carry the `AUDIBLE` channel and none of that may be cut, and the
+theme is the station's character.
+
+**And whether doc 06 section 11 should be rewritten to match.** It still asks
+for a chiptune score; the client now plays a warm instrumental with chiptune
+tension on top of it (D-051). The code is deliberately the newer decision, but
+the doc is the source of truth for design and one of the two has to move.
 
 ### 5. Decide what to do about the two things the ablation found
 

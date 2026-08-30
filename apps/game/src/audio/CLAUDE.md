@@ -38,6 +38,18 @@ is the same split `chamber.ts` and `stage.ts` already use.
 - **Sound fires on `PilotView.seq`, never on a diff of the facts.** Two
   rotations that each register three clicks produce identical facts, and PILOT
   has to hear six detents.
+- **The theme is the station's resting state, not a tension layer.** It is on
+  from the first bar to the last and is never taken away; what happens as the
+  clock drains is that harder things arrive on top of it. It rides the ambience
+  gain so it ducks with the bed under the heartbeat rather than carrying a
+  level of its own.
+- **Its note tables are checked, because nothing here can hear.** Every pitch
+  must be a real equal-tempered note, in A natural minor, with no leading note
+  in a chord and no second in the melody - that is what keeps it unresolved. A
+  mistyped frequency is a wrong note and would ship past every other check in
+  the repository. `theme.test.ts` holds it. **It contradicts doc 06 section
+  11's chiptune direction on purpose** (D-051); the tension layers are still
+  chiptune and should stay that way.
 - **Nothing here may read a fact KEEPER cannot perceive.** The audio layer
   consumes `projectForPilot` output like the renderer does, and `AUDIBLE` is
   the only channel it acts on.
@@ -47,3 +59,4 @@ is the same split `chamber.ts` and `stage.ts` already use.
 | Date | Author | What changed |
 |---|---|---|
 | 2026-08-30 | Ahmed Saad | Created with the audio layer (doc 06 section 11, plan phase 5.2). |
+| 2026-08-30 | Ahmed Saad | The warm theme landed (D-051), with the rules that it is a resting state rather than a tension layer and that its note content is held by a test. |
