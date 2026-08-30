@@ -56,6 +56,7 @@ import {
 import { roomPlan, roomTitle } from "./render/chamber.js";
 import { FLOOR_NAMES, activeFloor, stationFloors, type FloorId } from "./render/floors.js";
 import { CHANNEL_MARKER } from "./render/palette.js";
+import { describeRoom } from "./render/mirror.js";
 import { TAIL_MS } from "./render/ghost.js";
 import { paintMonitor } from "./render/monitor.js";
 import type { GhostTrack } from "@semaphore/protocol";
@@ -1018,8 +1019,87 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
    * on the other. The difference is that now neither side is in the way until
    * it is asked for.
    */
+  /**
+   * Access: the mirror, contrast and motion (doc 08 phase 6).
+   *
+   * On PILOT's edge because every switch here belongs to the person looking at
+   * the room. All three are off by default and all three are remembered for
+   * the session only: a setting that survived a reload would be a setting
+   * somebody turned on once and then could not explain.
+   */
+  const access = panel("Access");
+
+  /**
+   * The room in words, in an `aria-live` region.
+   *
+   * **This is the one sanctioned exception to the no-puzzle-values-in-DOM
+   * rule, and it is a trade-off rather than a loophole** (`CLAUDE.md`, and
+   * `render/mirror.ts` at length). A text node holding a fixture is one an
+   * agent with page access can scrape, and KEEPER not being able to see is the
+   * whole game. What keeps it honest is that it is off until the person it is
+   * for turns it on, and that the describer never names a glyph: the mark is
+   * still PILOT's to describe.
+   */
+  const mirrorToggle = el(
+    "button",
+    { type: "button", class: "access-toggle" },
+    "Describe the room",
+  );
+  mirrorToggle.setAttribute("aria-pressed", "false");
+  const mirrorBody = el("div", { class: "mirror", role: "region", "aria-live": "polite" });
+  mirrorBody.hidden = true;
+  mirrorToggle.addEventListener("click", () => {
+    mirrorBody.hidden = !mirrorBody.hidden;
+    mirrorToggle.setAttribute("aria-pressed", String(!mirrorBody.hidden));
+    paintMirror();
+  });
+
+  /** Repaint the mirror, but only when somebody is reading it. */
+  let mirrorView: PilotView | null = null;
+  function paintMirror(): void {
+    if (mirrorBody.hidden) return;
+    const lines = describeRoom(mirrorView);
+    mirrorBody.replaceChildren(...lines.map((line) => el("p", {}, line)));
+  }
+
+  /**
+   * Contrast and motion, as switches rather than only as media queries.
+   *
+   * `prefers-reduced-motion` is already honoured, and it is not enough on its
+   * own: it is a system setting, and somebody who wants the station still for
+   * this session should not have to change their whole desktop to get it. The
+   * same argument applies to contrast. Both set an attribute on the root and
+   * the stylesheet does the rest.
+   */
+  function rootSwitch(label: string, attribute: string): HTMLButtonElement {
+    const button = el("button", { type: "button", class: "access-toggle" }, label);
+    button.setAttribute("aria-pressed", "false");
+    button.addEventListener("click", () => {
+      const on = document.documentElement.hasAttribute(attribute);
+      if (on) document.documentElement.removeAttribute(attribute);
+      else document.documentElement.setAttribute(attribute, "");
+      button.setAttribute("aria-pressed", String(!on));
+    });
+    return button;
+  }
+
+  access.body.append(
+    mirrorToggle,
+    mirrorBody,
+    rootSwitch("High contrast", "data-contrast"),
+    rootSwitch("Reduce motion", "data-still"),
+    el(
+      "p",
+      { class: "note" },
+      "Describing the room puts what you can see into the page as text. Your agent " +
+        "can read the page, so this hands it part of your half. It is off unless you " +
+        "ask for it.",
+    ),
+  );
+
   west.add("Station", station.section);
   west.add("Your hands", controls.section);
+  west.add("Access", access.section);
   east.add("Your agent", card.section);
   east.add("Faculties", manifestPanel.section);
   east.add("Activity", logPanel.section);
@@ -1103,6 +1183,8 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
       // And the replay link, at the one phase where the pair has finished.
       ending.hidden = phase !== "ESCAPED";
 
+      mirrorView = view ?? null;
+      paintMirror();
       paintFloors(floorList, view, model.standing);
       paintGauge();
       // The subtitle and the sound, one line apart, from one frame. Doc 06

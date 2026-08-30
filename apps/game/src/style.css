@@ -1763,3 +1763,136 @@ button[hidden] {
   display: inline-block;
   text-decoration: none;
 }
+
+/**
+ * Access: the mirror, and the two switches beside it (doc 08 phase 6).
+ */
+.access-toggle {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  padding: 0.45rem 0.6rem;
+  margin-bottom: 0.4rem;
+  color: var(--mist);
+  background: transparent;
+  border: var(--edge);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.access-toggle:hover,
+.access-toggle:focus-visible {
+  color: var(--pearl);
+  border-color: color-mix(in srgb, var(--lamp) 45%, transparent);
+}
+
+/* Pressed is a state, and it may not be carried by colour alone: the mark is
+   what says so where the hue does not survive a colourblind viewer. */
+.access-toggle[aria-pressed="true"] {
+  color: var(--lamp);
+  border-color: color-mix(in srgb, var(--lamp) 60%, transparent);
+}
+
+.access-toggle[aria-pressed="true"]::before {
+  content: "[on] ";
+}
+
+.mirror {
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--pearl);
+  border-left: 2px solid var(--lamp-deep);
+  padding-left: 0.7rem;
+  margin-bottom: var(--gap);
+  max-height: 18rem;
+  overflow-y: auto;
+}
+
+.mirror[hidden] {
+  display: none;
+}
+
+.mirror p {
+  margin: 0 0 0.35rem;
+}
+
+/* The first line is the room's name, and a heading is what a screen reader
+   needs to skip by. It is styled as one rather than marked up as one because
+   the panel already has a heading and two h3s in a row is worse. */
+.mirror p:first-child {
+  font-family: var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--lamp);
+}
+
+/**
+ * High contrast, as a switch rather than only as a system preference.
+ *
+ * It lifts the ground and the text apart and drops the atmosphere: the grain,
+ * the vignette and the soft edges are what cost contrast, and they are the
+ * first things to go. The channel hues are *not* changed - they carry the
+ * design law and the colourblind guarantee (D-043), and a contrast mode that
+ * quietly re-hued them would break the one thing this mode's users most need
+ * to stay stable. They are brightened, not replaced.
+ */
+:root[data-contrast] {
+  /* Derived from the palette, never new hex.
+     `scripts/check-palette.mjs` holds every `--name: #rrggbb` in this file to
+     `palette.ts`, and it is right to: a second literal is a second thing to
+     keep in step. It is also the correct constraint here. A contrast mode that
+     invented colours would be a second palette nobody had argued, and the
+     channel hues in particular carry the design law and the colourblind
+     guarantee (D-043). So this pushes the existing set apart rather than
+     replacing it: grounds go darker, text and the two channel hues go toward
+     their own bright ends, and nothing acquires a hue it did not have. */
+  --ink: var(--abyss);
+  --slate: color-mix(in srgb, var(--abyss) 70%, var(--ink));
+  --stone: color-mix(in srgb, var(--ash) 75%, var(--abyss));
+  --mist: color-mix(in srgb, var(--pearl) 82%, var(--iron));
+  --pearl-dim: color-mix(in srgb, var(--pearl) 75%, var(--iron));
+  --lamp: color-mix(in srgb, var(--lamp-bright) 60%, var(--lamp));
+  --tide: color-mix(in srgb, var(--tide-bright) 60%, var(--tide));
+  --edge: 1px solid var(--mist);
+}
+
+:root[data-contrast] .grain,
+:root[data-contrast] .vignette {
+  display: none;
+}
+
+:root[data-contrast] .note,
+:root[data-contrast] .log li {
+  color: var(--mist);
+}
+
+/**
+ * Reduce motion, as a switch, mirroring the media query above it.
+ *
+ * `prefers-reduced-motion` is a system setting, and somebody who wants this
+ * station still for one session should not have to change their desktop to
+ * get it. The stage reads the same attribute for the camera drift and the
+ * body's stride.
+ *
+ * The `toolchange` sequence is deliberately *not* removed here, only slowed
+ * and flattened: doc 08 phase 6 keeps it at reduced amplitude, because it is
+ * the moment that explains what the game is and a player who reduces motion
+ * should still be told when their agent's body changes.
+ */
+:root[data-still] *,
+:root[data-still] *::before,
+:root[data-still] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+:root[data-still] .manifest .tool {
+  animation: none;
+}
+
+:root[data-still] .rail .clock.urgent {
+  animation: none;
+}
