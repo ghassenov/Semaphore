@@ -1527,3 +1527,19 @@ repository. Whether it is actually *good* is still unverified and needs an ear.
 **Result.** 677 tests, up from 671. Entry 22.4KB gzipped of a 400KB budget, up
 0.3KB. Still no asset files. 17 of 17 browser checks with the theme scheduling
 on every step, and no console error.
+
+**Heard, the same day.** D-050 and D-051 both shipped with the same open risk
+recorded against them - built, proved not to throw, and never actually listened
+to, because nothing in this pipeline has an ear. That risk is now closed: the
+whole score was played on a real machine on 2026-08-30 and signed off, cues and
+theme and tension layers together. It is worth recording that it took about a
+minute to settle, against two entries' worth of hedging: **a subsystem nothing
+in CI can perceive stays a guess until one person spends sixty seconds
+perceiving it**, and the cost of not doing that is carrying the uncertainty
+through every document that mentions it.
+
+One narrow thing is deliberately *not* covered by that sign-off, because it is a
+different question: whether eight detents at 180ms are countable by ear by
+somebody who does not already know the answer. That is Chamber II's mechanism
+and it needs a playtester rather than an author, so it stays with the playtest
+item rather than with the audio one.
