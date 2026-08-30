@@ -33,6 +33,7 @@
 
 import {
   BoxGeometry,
+  ConeGeometry,
   CylinderGeometry,
   Group,
   Mesh,
@@ -765,6 +766,7 @@ export function buildDressing(kit: Kit, item: Dressing): Group {
   root.position.set(item.at.x, item.at.y, item.at.z);
   root.rotation.y = item.facing ?? 0;
   const length = item.length ?? 1;
+  const height = item.height ?? 1;
 
   switch (item.kind) {
     case "pipe": {
@@ -815,23 +817,89 @@ export function buildDressing(kit: Kit, item: Dressing): Group {
       break;
     }
     case "shelf": {
-      for (let level = 0; level < 3; level += 1) {
-        solid(root, new Mesh(new BoxGeometry(0.5, 0.07, length), kit.iron)).position.y =
-          0.5 + level * 0.62;
+      /*
+       * A rack of tape reels.
+       *
+       * **Built running along its own x, like every other long dressing.** It
+       * was built along z, which meant that rotating it to stand against a side
+       * wall turned it ninety degrees the wrong way and pushed most of it
+       * through the masonry - and the collision, which assumes the x
+       * convention, was measuring a run at right angles to the one being drawn,
+       * so a body walked through it. One convention, and both faults go.
+       */
+      const levels = 4;
+      for (let level = 0; level < levels; level += 1) {
+        solid(root, new Mesh(new BoxGeometry(length, 0.06, 0.44), kit.iron)).position.y =
+          0.42 + level * 0.52;
       }
       for (const side of [-1, 1]) {
-        solid(root, new Mesh(new BoxGeometry(0.08, 1.9, 0.08), kit.iron)).position.set(
-          0,
-          0.95,
+        solid(root, new Mesh(new BoxGeometry(0.08, 2.1, 0.5), kit.iron)).position.set(
           (side * length) / 2,
+          1.05,
+          0,
         );
       }
-      // Spools on the middle shelf, which is what an archive is full of.
-      for (const z of [-length / 3, 0, length / 3]) {
-        const spool = solid(root, new Mesh(new TorusGeometry(0.16, 0.06, 5, 12), kit.copper));
-        spool.position.set(0, 1.22, z);
-        spool.rotation.y = Math.PI / 2;
+      // Reels, stood on edge in rows. An archive is a wall of these, and it is
+      // the one room whose dressing is the point rather than the frame.
+      const perRow = Math.max(2, Math.floor(length / 0.42));
+      for (let level = 0; level < levels - 1; level += 1) {
+        for (let slot = 0; slot < perRow; slot += 1) {
+          // A deterministic gap here and there, so the rack reads as one
+          // somebody has been taking reels out of rather than as a texture.
+          if ((slot * 7 + level * 3) % 11 === 0) continue;
+          const x = -length / 2 + (length / perRow) * (slot + 0.5);
+          const reel = solid(root, new Mesh(new TorusGeometry(0.14, 0.05, 5, 12), kit.copper));
+          reel.position.set(x, 0.62 + level * 0.52, 0);
+          const hub = solid(root, new Mesh(new CylinderGeometry(0.05, 0.05, 0.1, 8), kit.brass));
+          hub.rotation.x = Math.PI / 2;
+          hub.position.set(x, 0.62 + level * 0.52, 0);
+        }
       }
+      break;
+    }
+    case "cabinet": {
+      // A card index: the other half of what a records room is. Drawers with
+      // brass pulls, a few left open, which is the cheapest way to say somebody
+      // was looking for something and did not put it back.
+      solid(root, new Mesh(new BoxGeometry(length, 1.35, 0.62), kit.iron)).position.y = 0.68;
+      const columns = Math.max(1, Math.round(length / 0.55));
+      for (let column = 0; column < columns; column += 1) {
+        for (let row = 0; row < 4; row += 1) {
+          const open = (column * 5 + row * 3) % 7 === 0 ? 0.16 : 0;
+          const x = -length / 2 + (length / columns) * (column + 0.5);
+          const drawer = solid(
+            root,
+            new Mesh(new BoxGeometry(length / columns - 0.06, 0.28, 0.06), kit.copper),
+          );
+          drawer.position.set(x, 0.28 + row * 0.32, 0.31 + open);
+          const pull = solid(root, new Mesh(new CylinderGeometry(0.02, 0.02, 0.16, 6), kit.brass));
+          pull.rotation.z = Math.PI / 2;
+          pull.position.set(x, 0.28 + row * 0.32, 0.35 + open);
+        }
+      }
+      break;
+    }
+    case "bulb": {
+      // One bare bulb on a flex. The Archive's only ceiling light, and the
+      // reason the room reads as somewhere the power is nearly gone.
+      solid(root, new Mesh(new CylinderGeometry(0.012, 0.012, height, 5), kit.iron)).position.y =
+        -height / 2;
+      const shade = solid(root, new Mesh(new ConeGeometry(0.22, 0.2, 12, 1, true), kit.copper));
+      shade.position.y = -height;
+      const glass = new Mesh(
+        new SphereGeometry(0.07, 10, 8),
+        new MeshStandardMaterial({
+          color: PALETTE.lampBright,
+          emissive: PALETTE.lamp,
+          emissiveIntensity: 2.4,
+          roughness: 0.25,
+        }),
+      );
+      glass.position.y = -height - 0.09;
+      root.add(glass);
+      const halo = kit.halo("pilot", 1.4, 0.5);
+      halo.position.y = -height - 0.09;
+      root.add(halo);
       break;
     }
     case "beam": {
@@ -839,10 +907,10 @@ export function buildDressing(kit: Kit, item: Dressing): Group {
       break;
     }
     case "column": {
-      solid(root, new Mesh(new BoxGeometry(0.7, length, 0.7), kit.stone)).position.y = length / 2;
+      solid(root, new Mesh(new BoxGeometry(0.7, height, 0.7), kit.stone)).position.y = height / 2;
       // A brass band near the base and another near the top, which is what
       // stops a column reading as an extruded rectangle.
-      for (const y of [0.9, length - 1.1]) {
+      for (const y of [0.9, height - 1.1]) {
         solid(root, new Mesh(new BoxGeometry(0.82, 0.16, 0.82), kit.brass)).position.y = y;
       }
       break;

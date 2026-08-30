@@ -158,7 +158,11 @@ export type DressingKind =
   /** Hazard chevrons painted on the floor, at a threshold. */
   | "chevron"
   /** A heavy frame around a doorway, which is what makes a door a bulkhead. */
-  | "bulkhead";
+  | "bulkhead"
+  /** A card index: drawers, brass pulls, and a few left open. */
+  | "cabinet"
+  /** One bare bulb on a flex. */
+  | "bulb";
 
 /** One piece of dressing, in room-local metres. */
 export interface Dressing {
@@ -166,8 +170,26 @@ export interface Dressing {
   readonly at: Vec3;
   /** Yaw in radians. Zero runs along the room's width. */
   readonly facing?: number;
-  /** How long, for the things that run: pipes, beams, rails. */
+  /**
+   * How long, for the things that *run*: pipes, beams, rails, racks, cabinets.
+   *
+   * **A run is always along the piece's own x**, turned by `facing`. That
+   * convention is not a style choice: the collision solver measures along it,
+   * and the Archive's racks were built along their z instead, so facing one at
+   * a side wall turned it ninety degrees the wrong way, pushed most of it
+   * through the masonry, and left the collision measuring a segment at right
+   * angles to the one being drawn. One convention, or two bugs.
+   */
   readonly length?: number;
+  /**
+   * How tall, for the things that *stand* or *hang*: columns, bulbs.
+   *
+   * Separate from `length` deliberately. Both were `length` at first, which
+   * meant the field said "a run along x" for one piece and "a height" for the
+   * next, and nothing reading it could tell which - a check that a piece stays
+   * inside its room read a nine-metre column as a nine-metre floor run.
+   */
+  readonly height?: number;
 }
 
 /** The interior of a room, in metres. */
@@ -698,6 +720,9 @@ const DRESSING_RADIUS: Readonly<Record<DressingKind, number>> = {
   locker: 0.45,
   console: 0.55,
   chart: 0,
+  cabinet: 0.45,
+  // A bulb hangs above head height.
+  bulb: 0,
   // A porthole is in a wall, a chevron is paint on the floor, and a bulkhead
   // frame surrounds an opening you are meant to walk through.
   porthole: 0,
@@ -1032,8 +1057,8 @@ function concordLock(facts: Readonly<Record<string, unknown>>): RoomPlan {
     // like a walk.
     dressing: [
       ...spread(3, size.depth * 0.55).flatMap((z) => [
-        { kind: "column" as const, at: { x: -size.width / 2 + 0.6, y: 0, z }, length: size.height },
-        { kind: "column" as const, at: { x: size.width / 2 - 0.6, y: 0, z }, length: size.height },
+        { kind: "column" as const, at: { x: -size.width / 2 + 0.6, y: 0, z }, height: size.height },
+        { kind: "column" as const, at: { x: size.width / 2 - 0.6, y: 0, z }, height: size.height },
       ]),
       { kind: "cable", at: { x: -2.4, y: size.height, z: -size.depth / 2 + 1.4 }, length: 4.6 },
       { kind: "cable", at: { x: 2.9, y: size.height, z: -size.depth / 2 + 1.1 }, length: 3.8 },
@@ -1096,10 +1121,13 @@ export const ARCHIVE_PLAN: RoomPlan = {
     },
     // Tape crates, either side of the floor. Shared, because a crate is
     // furniture: it carries no fact and neither party can act on it.
+    // Two crates, pulled out into the aisle rather than against the walls: the
+    // racks stand there now, and a crate inside a rack is the overlap that
+    // makes a room look assembled by accident.
     {
       id: "crate-left",
       kind: "crate",
-      at: { x: -ROOM_SIZES.archive.width / 2 + 1, y: 0, z: -1.2 },
+      at: { x: -1.5, y: 0, z: 2.1 },
       channel: "shared",
       on: false,
       dim: true,
@@ -1107,7 +1135,7 @@ export const ARCHIVE_PLAN: RoomPlan = {
     {
       id: "crate-right",
       kind: "crate",
-      at: { x: ROOM_SIZES.archive.width / 2 - 1.1, y: 0, z: -0.6 },
+      at: { x: 1.7, y: 0, z: 2.5 },
       channel: "shared",
       on: false,
       dim: true,
@@ -1128,21 +1156,36 @@ export const ARCHIVE_PLAN: RoomPlan = {
   // cable hanging over the monitor, a puddle under it. This is the one room in
   // the station whose dressing is the point rather than the frame - it is a
   // records room, and it should look like one nobody has filed in for years.
+  // A tape library with one working screen in it.
+  //
+  // The room is small, close and cluttered (doc 06 section 6), and the way to
+  // make that read is to fill the walls and leave the middle empty: racks of
+  // reels down both sides, a card index under the monitor, one bare bulb on a
+  // flex, and nothing at all on the floor between the door and the screen. What
+  // the pair does here is stand and watch, so the composition's only job is to
+  // put the monitor at the end of an aisle.
   dressing: [
+    // One rack, on the east wall. The west wall is the way out, and a rack of
+    // reels standing in the doorway is how the first pass of this room looked.
     {
       kind: "shelf",
-      at: { x: -ROOM_SIZES.archive.width / 2 + 0.45, y: 0, z: 0.4 },
-      facing: Math.PI / 2,
-      length: 3.6,
-    },
-    {
-      kind: "shelf",
-      at: { x: ROOM_SIZES.archive.width / 2 - 0.45, y: 0, z: 0.2 },
+      at: { x: ROOM_SIZES.archive.width / 2 - 0.35, y: 0, z: 0.1 },
       facing: -Math.PI / 2,
-      length: 3.2,
+      length: 4.6,
     },
-    { kind: "cable", at: { x: 1.4, y: ROOM_SIZES.archive.height, z: -2.2 }, length: 1.4 },
-    { kind: "puddle", at: { x: -0.6, y: 0, z: 1.2 }, length: 2.2 },
+    {
+      kind: "cabinet",
+      at: { x: -2.5, y: 0, z: -ROOM_SIZES.archive.depth / 2 + 0.45 },
+      length: 1.8,
+    },
+    {
+      kind: "cabinet",
+      at: { x: 2.5, y: 0, z: -ROOM_SIZES.archive.depth / 2 + 0.45 },
+      length: 1.8,
+    },
+    { kind: "bulb", at: { x: 0, y: ROOM_SIZES.archive.height, z: -0.6 }, height: 0.75 },
+    { kind: "cable", at: { x: 2.1, y: ROOM_SIZES.archive.height, z: 1.6 }, length: 1.1 },
+    { kind: "puddle", at: { x: -0.5, y: 0, z: 1.9 }, length: 2.4 },
     ...beams(ROOM_SIZES.archive, 3),
   ],
   accent: "shared",

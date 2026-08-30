@@ -169,6 +169,59 @@ describe("what a room contains", () => {
     }
   });
 
+  it("keeps every piece of dressing inside its own room", () => {
+    /*
+     * Including its *length*, turned by its facing.
+     *
+     * This is the assertion that would have caught the Archive's racks. They
+     * were built running along their local z while every other long dressing
+     * runs along x, so facing them at a side wall turned them ninety degrees
+     * the wrong way and pushed most of a four-metre rack out through the
+     * masonry. The anchor was inside the room the whole time - only the run was
+     * wrong - so a check on position alone would have passed it.
+     */
+    for (const plan of allPlans()) {
+      const { width, depth } = plan.size;
+      for (const item of plan.dressing) {
+        const half = (item.length ?? 0) / 2;
+        const yaw = item.facing ?? 0;
+        // Long dressing runs along its own x. Anything relying on that
+        // convention has to be built to it; the shelf was not.
+        const spanX = Math.abs(Math.cos(yaw)) * half;
+        const spanZ = Math.abs(Math.sin(yaw)) * half;
+        const where = `${plan.id}/${item.kind}`;
+        // `height` is a different field on purpose, so nothing here has to
+        // guess whether a number is a run or a rise.
+        expect(
+          Math.abs(item.at.x) + spanX,
+          `${where} runs out through a side wall`,
+        ).toBeLessThanOrEqual(width / 2 + 0.001);
+        expect(
+          Math.abs(item.at.z) + spanZ,
+          `${where} runs out through an end wall`,
+        ).toBeLessThanOrEqual(depth / 2 + 0.001);
+      }
+    }
+  });
+
+  it("stands no piece of dressing inside a fixture", () => {
+    // Overlap is not a crash, it is a room that looks assembled by accident:
+    // the Archive had its crates standing inside its racks.
+    for (const plan of allPlans()) {
+      for (const item of plan.dressing) {
+        // Only the pieces of dressing that stand on the floor and take up
+        // room. A crate is a *fixture*, not dressing, so it is on the other
+        // side of this comparison already.
+        if (item.kind !== "cabinet" && item.kind !== "shelf") continue;
+        for (const fixture of plan.fixtures) {
+          if (fixture.at.y > 1.4) continue;
+          const apart = Math.hypot(item.at.x - fixture.at.x, item.at.z - fixture.at.z);
+          expect(apart, `${plan.id}: ${item.kind} stands in ${fixture.id}`).toBeGreaterThan(0.8);
+        }
+      }
+    }
+  });
+
   it("gives every fixture in a room a distinct id", () => {
     for (const plan of allPlans()) {
       const ids = plan.fixtures.map((fixture) => fixture.id);
