@@ -40,9 +40,9 @@
  * of them out here, the change is wrong.
  */
 
-import type { PilotView } from "@semaphore/protocol";
+import { CHAMBER_NAMES, type PilotView } from "@semaphore/protocol";
 import type { Fader, StationAudio } from "./audio/index.js";
-import type { SessionClient } from "./net/sessionClient.js";
+import { startChamberFrom, type SessionClient } from "./net/sessionClient.js";
 import type { StationModel } from "./render/station.js";
 import {
   LEGEND,
@@ -767,6 +767,20 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   // The start card, over the room, until there is a session.
   const launch = el("div", { class: "launch" });
   launch.append(el("h3", {}, "Start the shift"));
+  // A `?chamber=` deep link, read once. The card says so rather than opening
+  // three chambers in without explaining why: a judge who lands here from a
+  // link should know they are being shown the middle of a session, and a
+  // player who arrives by accident should know why the airlock is missing.
+  const deepLink = startChamberFrom(globalThis.location.search);
+  if (deepLink) {
+    launch.append(
+      el(
+        "p",
+        { class: "note deep-link" },
+        `This link opens at ${CHAMBER_NAMES[deepLink]}. Everything before it is already done.`,
+      ),
+    );
+  }
   const modes = el("div", { class: "launch-modes" });
   for (const [mode, blurb] of BEGIN_MODES) {
     const button = el("button", { type: "button" }, mode);
@@ -779,10 +793,14 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
       deps.audio.start();
       // Practice is a difficulty, not a mode: doc 02 section 7 makes it the
       // untimed preset of a full session rather than a shorter one.
-      const body =
-        mode === "practice"
+      const body = {
+        ...(mode === "practice"
           ? { difficulty: "practice", mode: "full" }
-          : { difficulty: "standard", mode };
+          : { difficulty: "standard", mode }),
+        // `?chamber=N`, if the URL carried one. The server drops a name it
+        // does not know, so a mistyped parameter starts a normal session.
+        ...(deepLink ? { chamber: deepLink } : {}),
+      };
       void deps.client.post("start", body).then((response) => {
         deps.onNote(`start ${mode}: ${response.text}`);
       });
