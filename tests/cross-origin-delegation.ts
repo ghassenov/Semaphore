@@ -211,27 +211,67 @@ async function evaluate<T>(expression: string): Promise<T> {
 }
 
 /**
+ * Wait until the camera has stopped travelling.
+ *
+ * The stage publishes `data-settled` on its canvas once the walk hold and the
+ * shot's easing are both over. Polling it replaced a hand-copied
+ * `WALK_MS + SHOT_MS` sleep, which is a number that cannot hear the camera
+ * change underneath it: this tour shipped an Archive frame taken at 2000ms
+ * against a 2400ms arrival, and got the whole station seen from four hundred
+ * metres up, in a run whose 21 assertions were all green. A frame grabbed early
+ * is the previous room wearing the next room's name, and it has happened once
+ * per renderer.
+ *
+ * The timeout is generous and deliberately not fatal. A frame is evidence, not
+ * an assertion, and a tour that dies rather than photographing a stuck camera
+ * has destroyed the one artefact that would say why.
+ */
+async function settled(timeoutMs = 8000): Promise<void> {
+  // The grace is not politeness. Node reaches this line the moment its own
+  // socket saw the state change, and the browser has its own socket: until the
+  // page has had that frame and the loop has had a tick, `settled` still
+  // describes the *previous* shot and reads true. Waiting out one round trip
+  // and a few frames first is what stops this from photographing the room the
+  // pair just left, which is the exact failure the flag exists to end.
+  await sleep(300);
+  // And it has to stay settled. A shot that resolves while the walk hold is
+  // still running would otherwise satisfy a single poll.
+  const HELD_MS = 250;
+  const until = Date.now() + timeoutMs;
+  let since: number | null = null;
+  while (Date.now() < until) {
+    const flag = await evaluate<string>(
+      `document.querySelector(".viewport-canvas")?.dataset.settled ?? "absent"`,
+    );
+    if (flag === "true") {
+      since ??= Date.now();
+      if (Date.now() - since >= HELD_MS) return;
+    } else {
+      since = null;
+    }
+    await sleep(80);
+  }
+  console.log("[warn] camera never settled; taking the frame anyway");
+}
+
+/**
  * A screenshot of the page as it is, named for the beat it was taken at.
  *
  * A no-op unless `SHOTS` names a directory, so the assertion run is unchanged
  * and costs nothing, the wait included.
  *
- * **The default wait is the camera's, and it has to stay larger than it.** It
- * is the sum of two: the scene holds the whole building for `WALK_MS` on the
- * walk between rooms and then pans and zooms into the next one over `SHOT_MS`
- * (`apps/game/src/render/camera.ts`, 1600 and 800 at the time of writing). A
- * frame grabbed before both have finished is not a picture of the next room; it
- * is the previous room with the next room's name over it, or the whole building
- * seen from four hundred metres up. Both have been produced by this tour, once
- * per renderer. If a frame comes back looking oddly distant, check this number
- * against those two before looking at the scene. A longer wait is how the
- * Archive gets looked at, because that room's contents change on their own
- * clock and there is nothing to wait for but time.
+ * It waits for the camera first and only then for `waitMs`, so the argument
+ * means "and then let this much of the room's own clock pass" rather than
+ * "hope the camera is done by now". That is what the Archive needs: its
+ * contents change on a clock of their own and there is nothing to wait for but
+ * time. Every other beat passes zero and is photographed the moment the shot
+ * has resolved.
  */
 let shotIndex = 0;
-async function shot(name: string, waitMs = 2800): Promise<void> {
+async function shot(name: string, waitMs = 0): Promise<void> {
   if (SHOTS.length === 0) return;
-  await sleep(waitMs);
+  await settled();
+  if (waitMs > 0) await sleep(waitMs);
   const res = await send("Page.captureScreenshot", { format: "png" });
   const data = (res.result as { data?: string } | undefined)?.data ?? "";
   const file = `${SHOTS}/${String(++shotIndex).padStart(2, "0")}-${name}.png`;
@@ -259,7 +299,7 @@ async function keyEvent(type: "rawKeyDown" | "keyUp", key: string): Promise<void
   });
 }
 
-async function shotHolding(key: string, name: string, waitMs = 1400): Promise<void> {
+async function shotHolding(key: string, name: string, waitMs = 0): Promise<void> {
   if (SHOTS.length === 0) return;
   await keyEvent("rawKeyDown", key);
   await shot(name, waitMs);
@@ -437,7 +477,7 @@ await sleep(400);
   await tap("q");
   await sleep(1200);
   const back = await headerRoom();
-  await shot("airlock-revisited", 1200);
+  await shot("airlock-revisited");
   check("Q at an open door walks back to the room behind", back.includes("AIRLOCK"), back);
   check("and the console says it is a room being revisited", back.includes("REVISITED"), back);
   check(
@@ -564,9 +604,9 @@ await until((v) => v.phase === "ARCHIVE", "the archive beat");
 // Three, spread across the recording, because the Archive is the one room
 // whose contents change while nobody touches anything: the ghost walks, grips
 // the bar, and the tape runs out.
-await shot("archive-early", 2000);
-await shot("archive-middle", 12_000);
-await shot("archive-late", 13_000);
+await shot("archive-early");
+await shot("archive-middle", 10_000);
+await shot("archive-late", 11_000);
 await sleep(700);
 
 check(
