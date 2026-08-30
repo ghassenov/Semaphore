@@ -10,7 +10,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SessionClient, sessionIdFrom } from "./sessionClient.js";
+import { SessionClient, sessionIdFrom, startChamberFrom } from "./sessionClient.js";
 
 function reply(status: number, body: unknown): Response {
   return {
@@ -111,6 +111,21 @@ describe("the session id", () => {
   it("uses ?seed= when given, so a session is reproducible", () => {
     expect(sessionIdFrom("?seed=known-seed")).toBe("known-seed");
     expect(sessionIdFrom("?seed=%20padded%20")).toBe("padded");
+  });
+
+  it("reads a ?chamber= deep link by name and by position", () => {
+    expect(startChamberFrom("?chamber=concord_lock")).toBe("concord_lock");
+    expect(startChamberFrom("?chamber=4")).toBe("concord_lock");
+    expect(startChamberFrom("?chamber=1")).toBe("airlock");
+    expect(startChamberFrom("?seed=s&chamber=%20signal_room%20")).toBe("signal_room");
+  });
+
+  it("falls back to a normal session for anything it does not recognise", () => {
+    // A mistyped parameter on a URL somebody hand-edited should start the game
+    // from the beginning, which is what the URL would have done without it.
+    for (const search of ["", "?chamber=", "?chamber=0", "?chamber=9", "?chamber=boiler_room"]) {
+      expect(startChamberFrom(search)).toBeNull();
+    }
   });
 
   it("generates an opaque id otherwise, carrying nothing personal", () => {

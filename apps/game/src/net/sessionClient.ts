@@ -17,7 +17,7 @@
  * hands an agent a bare exception.
  */
 
-import type { ChamberId, Phase } from "@semaphore/protocol";
+import { CHAMBER_ORDER, type ChamberId, type Phase } from "@semaphore/protocol";
 
 /**
  * The machine state every response carries: enough for the tool director to
@@ -239,4 +239,26 @@ export interface StatusReport extends StateSummary {
 export function sessionIdFrom(search: string): string {
   const seed = new URLSearchParams(search).get("seed");
   return seed && seed.trim().length > 0 ? seed.trim() : crypto.randomUUID();
+}
+
+/**
+ * Which chamber a `?chamber=` deep link asks the session to open in.
+ *
+ * Doc 08 phase 4: a judge with ten minutes should be able to look at the
+ * Concord Lock without solving three chambers to reach it. Accepts the
+ * chamber's own id (`concord_lock`) and its 1-based position (`?chamber=4`),
+ * because both are things somebody will type and neither is ambiguous.
+ *
+ * `null` for anything else, including an out-of-range number: a mistyped
+ * parameter should start a normal session from the beginning, which is the
+ * thing the URL would have done without it. The server validates again
+ * anyway - this is a convenience, not a trust boundary.
+ */
+export function startChamberFrom(search: string): ChamberId | null {
+  const asked = new URLSearchParams(search).get("chamber")?.trim() ?? "";
+  if (asked.length === 0) return null;
+  const byName = CHAMBER_ORDER.find((chamber) => chamber === asked);
+  if (byName) return byName;
+  const position = Number(asked);
+  return Number.isInteger(position) ? (CHAMBER_ORDER[position - 1] ?? null) : null;
 }
