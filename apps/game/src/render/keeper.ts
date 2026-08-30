@@ -606,6 +606,26 @@ export function buildPilot(kit: Kit): {
   shoulders.position.y = SHOULDER_Y - HIP_Y;
   shoulders.rotation.z = Math.PI / 2;
 
+  // Two rows of brass buttons down the breast, epaulettes at the shoulders, and
+  // a sash. A uniform, in other words - and every part of it is a *material*
+  // colour, never a channel one, so a figure covered in brass still cannot be
+  // mistaken for a fact.
+  for (let button = 0; button < 5; button += 1) {
+    for (const side of [-1, 1]) {
+      const stud = add(chest, new Mesh(new SphereGeometry(0.022, 6, 5), kit.brass));
+      stud.position.set(side * 0.055, 0.38 - button * 0.075, 0.155);
+    }
+  }
+  for (const side of [-1, 1]) {
+    const board = add(chest, new Mesh(new BoxGeometry(0.13, 0.035, 0.1), kit.brass));
+    board.position.set(side * 0.14, SHOULDER_Y - HIP_Y + 0.03, 0);
+    const fringe = add(chest, new Mesh(new CylinderGeometry(0.018, 0.018, 0.07, 6), kit.brass));
+    fringe.position.set(side * 0.185, SHOULDER_Y - HIP_Y - 0.03, 0);
+  }
+  const sash = add(chest, new Mesh(new BoxGeometry(0.075, 0.5, 0.36), kit.plume));
+  sash.position.set(0.02, 0.24, 0.02);
+  sash.rotation.z = 0.42;
+
   // A belt and a collar. Two bands of a lighter material, which is most of
   // what stops a dark figure reading as one undifferentiated shape.
   add(chest, new Mesh(new CylinderGeometry(0.172, 0.172, 0.065, 10), kit.iron)).position.y = 0.03;
@@ -619,23 +639,43 @@ export function buildPilot(kit: Kit): {
   const neck = add(root, new Mesh(new CylinderGeometry(0.055, 0.06, 0.08, 8), kit.skin));
   neck.position.y = SHOULDER_Y + 0.09;
   /*
-   * The head, hooded.
+   * The head, and the hat.
    *
-   * **One dark shape, not two.** Two passes tried a pale head with a separate
-   * hood beside or behind it, and both read as an object stuck to the side of
-   * the skull: at this size any second sphere near the head is a lump, not a
-   * garment. So the head *is* the hood - one dark sphere, in the coat's own
-   * material - and the face is a small pale patch set into the front of it,
-   * which is occluded from behind and is exactly what you would see of someone
-   * in a hood anyway.
+   * A **shako**: the tall stiff cap of a signalman's or a bandsman's uniform,
+   * with a brim, a brass band and a plume socket. It is the single thing that
+   * turns a figure into a *character*, because at this distance a silhouette is
+   * all anybody gets, and a tall hat changes a silhouette more than a face ever
+   * could. It also earns its place in the fiction: this is a station with a
+   * uniform, kept by somebody whose whole job was standing watch.
    *
-   * The camera is behind and above PILOT almost always, so what this buys is a
-   * clean silhouette from the only angle that matters.
+   * It replaces the hood, which two passes could not make work: at this size
+   * any second sphere near a head reads as a lump stuck to the skull rather
+   * than as a garment. A hat sits *on top*, so it never has that problem, and
+   * it gives the figure a distinctive outline instead of merely a tidy one.
    */
-  const head = add(root, new Mesh(new SphereGeometry(HEAD * 1.28, 14, 12), kit.coat));
-  head.position.y = SHOULDER_Y + 0.2;
-  const face = add(root, new Mesh(new SphereGeometry(HEAD * 0.78, 12, 10), kit.skin));
-  face.position.set(0, SHOULDER_Y + 0.19, 0.055);
+  const head = add(root, new Mesh(new SphereGeometry(HEAD, 14, 12), kit.skin));
+  head.position.y = SHOULDER_Y + 0.19;
+
+  const hat = new Group();
+  hat.position.y = SHOULDER_Y + 0.28;
+  root.add(hat);
+  // The crown, tapering slightly outward the way a shako does.
+  add(hat, new Mesh(new CylinderGeometry(0.125, 0.115, 0.26, 12), kit.coat)).position.y = 0.13;
+  // The brim, forward-tilted.
+  const brim = add(hat, new Mesh(new CylinderGeometry(0.16, 0.16, 0.025, 14), kit.coat));
+  brim.position.set(0, 0.01, 0.03);
+  brim.rotation.x = -0.12;
+  // The band, and a boss on the front of it.
+  add(hat, new Mesh(new CylinderGeometry(0.128, 0.128, 0.045, 12), kit.brass)).position.y = 0.05;
+  add(hat, new Mesh(new SphereGeometry(0.038, 8, 6), kit.brass)).position.set(0, 0.06, 0.125);
+  // The plume socket and its plume, which is the top of the silhouette.
+  add(hat, new Mesh(new CylinderGeometry(0.022, 0.022, 0.05, 6), kit.brass)).position.y = 0.28;
+  // Fuller than a spike. A thin stalk read as an aerial rather than a plume,
+  // and the top of the silhouette is the part a distant figure is recognised by.
+  const plume = add(hat, new Mesh(new CapsuleGeometry(0.055, 0.1, 5, 10), kit.plume));
+  plume.position.y = 0.36;
+  const tuft = add(hat, new Mesh(new SphereGeometry(0.062, 8, 7), kit.plume));
+  tuft.position.y = 0.31;
 
   // ---- Arms. One hanging and swinging, one raised holding the lamp. The
   // raised arm is the whole read of the character: this is someone whose job
@@ -712,6 +752,9 @@ export function buildPilot(kit: Kit): {
     // The lamp arm swings least of anything: it is being held deliberately
     // still, which is what someone carrying a light actually does.
     raised.rotation.x = Math.sin(phase) * 0.05 * speed;
+    // The hat lags the body, which is what a tall hat does and what stops it
+    // reading as welded on.
+    hat.rotation.z = Math.sin(phase - 0.7) * 0.045 * speed;
   };
 
   return { root, lamp, step };

@@ -249,6 +249,8 @@ export class Kit {
   readonly sea: MeshStandardMaterial;
   /** Painted hazard stripes. Brass, never alarm: alarm is for penalties. */
   readonly hazard: MeshStandardMaterial;
+  /** The plume on PILOT's cap, and the sash. Copper: uniform, not signal. */
+  readonly plume: MeshStandardMaterial;
   /** A dead screen, and anything glazed. */
   readonly glass: MeshStandardMaterial;
   /**
@@ -316,6 +318,9 @@ export class Kit {
     );
     this.hazard = this.#keep(
       new MeshStandardMaterial({ color: PALETTE.brass, roughness: 0.75, metalness: 0.15 }),
+    );
+    this.plume = this.#keep(
+      new MeshStandardMaterial({ color: PALETTE.copper, roughness: 0.95, metalness: 0 }),
     );
 
     this.ripple = new CanvasTexture(rippleCanvas());
