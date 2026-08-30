@@ -1,88 +1,65 @@
 /**
- * The station as one building: where each room sits, and the corridors between.
+ * The station as one building: where each room stands, and the corridors
+ * between them.
  *
- * `room.ts` decides what is *in* a room and knows nothing about where that room
- * is; this module decides where the rooms are and knows nothing about what is
- * in them. That split is deliberate and it is the same one D-035 drew: a
- * chamber that reached for an absolute station coordinate could not be moved,
- * and a layout that knew about levers could not be tested without inventing
- * facts.
+ * `chamber.ts` decides what is *in* a room and knows nothing about where that
+ * room is; this module decides where the rooms are and knows nothing about what
+ * is in them. That split survived the renderer being replaced (D-042) because
+ * it was never about tiles: a chamber that reached for an absolute station
+ * coordinate could not be moved, and a layout that knew about levers could not
+ * be tested without inventing facts.
  *
- * **The whole station is autotiled in one pass.** A corridor meeting a room is
- * a junction, and two separate passes would each draw a wall the other one
- * wanted open. Resolved together, the wall simply ends in a corner on each side
- * of the opening, which is what a doorway is. This is also why the corridors
- * are declared as plain rectangles rather than as art: there is no corridor
- * tile, there is only floor, and the walls fall out of where the floor is not.
+ * What changed is the unit. The building was laid out on a 16px tile grid and
+ * is laid out in **metres** now, on the floor plane, with `x` running east and
+ * `z` running south. Rooms are boxes standing on that plane; corridors are
+ * strips of floor joining them. Nothing here has a height: a room's ceiling is
+ * `chamber.ts`'s business, because the wide shot looks down into open boxes and
+ * never sees a roof.
  *
  * **The layout is authored per mode, not derived.** There are two modes and
- * BRIEF is a genuinely different building (it drops the Blind Panel, and with
- * it the Archive, which only exists after the Blind Panel). Deriving one plan
+ * BRIEF is a genuinely different building: it drops the Blind Panel, and with
+ * it the Archive, which only exists after the Blind Panel. Deriving one plan
  * from the other would mean corridors that dangle into a room that is not
- * there. Two authored plans and a test that floods the floor to prove each one
+ * there. Two authored plans plus a test that floods the floor to prove each one
  * is a single connected space is far less machinery than a packing algorithm,
  * and it is the part that can actually be wrong.
  *
  * Nothing here is a puzzle fact. The building's shape is the same for every
- * seed, both parties could draw it, and a room the pair has not reached yet is
- * an empty shell: `roomPlan` returns nothing for a chamber whose facts have not
- * arrived, so there is no state to leak even if the walls are on screen.
+ * seed, both parties could draw it, and a room the pair has not reached is an
+ * empty shell: `roomPlan` returns nothing for a chamber whose facts have not
+ * arrived, so there is no state to leak even with the walls on screen.
  */
 
 import { MODE_CHAMBERS, type SessionMode } from "@semaphore/protocol";
-import {
-  CANVAS,
-  CHAMBER_ACCENT,
-  ARCHIVE_PLAN,
-  CHAMBER_NOTCHES,
-  INTERLUDE_PLAN,
-  cellKey,
-  shapeCells,
-  tilesForCells,
-  type CellOwner,
-  type Rect,
-  type Tile,
-} from "./room.js";
-import { TILE } from "./atlas.js";
+import { ROOM_SIZES, CHAMBER_ACCENT, type RoomSize } from "./chamber.js";
 import { FLOOR_NAMES, floorsFor, type FloorId } from "./floors.js";
 import type { RenderChannel } from "./palette.js";
 
-/**
- * Where one floor sits in the station, in station tiles.
- *
- * The size is not repeated here: it comes from `CHAMBER_NOTCHES`, so a chamber
- * that changes shape changes shape in the building too and cannot be laid out
- * against a stale width.
- */
+/** Where a room's floor centre sits in station metres. */
 export interface Placement {
-  readonly col: number;
-  readonly row: number;
+  readonly x: number;
+  readonly z: number;
+}
+
+/** A rectangle of floor on the station plane, in metres. */
+export interface Strip {
+  readonly x: number;
+  readonly z: number;
+  readonly width: number;
+  readonly depth: number;
 }
 
 /** One mode's building: where its floors are, and the corridors joining them. */
 export interface StationLayout {
   readonly rooms: Readonly<Partial<Record<FloorId, Placement>>>;
-  /** Corridors, in station tiles. Plain floor; the walls fall out around them. */
-  readonly corridors: readonly Rect[];
+  /** Corridors, as centred rectangles. Plain floor, with walls around them. */
+  readonly corridors: readonly Strip[];
 }
 
-/**
- * The Archive's own outline.
- *
- * It is not a chamber, so it has no entry in `CHAMBER_NOTCHES`, but it is a
- * room PILOT stands in and it needs a floor. The size comes from the room's
- * own plan rather than being repeated here, for the same reason a chamber's
- * does: a room that grew to fit its monitor and left the station laying it out
- * against a stale width would put half of it through a wall. No notches, so
- * the monitor has a flat wall to hang on.
- */
-export const ARCHIVE_SHAPE = {
-  cols: ARCHIVE_PLAN.cols,
-  rows: ARCHIVE_PLAN.rows,
-  notches: [] as readonly Rect[],
-} as const;
+/** How wide a corridor is. Wide enough to walk, narrow enough to read as one. */
+const CORRIDOR = 3;
 
-/** The channel each floor's walls wear. The Archive is nobody's room. */
+/** The channel each floor's light wears. The Archive is nobody's room. */
 export const FLOOR_ACCENT: Readonly<Record<FloorId, RenderChannel>> = {
   ...CHAMBER_ACCENT,
   archive: "shared",
@@ -91,233 +68,86 @@ export const FLOOR_ACCENT: Readonly<Record<FloorId, RenderChannel>> = {
 /**
  * The two buildings.
  *
- * FULL is a ring: the Airlock top-left, the Signal Room top-right, the Blind
- * Panel bottom-right and the Concord Lock bottom-left, with a spine of
- * corridors between them and the Archive hanging off the middle of the lower
- * one. Walking it in play order takes the pair clockwise around the building
- * and back to the door they came in near, which is the shape of the story.
+ * FULL is a ring. The Airlock is north-west, the Signal Room north-east, the
+ * Blind Panel south-east and the Concord Lock south-west, with the Archive
+ * hanging south off the middle of the lower spine. Walking it in play order
+ * takes the pair clockwise round the building and back to the corner they came
+ * in at, which is the shape of the story: you end up where you started, on the
+ * other side of the door.
  *
- * BRIEF has three rooms and no Archive (the Archive follows the Blind Panel,
- * which BRIEF drops), so it is a shallow V: across the top, then down into the
- * Concord Lock.
+ * The Archive is deliberately a **detour off the spine** rather than a room on
+ * the way. You go down into the records and come back up, which is what makes
+ * it feel like something you found rather than something you were routed
+ * through.
+ *
+ * BRIEF has three rooms and no Archive, so it is an L: across the top, then
+ * down and back in to the Concord Lock.
  *
  * Every number here is checked by `plan.test.ts`, which proves that nothing
- * overlaps, that the floor is one connected space, that every device in every
- * chamber still lands on floor, and that the whole thing fits the camera's
- * wide shot. The numbers were arrived at by hand and should not be trusted on
- * their own.
+ * overlaps, that the floor is one connected space, that every fixture in every
+ * chamber still stands inside its room, and that the whole building fits what
+ * the wide shot can frame. The numbers were arrived at by hand and should not
+ * be trusted on their own.
  */
 export const STATION_LAYOUT: Readonly<Record<SessionMode, StationLayout>> = {
   full: {
     rooms: {
-      airlock: { col: 0, row: 0 },
-      signal_room: { col: 22, row: 0 },
-      archive: { col: 15, row: 15 },
-      blind_panel: { col: 22, row: 22 },
-      concord_lock: { col: 0, row: 22 },
+      airlock: { x: -16, z: -14 },
+      signal_room: { x: 14, z: -14 },
+      blind_panel: { x: 14, z: 12 },
+      archive: { x: 0, z: 18 },
+      concord_lock: { x: -16, z: 10 },
     },
     corridors: [
-      // Airlock to Signal Room, across the top.
-      { col: 16, row: 4, cols: 6, rows: 2 },
-      // Signal Room down the right-hand side into the Blind Panel.
-      { col: 28, row: 14, cols: 2, rows: 8 },
-      // The lower spine, joining the Blind Panel to the Concord Lock.
-      { col: 16, row: 27, cols: 6, rows: 2 },
-      // The stub up off that spine into the Archive, which is why the Archive
-      // is a detour rather than a room on the way.
-      { col: 19, row: 21, cols: 2, rows: 6 },
+      // Airlock to Signal Room, across the north side.
+      { x: -1.25, z: -14, width: 17.5, depth: CORRIDOR },
+      // Signal Room down the east side into the Blind Panel.
+      { x: 14, z: 0.5, width: CORRIDOR, depth: 16 },
+      // The southern spine, joining the Blind Panel to the Concord Lock.
+      { x: -1.25, z: 12, width: 15.5, depth: CORRIDOR },
+      // The stub south off that spine into the Archive, which is why the
+      // Archive is somewhere you go down to rather than somewhere you pass.
+      { x: 0, z: 14, width: CORRIDOR, depth: 1 },
     ],
   },
   brief: {
     rooms: {
-      airlock: { col: 0, row: 0 },
-      signal_room: { col: 22, row: 0 },
-      concord_lock: { col: 14, row: 18 },
+      airlock: { x: -16, z: -14 },
+      signal_room: { x: 14, z: -14 },
+      concord_lock: { x: -2, z: 8 },
     },
     corridors: [
-      { col: 16, row: 4, cols: 6, rows: 2 },
-      // Down out of the Signal Room. Columns 23 and 24 rather than the middle
-      // of the wall, because the Concord Lock's top corners are chamfered and
-      // a corridor into a chamfer is a corridor into the void.
-      { col: 23, row: 14, cols: 2, rows: 4 },
+      { x: -1.25, z: -14, width: 17.5, depth: CORRIDOR },
+      // Down out of the Signal Room, then west into the Concord Lock's east
+      // wall. An L rather than a straight run, because the Concord Lock sits
+      // under the middle of the building in this mode and a vertical drop from
+      // the Signal Room would miss it entirely.
+      { x: 14, z: -0.5, width: CORRIDOR, depth: 14 },
+      // Stops exactly on the Concord Lock's east wall. It ran half a metre
+      // past it in the first draft, which does not fail to render: it takes a
+      // strip of the room's floor, and because a corridor never overwrites a
+      // room the strip keeps the room's height and reads as nothing at all
+      // until you notice the wall is missing. `plan.test.ts` caught it.
+      { x: 10.25, z: 5, width: 10.5, depth: CORRIDOR },
     ],
   },
 };
 
-/** The outline of one floor: its box, and the pieces cut out of it. */
-export function shapeOf(floor: FloorId): {
-  readonly cols: number;
-  readonly rows: number;
-  readonly notches: readonly Rect[];
-} {
-  return floor === "archive" ? ARCHIVE_SHAPE : (CHAMBER_NOTCHES[floor] ?? ARCHIVE_SHAPE);
+/** A room's footprint on the station plane. */
+export function footprintOf(floor: FloorId): RoomSize {
+  return ROOM_SIZES[floor];
 }
 
 /**
- * Where a floor sits in this mode's station, or null if the mode has no such
+ * Where a floor stands in this mode's station, or null if the mode has no such
  * floor.
  *
- * Null rather than a default position, because a caller that asks for the
- * Blind Panel in a BRIEF session has made a mistake and drawing it at the
- * origin would hide that behind a room stacked on the Airlock.
+ * Null rather than a default position, because a caller that asks for the Blind
+ * Panel in a BRIEF session has made a mistake, and putting it at the origin
+ * would hide that behind a room standing inside the Airlock.
  */
 export function placementOf(mode: SessionMode, floor: FloorId): Placement | null {
   return STATION_LAYOUT[mode].rooms[floor] ?? null;
-}
-
-/**
- * Every floor cell of a mode's station, tagged with the floor it belongs to.
- *
- * Corridors are tagged with no floor, which is what makes them read as
- * in-between: they take no channel colour and they never light up as the room
- * the pair is standing in.
- */
-export function stationCells(mode: SessionMode): ReadonlyMap<string, CellOwner> {
-  const layout = STATION_LAYOUT[mode];
-  const owners = new Map<string, CellOwner>();
-  for (const floor of floorsFor(mode)) {
-    const at = layout.rooms[floor];
-    if (at === undefined) continue;
-    const shape = shapeOf(floor);
-    for (const key of shapeCells(shape.cols, shape.rows, shape.notches, at.col, at.row)) {
-      owners.set(key, { channel: FLOOR_ACCENT[floor], owner: floor });
-    }
-  }
-  for (const run of layout.corridors) {
-    for (let row = run.row; row < run.row + run.rows; row += 1) {
-      for (let col = run.col; col < run.col + run.cols; col += 1) {
-        // A corridor never overwrites a room. If one ever did, the room would
-        // silently lose its channel along that run.
-        const key = cellKey(col, row);
-        if (!owners.has(key)) owners.set(key, { channel: "shared", owner: null });
-      }
-    }
-  }
-  return owners;
-}
-
-/**
- * The whole building for one mode, resolved to tiles.
- *
- * Static for the life of a session, so `scenes.ts` builds it once. That is not
- * only a saving: it is what lets the station be plain game objects rather than
- * a pool, and a pool is the thing that would have to be re-sorted every frame
- * for a building that never changes.
- */
-export function stationTiles(mode: SessionMode): readonly Tile[] {
-  const owners = stationCells(mode);
-  return tilesForCells(new Set(owners.keys()), owners);
-}
-
-/** The station's extent in tiles, wall ring included. */
-export function stationBounds(mode: SessionMode): {
-  readonly col: number;
-  readonly row: number;
-  readonly cols: number;
-  readonly rows: number;
-} {
-  let minCol = Infinity;
-  let minRow = Infinity;
-  let maxCol = -Infinity;
-  let maxRow = -Infinity;
-  for (const key of stationCells(mode).keys()) {
-    const [col, row] = key.split(",").map(Number) as [number, number];
-    minCol = Math.min(minCol, col);
-    maxCol = Math.max(maxCol, col);
-    minRow = Math.min(minRow, row);
-    maxRow = Math.max(maxRow, row);
-  }
-  // Grown by one on every side: the wall ring is part of the building.
-  return {
-    col: minCol - 1,
-    row: minRow - 1,
-    cols: maxCol - minCol + 3,
-    rows: maxRow - minRow + 3,
-  };
-}
-
-/**
- * The camera's zoom for the wide shot.
- *
- * A half rather than a fitted fraction. The canvas is scaled to a whole
- * multiple of 320 (D-031), so at the usual 2x a zoom of one half puts exactly
- * one source pixel on one device pixel and the building stays crisp; 0.47
- * would not, and the shimmer that follows is the thing D-031 exists to
- * prevent. `plan.test.ts` asserts both layouts fit inside what this shows,
- * which is the constraint the layouts were authored against rather than one
- * they happen to satisfy.
- */
-export const WIDE_ZOOM = 0.5;
-
-/** What the wide shot can show, in station pixels. */
-export const WIDE_EXTENT = CANVAS / WIDE_ZOOM;
-
-/** Where the camera is looking, in station pixels, and how close. */
-export interface Shot {
-  readonly x: number;
-  readonly y: number;
-  readonly zoom: number;
-  /** The floor the shot is framed on, or null for the wide shot. */
-  readonly floor: FloorId | null;
-}
-
-/** The centre of one floor, in station pixels. */
-export function centreOf(mode: SessionMode, floor: FloorId): { x: number; y: number } | null {
-  const at = placementOf(mode, floor);
-  if (at === null) return null;
-  const shape = shapeOf(floor);
-  return {
-    x: (at.col + shape.cols / 2) * TILE,
-    y: (at.row + shape.rows / 2) * TILE,
-  };
-}
-
-/** The centre of the whole building, in station pixels. */
-export function centreOfStation(mode: SessionMode): { x: number; y: number } {
-  const bounds = stationBounds(mode);
-  return {
-    x: (bounds.col + bounds.cols / 2) * TILE,
-    y: (bounds.row + bounds.rows / 2) * TILE,
-  };
-}
-
-/**
- * Where the camera should be, for a phase, a floor, and whether the wide shot
- * has been asked for.
- *
- * Close on the room the pair is standing in, and wide when something asks for
- * the building. The wide shot is not a fallback: it is the only view in which
- * the station is a *building* rather than a room.
- *
- * **`wide` is a parameter rather than a phase because the phase that ought to
- * have driven it does not exist.** `TRANSITIONING` looks like the moment to
- * pull back and it is listed below, but the worker settles it inside the same
- * `reduce()` call that solved the chamber (doc 05 section 4, `settleTransition`),
- * so it never reaches a client as a frame. A camera keyed on it would be a
- * beat that can never fire. It stays in the list because it is the right
- * answer if the machine ever does park there, and the caller supplies the walk
- * and the map key it actually has.
- *
- * Pure, and returns a target rather than moving anything, so the framing can
- * be tested without a camera.
- */
-export function shotFor(
-  mode: SessionMode,
-  phase: string,
-  floor: FloorId | null,
-  wide = false,
-): Shot {
-  const pulled = { ...centreOfStation(mode), zoom: WIDE_ZOOM, floor: null };
-  if (wide || floor === null) return pulled;
-  if (phase === "TRANSITIONING" || phase === "ESCAPED" || phase === "FAILED") return pulled;
-  const centre = centreOf(mode, floor);
-  if (centre === null) return pulled;
-  return { ...centre, zoom: 1, floor };
-}
-
-/** A floor's name, for the label the wide shot writes across each room. */
-export function labelOf(floor: FloorId): string {
-  return FLOOR_NAMES[floor];
 }
 
 /** Every floor this mode's station actually contains, in play order. */
@@ -325,8 +155,145 @@ export function floorsOf(mode: SessionMode): readonly FloorId[] {
   return floorsFor(mode).filter((floor) => placementOf(mode, floor) !== null);
 }
 
+/** A floor's name, for the label the wide shot writes across each room. */
+export function labelOf(floor: FloorId): string {
+  return FLOOR_NAMES[floor];
+}
+
+/** One room's floor rectangle, in station metres. */
+export function roomStrip(mode: SessionMode, floor: FloorId): Strip | null {
+  const at = placementOf(mode, floor);
+  if (at === null) return null;
+  const size = footprintOf(floor);
+  return { x: at.x, z: at.z, width: size.width, depth: size.depth };
+}
+
+/** Every rectangle of floor in this mode's station: rooms first, then corridors. */
+export function stationStrips(mode: SessionMode): readonly Strip[] {
+  const strips: Strip[] = [];
+  for (const floor of floorsOf(mode)) {
+    const strip = roomStrip(mode, floor);
+    if (strip !== null) strips.push(strip);
+  }
+  strips.push(...STATION_LAYOUT[mode].corridors);
+  return strips;
+}
+
+/** A cell on the station's one-metre grid. Signed, so a string not an index. */
+export function cellKey(x: number, z: number): string {
+  return `${String(x)},${String(z)}`;
+}
+
+/**
+ * The station's floor, rasterised to a one-metre grid, each cell carrying the
+ * height of the wall that should stand beside it.
+ *
+ * This is what makes walls resolvable in **one pass** (D-038's rule, carried
+ * through D-042). A corridor meeting a room is a junction, and walls built
+ * per-room would each close an opening the other one wanted. Rasterised
+ * together, a wall is simply every cell that is not floor and touches floor,
+ * and a doorway is not a feature anybody places: it is the absence of a wall
+ * where two floors meet.
+ *
+ * Rooms are written first and a corridor never overwrites one, so the wall
+ * between a room and a corridor takes the room's height rather than the
+ * corridor's. That is what stops a tall chamber growing a low lintel wherever
+ * something joins it.
+ *
+ * It lives here rather than in the renderer because it is the part that can be
+ * wrong in a way nobody notices by looking: a corridor one metre short still
+ * draws, as a stub beside a sealed room, and the only way to find it by eye is
+ * to play far enough to be trapped.
+ */
+export function stationCells(mode: SessionMode): ReadonlyMap<string, number> {
+  const heights = new Map<string, number>();
+  for (const floor of floorsOf(mode)) {
+    const strip = roomStrip(mode, floor);
+    if (strip === null) continue;
+    const height = footprintOf(floor).height;
+    for (const key of cellsOf(strip)) heights.set(key, height);
+  }
+  for (const corridor of STATION_LAYOUT[mode].corridors) {
+    for (const key of cellsOf(corridor)) {
+      if (!heights.has(key)) heights.set(key, CORRIDOR_HEIGHT);
+    }
+  }
+  return heights;
+}
+
+/**
+ * Which room owns each cell of the station's floor, corridors excluded.
+ *
+ * The companion to `stationCells`, and pure for the same reason: it decides
+ * which masonry belongs to which chamber, and the renderer uses it to drop
+ * every wall that is not the current room's when the camera is standing in a
+ * room.
+ *
+ * That matters because the station is a **cutaway**. Open at the top and on
+ * the south face, a camera in one chamber looks straight over its east wall
+ * into whatever stands beyond it, and what stands beyond it is unlit: the
+ * neighbouring corridor and rooms arrive in the frame as flat black slabs
+ * crowding the room the player is actually in. Hiding them is not a trick to
+ * hide a defect, it is the model rule applied one level further in: in a room
+ * you see that room's shell, and `M` steps back to see the building.
+ *
+ * Corridors are deliberately unowned. A corridor wall borders no chamber, so
+ * it is hidden in every room shot and drawn only in the wide one.
+ */
+export function stationOwners(mode: SessionMode): ReadonlyMap<string, FloorId> {
+  const owners = new Map<string, FloorId>();
+  for (const floor of floorsOf(mode)) {
+    const strip = roomStrip(mode, floor);
+    if (strip === null) continue;
+    for (const key of cellsOf(strip)) owners.set(key, floor);
+  }
+  return owners;
+}
+
+/** How tall a corridor's walls are. Lower than any room, so rooms read taller. */
+export const CORRIDOR_HEIGHT = 2.6;
+
+/** Every grid cell a strip covers. */
+function cellsOf(strip: Strip): readonly string[] {
+  const x0 = Math.round(strip.x - strip.width / 2);
+  const z0 = Math.round(strip.z - strip.depth / 2);
+  const keys: string[] = [];
+  for (let z = z0; z < z0 + Math.round(strip.depth); z += 1) {
+    for (let x = x0; x < x0 + Math.round(strip.width); x += 1) keys.push(cellKey(x, z));
+  }
+  return keys;
+}
+
+/** The building's extent on the floor plane, in metres. */
+export function stationBounds(mode: SessionMode): Strip {
+  let minX = Infinity;
+  let minZ = Infinity;
+  let maxX = -Infinity;
+  let maxZ = -Infinity;
+  for (const strip of stationStrips(mode)) {
+    minX = Math.min(minX, strip.x - strip.width / 2);
+    maxX = Math.max(maxX, strip.x + strip.width / 2);
+    minZ = Math.min(minZ, strip.z - strip.depth / 2);
+    maxZ = Math.max(maxZ, strip.z + strip.depth / 2);
+  }
+  return {
+    x: (minX + maxX) / 2,
+    z: (minZ + maxZ) / 2,
+    width: maxX - minX,
+    depth: maxZ - minZ,
+  };
+}
+
+/** The centre of one floor, in station metres, or null if the mode lacks it. */
+export function centreOf(mode: SessionMode, floor: FloorId): Placement | null {
+  return placementOf(mode, floor);
+}
+
+/** The centre of the whole building, in station metres. */
+export function centreOfStation(mode: SessionMode): Placement {
+  const bounds = stationBounds(mode);
+  return { x: bounds.x, z: bounds.z };
+}
+
 /** The chambers a mode plays, re-exported so the test can check the two agree. */
 export const CHAMBERS_OF = MODE_CHAMBERS;
-
-/** The interlude room's size, so the Archive's shape and the plan agree. */
-export const INTERLUDE_SIZE = { cols: INTERLUDE_PLAN.cols, rows: INTERLUDE_PLAN.rows } as const;

@@ -1,27 +1,32 @@
 /**
- * The DOM around the canvas: the gate screen, and the station console.
+ * The DOM around the viewport: the gate screen, and the station console.
  *
  * Two surfaces live here. The **gate screen**, shown to a browser with no
- * WebMCP, and the **console**, which is the frame the canvas sits in: the
- * clock, the station's floor list, the ambiguity meter, the audible strip, the
- * activity log, the notepad, the manifest plate, the legend, and PILOT's
+ * WebMCP, and the **console**, which is the equipment the room sits inside: the
+ * clock, the ambiguity gauge, the station's floors, the audible strip, the
+ * starter prompt, the manifest, the activity log, the notepad, and PILOT's own
  * controls.
  *
- * Most of that used to be drawn on the canvas, in six panels packed into the
- * seventy pixels above and below the room, at an estimated 4.8 pixels per
- * character (D-036). It is DOM now for three reasons: the room got the whole
- * canvas back, a browser measures its own text better than a constant can, and
- * every one of those panels is now selectable and reachable by a screen reader,
- * which none of them was as pixels.
+ * ## The layout is the thesis
  *
- * **The rule that governs what may move here has not changed.** Puzzle-critical
- * visuals render to canvas, never to DOM, because a DOM text node holding a
- * glyph is a text node an agent with page access can scrape. Everything on the
- * console passes that test for one of three reasons, and each was checked
- * individually:
+ * The console used to be three bays of roughly equal weight around a square
+ * canvas, which read as a dashboard with a game in it. It is now **two surfaces
+ * with the room between them** (D-045): everything the human perceives on the
+ * left, everything the agent can do on the right. That arrangement is the
+ * game's own argument - an agent's tool surface and a human's UI surface do not
+ * have to be the same surface - stated as furniture, where a judge who reads
+ * nothing else still sees it.
  *
- * - **Public copy**: the starter prompt, the legend, the room's name, the
- *   clock, which floors this session has.
+ * ## What may be a text node
+ *
+ * **The rule that governs what may live out here has not changed.**
+ * Puzzle-critical visuals render to the canvas, never to DOM, because a DOM text
+ * node holding a glyph is a text node an agent with page access can scrape.
+ * Everything on the console passes that test for one of three reasons, and each
+ * was checked individually:
+ *
+ * - **Public copy**: the starter prompt, the legend, the room's name, the clock,
+ *   which floors this session has, and the phase captions over the viewport.
  * - **KEEPER's own**: the manifest is the registry KEEPER can enumerate for
  *   itself; a log line is a call KEEPER just made, with its arguments already
  *   stripped.
@@ -29,9 +34,10 @@
  *   surface both parties write to, and the sound, which both parties perceive
  *   and which is therefore the one thing PILOT never has to describe.
  *
- * What stays on the canvas is everything `VISUAL`: the glyphs on the levers,
- * the needle values, the cipher offset, the state of the manual page. If a
- * change ever wants one of those out here, the change is wrong.
+ * Everything `VISUAL` stays in the scene: the glyphs on the levers, the gauge
+ * readings, the cipher offset, the state of the manual page. Those are label
+ * sprites inside the WebGL canvas (`render/kit.ts`). If a change ever wants one
+ * of them out here, the change is wrong.
  */
 
 import type { PilotView } from "@semaphore/protocol";
@@ -44,8 +50,9 @@ import {
   formatTimer,
   meterFill,
 } from "./render/hud.js";
-import { roomPlan, roomTitle } from "./render/room.js";
+import { roomPlan, roomTitle } from "./render/chamber.js";
 import { stationFloors } from "./render/floors.js";
+import { CHANNEL_MARKER } from "./render/palette.js";
 
 const STARTER_PROMPT =
   "You are KEEPER, maintenance intelligence of a derelict signal station. You cannot " +
@@ -53,6 +60,9 @@ const STARTER_PROMPT =
   "know. Don't guess when you can ask. Begin your shift.";
 
 const CHROME_FLAG = "chrome://flags/#enable-webmcp-testing";
+
+/** How many segments the ambiguity gauge in the rail is divided into. */
+const GAUGE_SEGMENTS = 12;
 
 /** Build one element, with text and attributes, in one call. */
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -76,13 +86,58 @@ function panel(title: string, extra = ""): { section: HTMLElement; body: HTMLEle
 }
 
 /**
+ * The split lamp, drawn rather than set in type.
+ *
+ * One light source, two beams, and they never meet. That is the game, and it is
+ * why the mark is worth the twenty lines: a judge watching four seconds of the
+ * video sees the geometry of the thing before anybody explains the premise.
+ *
+ * Inline SVG so it costs no request, scales to any size, and takes its colours
+ * from the same custom properties everything else on the page does. Below about
+ * twenty pixels the beams are dropped and the bisected circle carries it alone,
+ * which is the size a favicon has to work at.
+ */
+function lampMark(size: number): SVGSVGElement {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 32 32");
+  svg.setAttribute("width", String(size));
+  svg.setAttribute("height", String(size));
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("class", "lamp-mark");
+
+  const draw = (tag: string, attrs: Record<string, string>): SVGElement => {
+    const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+    svg.append(node);
+    return node;
+  };
+
+  if (size >= 20) {
+    // The two beams, projecting in opposite directions and never overlapping.
+    // Opaque enough to actually read against the page's near-black ground: at
+    // the 0.28 the first pass used they were invisible in a screenshot, which
+    // reduced the mark to a two-tone circle and lost the half of it that says
+    // what the game is.
+    draw("path", { d: "M13 10 L1 5 L1 27 L13 22 Z", fill: "var(--lamp)", opacity: "0.5" });
+    draw("path", { d: "M19 10 L31 5 L31 27 L19 22 Z", fill: "var(--tide)", opacity: "0.5" });
+  }
+
+  // The lamp: a circle bisected vertically, one channel each side.
+  draw("path", { d: "M16 5 A11 11 0 0 0 16 27 Z", fill: "var(--lamp)" });
+  draw("path", { d: "M16 5 A11 11 0 0 1 16 27 Z", fill: "var(--tide)" });
+  // The seam. One pixel of pearl down the middle: the shared channel, holding
+  // the two apart.
+  draw("rect", { x: "15.4", y: "4", width: "1.2", height: "24", fill: "var(--pearl)" });
+  return svg;
+}
+
+/**
  * Copy text to the clipboard, reporting on the button itself.
  *
  * The starter prompt card is the single most important element on the page
- * (doc 04 section 2), and a copy button that silently does nothing on a
- * browser without clipboard permission would break exactly the interaction it
- * exists to make effortless. So the fallback is to select the text, which
- * always works.
+ * (doc 04 section 2), and a copy button that silently does nothing on a browser
+ * without clipboard permission would break exactly the interaction it exists to
+ * make effortless. So the fallback is to select the text, which always works.
  */
 function copyButton(label: string, source: () => string, target: HTMLElement): HTMLButtonElement {
   const button = el("button", { type: "button", class: "copy" }, label);
@@ -103,21 +158,95 @@ function copyButton(label: string, source: () => string, target: HTMLElement): H
   return button;
 }
 
+/** The colour law, as a compact key rather than a panel. */
+function legendRow(): HTMLElement {
+  const list = el("ul", { class: "legend-row" });
+  for (const row of LEGEND) {
+    const item = el("li", { class: `chan-${row.channel}` });
+    item.append(el("span", { class: "marker" }, row.marker), el("span", {}, row.text));
+    list.append(item);
+  }
+  return list;
+}
+
+/**
+ * The ablation, as three bars.
+ *
+ * Two of them are on the floor, and that is the entire thesis understood in one
+ * second (doc 07 section 1). Numbers from `bench/results/ablation.md`: twenty
+ * seeds, Standard difficulty, six seconds between agent calls.
+ *
+ * They are restated here rather than fetched, because this screen has to work
+ * in a browser that cannot reach the worker and, for some judges, is the whole
+ * submission. The report they come from is committed beside them and is
+ * regenerated by one command, so the two can be checked against each other by
+ * anybody who doubts them.
+ */
+const ABLATION: readonly {
+  readonly who: string;
+  readonly cleared: number;
+  readonly note: string;
+}[] = [
+  { who: "Agent alone", cleared: 1.25, note: "0% escaped" },
+  { who: "Human alone", cleared: 0, note: "0% escaped" },
+  { who: "Together", cleared: 3.8, note: "90% escaped" },
+];
+
+function ablationChart(): HTMLElement {
+  const { section, body } = panel("We ran it three ways");
+  const chart = el("div", { class: "ablation" });
+  for (const row of ABLATION) {
+    const line = el("div", {
+      class: `ablation-row ${row.who === "Together" ? "together" : ""}`.trim(),
+    });
+    const track = el("div", { class: "track" });
+    const fill = el("i", {});
+    fill.style.width = `${String((row.cleared / 4) * 100)}%`;
+    track.append(fill);
+    line.append(
+      el("span", { class: "who" }, row.who),
+      track,
+      el("span", { class: "value" }, `${row.cleared.toFixed(2)} / 4`),
+    );
+    chart.append(line);
+  }
+  body.append(chart);
+  body.append(
+    el(
+      "p",
+      { class: "note" },
+      "Chambers cleared of four, over twenty fixed seeds. The agent-alone row is a " +
+        "ceiling rather than a sample: it plays a uniform draw from the worlds its own " +
+        "view cannot tell apart, so no real model does better.",
+    ),
+  );
+  return section;
+}
+
 /**
  * The screen a browser without WebMCP gets.
  *
- * For some judges this is the entire submission, so it carries the pitch and
- * the exact way to get in, for both browsers that support the draft. It never
- * appears as a consequence of a thrown error: `adapter.ts` degrades to nulls
- * so that reaching this screen is a decision rather than a crash.
+ * For some judges this is the entire submission, so it carries the pitch, the
+ * mark, the ablation, and the exact way in for both browsers that implement the
+ * draft. It never appears as a consequence of a thrown error: `adapter.ts`
+ * degrades to nulls so that reaching this screen is a decision rather than a
+ * crash.
  */
 export function renderGate(root: HTMLElement): void {
   root.replaceChildren();
   const main = el("main", { class: "gate" });
 
   const hero = el("section", { class: "hero" });
-  hero.append(
+  const mark = el("div", { class: "hero-mark" });
+  mark.append(lampMark(40));
+  const words = el("div", {});
+  words.append(
     el("p", { class: "eyebrow" }, "SEMAPHORE"),
+    el("p", { class: "tagline" }, "TWO PROCESSES. ONE LOCK. DON'T DEADLOCK."),
+  );
+  mark.append(words);
+  hero.append(
+    mark,
     el("h1", {}, "This browser cannot reach the station."),
     el(
       "p",
@@ -138,7 +267,7 @@ export function renderGate(root: HTMLElement): void {
 
   const routes = el("div", { class: "routes" });
 
-  const chrome = panel("Chrome 149 or newer", "route");
+  const chrome = panel("Chrome 149 or newer");
   chrome.body.append(
     el("p", {}, "Open the flag below, enable WebMCP testing, relaunch, and return here."),
   );
@@ -148,7 +277,7 @@ export function renderGate(root: HTMLElement): void {
     copyButton("Copy flag URL", () => CHROME_FLAG, flag),
   );
 
-  const chatgpt = panel("The ChatGPT app", "route");
+  const chatgpt = panel("The ChatGPT app");
   chatgpt.body.append(
     el(
       "p",
@@ -159,34 +288,21 @@ export function renderGate(root: HTMLElement): void {
   );
   routes.append(chrome.section, chatgpt.section);
 
-  const card = panel("Paste this to your agent once you are in", "card");
+  const card = panel("Paste this to your agent once you are in");
   const prompt = el("blockquote", { class: "prompt" }, STARTER_PROMPT);
   card.body.append(
     prompt,
     copyButton("Copy prompt", () => STARTER_PROMPT, prompt),
   );
 
-  main.append(routes, card.section, legendPanel());
-  root.append(main);
-}
-
-/** The colour law, permanently on screen, as teaching material. */
-function legendPanel(): HTMLElement {
-  const { section, body } = panel("Who perceives what", "legend");
-  const list = el("ul", {});
-  for (const row of LEGEND) {
-    const item = el("li", { class: `chan-${row.channel}` });
-    item.append(el("span", { class: "marker" }, row.marker), el("span", {}, row.text));
-    list.append(item);
-  }
-  body.append(list);
-  // The marker is not decoration. Roughly one player in twelve cannot separate
-  // the amber from the bone reliably, and a puzzle that is unplayable for them
-  // is a puzzle we got wrong.
-  body.append(
+  const key = panel("Who perceives what");
+  key.body.append(legendRow());
+  key.body.append(
     el("p", { class: "note" }, "Every marked thing carries its shape as well as its colour."),
   );
-  return section;
+
+  main.append(routes, card.section, ablationChart(), key.section);
+  root.append(main);
 }
 
 /** Everything the console needs to drive PILOT's half of the session. */
@@ -198,7 +314,7 @@ export interface ShellDeps {
 
 /** What `main.ts` gets back: where to mount things, and how to feed the console. */
 export interface ShellHandle {
-  /** The element the Phaser canvas is created inside. */
+  /** The element the renderer creates its canvas inside. */
   readonly stage: HTMLElement;
   /**
    * Where the director puts the notepad form.
@@ -223,59 +339,161 @@ export interface ShellHandle {
 }
 
 /**
- * The console: the canvas, and every readout around it.
+ * The things only PILOT can do, and when each of them is worth offering.
  *
- * Laid out as a station terminal rather than as a document. Three bays: the
- * station's own state on the left, the room in the middle, KEEPER's on the
- * right. That arrangement is the game's thesis as furniture - what the human
- * perceives and what the agent can do are two different surfaces, side by side,
- * with the room between them.
+ * This list is the asymmetry from the other side. None of them is a tool,
+ * however convenient a `retry_chamber` tool would be: an agent cannot grip a bar
+ * it has no body for, and it cannot restart a chamber it cannot see.
+ *
+ * **Each one appears only where it does something.** All four used to be on
+ * screen for the whole session, which meant three of them were an error message
+ * waiting to happen at any given moment, and a player learning the game could
+ * not tell the one that mattered from the three that did not. `when` is read
+ * against the phase and the chamber, both of which are `SHARED` by construction,
+ * so hiding an inapplicable control tells nobody anything they did not have.
+ */
+const PILOT_ACTIONS: readonly {
+  readonly label: string;
+  readonly action: string;
+  readonly when: (view: PilotView | null) => boolean;
+}[] = [
+  {
+    label: "grip the release bar",
+    action: "grip_bar",
+    when: (view) => view?.chamber === "concord_lock" && view.phase === "IN_CHAMBER",
+  },
+  {
+    label: "let go of the bar",
+    action: "release_bar",
+    when: (view) => view?.chamber === "concord_lock" && view.phase === "IN_CHAMBER",
+  },
+  {
+    label: "leave the archive",
+    action: "leave_archive",
+    when: (view) => view?.phase === "ARCHIVE",
+  },
+  {
+    label: "reset the chamber",
+    action: "retry_chamber",
+    when: (view) => view?.phase === "DEADLOCK",
+  },
+];
+
+/**
+ * PILOT's keyboard, as a list.
+ *
+ * `E` is the one worth putting first. Until the lamp resolved detail by
+ * proximity, walking moved a token and nothing else, and the honest complaint
+ * about it was that position did not mean anything. It does now: this list is
+ * where a player finds that out.
+ */
+const PILOT_KEYS: readonly (readonly [string, string])[] = [
+  ["W A S D", "walk the room, in any direction"],
+  ["E", "lean in and study what you are standing at"],
+  ["M", "step back and see the whole station"],
+  ["F", "fullscreen"],
+] as const;
+
+/** The session lengths, and what each one is, for the button's tooltip. */
+const BEGIN_MODES: readonly (readonly [string, string])[] = [
+  ["full", "Four chambers and the Archive. The whole shift."],
+  ["brief", "Three chambers. Chamber II is skipped."],
+  ["practice", "The full station, untimed."],
+] as const;
+
+/**
+ * The console: the room, and every readout around it.
+ *
+ * Laid out as a station terminal rather than as a document. The room and what
+ * the human perceives on the left, what the agent can do on the right, and the
+ * shared notepad at the seam between them.
  */
 export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   root.replaceChildren();
   const console_ = el("div", { class: "console" });
 
-  // ---- The top rail: who we are, where we are, how long we have. ----------
+  // ---- The rail: who we are, where we are, how much is unknown, how long. --
   const rail = el("header", { class: "rail" });
+  const mark = el("span", { class: "mark" });
+  mark.append(lampMark(18), el("span", {}, "SEMAPHORE"));
   const room = el("span", { class: "room" }, "CONNECTING");
-  const clock = el("span", { class: "clock" }, "--:--");
   const resets = el("span", { class: "resets" });
-  rail.append(el("span", { class: "mark" }, "SEMAPHORE"), room, resets, clock);
 
-  // ---- Left bay: the station, and how much is still unknown. --------------
-  const left = el("aside", { class: "bay bay-left" });
-  const station = panel("Station");
-  const floorList = el("ol", { class: "floors", "data-empty": "OUTSIDE THE STATION" });
-  station.body.append(floorList);
+  // The ambiguity gauge, beside the clock because it is a headline number.
+  // Segmented rather than continuous: information arrives in discrete quanta
+  // and doc 06 section 7 asks for a meter that ratchets rather than slides.
+  const gauge = el("div", { class: "gauge" });
+  const gaugeTrack = el("div", { class: "gauge-track" });
+  const segments = Array.from({ length: GAUGE_SEGMENTS }, () => el("i", {}));
+  gaugeTrack.append(...segments);
+  const bits = el("span", { class: "gauge-bits" }, "-");
+  gauge.append(el("span", { class: "gauge-label" }, "AMBIGUITY"), gaugeTrack, bits);
 
-  const meterPanel = panel("Remaining ambiguity");
-  const meterTrack = el("div", { class: "meter" });
-  const meterFillEl = el("i", {});
-  meterTrack.append(meterFillEl);
-  const bits = el("p", { class: "bits" }, "-");
-  meterPanel.body.append(meterTrack, bits);
-  // The server cannot hear the pair talk, so the meter does not move when
-  // PILOT merely explains something (doc 02 section 5). Saying so on the panel
-  // is cheaper than letting a playtester conclude the meter is broken.
-  meterPanel.body.append(
-    el("p", { class: "note" }, "Moves when the world does, not when you talk."),
+  const clock = el("span", { class: "clock" }, "--:--");
+  rail.append(mark, room, resets, gauge, clock);
+
+  // ---- Left: the room, what it sounds like, the station, and PILOT's hands.
+  const left = el("main", { class: "bay bay-stage" });
+
+  // The renderer appends its canvas and its caption layer straight into this
+  // element, so the mount point *is* the viewport rather than a wrapper inside
+  // it. The camera frames against this element's measured shape
+  // (`render/camera.ts`), and a wrapper that sized itself to its own content
+  // would re-frame the shot every time a panel below it grew by a line.
+  const viewport = el("div", { class: "viewport" });
+
+  /*
+   * Fullscreen.
+   *
+   * Worth a control of its own rather than leaving it to the browser's own
+   * chrome, for a reason specific to this game: the room is where every
+   * `VISUAL` fact lives, and PILOT's whole job is reading detail off it and
+   * getting it across in words. A bigger viewport is not comfort, it is the
+   * human's half of the puzzle getting easier to do.
+   *
+   * The button sits on the viewport rather than in a panel because that is what
+   * it acts on, and it reports its own state: a control that says "full screen"
+   * while you are already in it is a control nobody trusts.
+   */
+  const fullscreen = el(
+    "button",
+    { type: "button", class: "fullscreen", title: "Fullscreen (F)" },
+    "Fullscreen",
   );
+  const toggleFullscreen = (): void => {
+    if (document.fullscreenElement === viewport) {
+      void document.exitFullscreen().catch(() => {
+        /* Denied or already out. The button's label is corrected below. */
+      });
+      return;
+    }
+    void viewport.requestFullscreen().catch(() => {
+      /* Some browsers refuse outside a user gesture; nothing to recover. */
+    });
+  };
+  fullscreen.addEventListener("click", toggleFullscreen);
+  document.addEventListener("fullscreenchange", () => {
+    const inside = document.fullscreenElement === viewport;
+    fullscreen.textContent = inside ? "Exit fullscreen" : "Fullscreen";
+    viewport.classList.toggle("is-fullscreen", inside);
+  });
+  // F as well as the button. PILOT's hands are already on the keyboard for
+  // walking, and reaching for a mouse to make the room bigger is a reach away
+  // from the thing being looked at.
+  const onKey = (event: KeyboardEvent): void => {
+    if (event.key.toLowerCase() !== "f") return;
+    const target = event.target;
+    // Never while typing on the shared notepad.
+    if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) return;
+    toggleFullscreen();
+  };
+  globalThis.addEventListener("keydown", onKey);
+  viewport.append(fullscreen);
 
-  left.append(station.section, meterPanel.section, legendPanel());
-
-  // ---- Middle bay: the room, what it sounds like, and what PILOT can do. ---
-  const middle = el("main", { class: "bay bay-stage" });
-  // The frame and the mount point are two elements, deliberately. Phaser sizes
-  // its canvas from the parent's *border* box, so a border on the element it
-  // mounts into is invisible to it: it scales to the full 672, overflows the
-  // frame, and lands on a fractional 2.1x. The frame therefore goes on a
-  // wrapper and the mount point is left as an unadorned square.
-  const stageFrame = el("div", { class: "stage-frame" });
-  const stage = el("div", { class: "stage" });
-  stageFrame.append(stage);
-  const audible = el("p", { class: "audible", "aria-live": "polite" });
-
-  const begin = panel("Start the shift", "controls");
+  // The start card, over the room, until there is a session.
+  const launch = el("div", { class: "launch" });
+  launch.append(el("h3", {}, "Start the shift"));
+  const modes = el("div", { class: "launch-modes" });
   for (const [mode, blurb] of BEGIN_MODES) {
     const button = el("button", { type: "button" }, mode);
     button.title = blurb;
@@ -290,45 +508,67 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
         deps.onNote(`start ${mode}: ${response.text}`);
       });
     });
-    begin.body.append(button);
+    modes.append(button);
   }
-
-  const controls = panel("Your hands", "controls");
-  // The asymmetry from the human's side. None of these is a tool, however
-  // convenient a `retry_chamber` tool would be: an agent cannot grip a bar it
-  // has no body for, and it cannot restart a chamber it cannot see.
-  controls.body.append(
+  launch.append(
+    modes,
     el(
       "p",
       { class: "note" },
-      "Only you can do these. None of them is a tool your agent can call.",
+      "Your agent opens the door. Paste it the prompt on the right first.",
     ),
   );
-  for (const [label, action] of PILOT_ACTIONS) {
-    const button = el("button", { type: "button" }, label);
+  viewport.append(launch);
+
+  const audible = el("p", { class: "audible", "aria-live": "polite" });
+
+  const underdeck = el("div", { class: "underdeck" });
+
+  const station = panel("The station");
+  const floorList = el("ol", { class: "floors", "data-empty": "OUTSIDE THE STATION" });
+  station.body.append(floorList, legendRow());
+
+  const controls = panel("Your hands", "controls");
+  const actionButtons = PILOT_ACTIONS.map((entry) => {
+    const button = el("button", { type: "button" }, entry.label);
     button.addEventListener("click", () => {
-      void deps.client.post(action).then((response) => {
-        deps.onNote(`${label}: ${response.text}`);
+      void deps.client.post(entry.action).then((response) => {
+        deps.onNote(`${entry.label}: ${response.text}`);
       });
     });
     controls.body.append(button);
+    return { entry, button };
+  });
+  // The two things PILOT does with the keyboard rather than with a button. Both
+  // belong in this panel for the same reason the buttons do: they are the
+  // human's body, and no tool in the manifest reaches them.
+  // What the human's hands actually are. Spelled out as a list rather than a
+  // sentence, because the first build buried four controls in one line of prose
+  // and the most important of them - that walking changes what you can read -
+  // was not mentioned at all.
+  const keys = el("ul", { class: "keys" });
+  for (const [key, what] of PILOT_KEYS) {
+    const row = el("li", {});
+    row.append(el("kbd", {}, key), el("span", {}, what));
+    keys.append(row);
   }
-  // The two things PILOT does with the keyboard rather than with a button.
-  // Both belong in this panel for the same reason the buttons do: they are
-  // the human's body, and no tool in the manifest reaches them.
+  controls.body.append(keys);
   controls.body.append(
     el(
       "p",
       { class: "note" },
-      "A and D walk you across the room. Hold M to step back and see the whole station.",
+      "None of these is a tool your agent can call. Your lamp is the only thing that " +
+        "resolves detail: walk to a mechanism to read it.",
     ),
   );
-  middle.append(stageFrame, audible, begin.section, controls.section);
 
-  // ---- Right bay: KEEPER's surface, and the one surface they share. -------
+  underdeck.append(station.section, controls.section);
+  left.append(viewport, audible, underdeck);
+
+  // ---- Right: KEEPER's surface, and the one surface they share. -----------
   const right = el("aside", { class: "bay bay-right" });
 
-  const card = panel("Paste this to your agent", "card");
+  const card = panel("Your agent");
   const prompt = el("blockquote", { class: "prompt" }, STARTER_PROMPT);
   card.body.append(
     prompt,
@@ -336,14 +576,14 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
     el("p", { class: "note" }, "No response? Ask it: what tools does this page give you?"),
   );
 
-  const manifestPanel = panel("Manifest");
+  const manifestPanel = panel("Faculties");
   const manifestCount = el("span", { class: "count" }, "0");
   manifestPanel.section.querySelector("h2")?.append(manifestCount);
   const manifest = el("ol", { class: "manifest", "data-empty": "NO TOOLS REGISTERED" });
   manifestPanel.body.append(manifest);
-  // The plate exists to prove the toolchange animation is not a lie: it is
-  // drawn from the page's own `getTools()`, never from a record of what was
-  // meant to be registered.
+  // The plate exists to prove KEEPER's body is not a lie: both are drawn from
+  // the page's own `getTools()`, never from a record of what was meant to be
+  // registered.
   manifestPanel.body.append(
     el("p", { class: "note" }, "What your agent can do right now. It changes as you move."),
   );
@@ -352,7 +592,7 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   const log = el("ol", { class: "log", "data-empty": "NOTHING YET" });
   logPanel.body.append(log);
 
-  const padPanel = panel("Notepad", "notepad");
+  const padPanel = panel("Notepad");
   const notes = el("ol", { class: "notes", "data-empty": "BLANK" });
   const notepadHost = el("div", { class: "notepad-host" });
   padPanel.body.append(notes, notepadHost);
@@ -370,29 +610,35 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   // is hidden and zero-sized when it exists at all.
   const archiveHost = el("div", { class: "archive-host", "aria-hidden": "true" });
 
-  console_.append(rail, left, middle, right, archiveHost);
+  console_.append(rail, left, right, archiveHost);
   root.append(console_);
 
   /**
-   * The most ambiguity seen in the current room, for the meter's scale.
+   * The most ambiguity seen in the current room, for the gauge's scale.
    *
-   * Held here rather than on the model because it is a property of the
-   * display: the absolute bit count is not comparable across chambers, so the
-   * meter reads against the room's own high-water mark.
+   * Held here rather than on the model because it is a property of the display:
+   * the absolute bit count is not comparable across chambers - the Airlock
+   * opens at log2(3) and the Signal Room at nearly eleven bits - so the gauge
+   * reads against the room's own high-water mark. On a fixed scale the Airlock
+   * would sit permanently near-empty and teach the player nothing.
    */
   let peakBits = 0;
   let peakChamber: string | null = null;
 
+  /** The manifest as it was last painted, so a surviving tool does not re-animate. */
+  let shownTools: readonly string[] = [];
+
   return {
-    stage,
+    stage: viewport,
     notepadHost,
     archiveHost,
 
     update(model: StationModel) {
       const view = model.view;
       const remaining = view?.remainingMs ?? model.state?.remainingMs ?? null;
+      const phase = view?.phase ?? model.state?.phase ?? null;
 
-      room.textContent = view ? roomTitle(view) : (model.state?.phase ?? "CONNECTING");
+      room.textContent = view ? roomTitle(view) : (phase ?? "CONNECTING");
       clock.textContent = formatTimer(remaining);
       const total = model.chamberTimerMs;
       clock.classList.toggle(
@@ -401,14 +647,18 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
       );
       resets.textContent = view && view.retries > 0 ? `RESETS ${String(view.retries)}` : "";
 
+      // The start card is the only thing worth touching before a session
+      // exists, and three buttons that can no longer do anything afterwards.
+      launch.hidden = phase !== null && phase !== "ENTRY" && phase !== "LOBBY";
+
       paintFloors(floorList, view);
-      paintMeter();
-      audible.textContent = view ? (roomPlan(view)?.sound?.toUpperCase() ?? "") : "";
+      paintGauge();
+      audible.textContent = view ? (roomPlan(view)?.sound ?? "") : "";
+
+      for (const { entry, button } of actionButtons) button.hidden = !entry.when(view ?? null);
 
       manifestCount.textContent = String(model.tools.length);
-      fill(manifest, model.tools.slice(0, MANIFEST_LINES), (tool) =>
-        el("li", { class: "tool" }, tool),
-      );
+      paintManifest(model.tools);
       fill(log, model.log, (line) => el("li", {}, line));
       fill(notes, [...(view?.notes ?? [])].reverse(), (note) => {
         const item = el("li", {
@@ -421,7 +671,28 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
         return item;
       });
 
-      function paintMeter(): void {
+      /**
+       * Repaint the manifest, leaving the tools that survived alone.
+       *
+       * Rebuilding the whole list would restart the arrival animation on every
+       * row at every `toolchange`, which would say that the entire registry had
+       * just been replaced. The point of the two-tier lifecycle is that most of
+       * it did not.
+       */
+      function paintManifest(tools: readonly string[]): void {
+        const wanted = tools.slice(0, MANIFEST_LINES);
+        if (wanted.length === shownTools.length && wanted.every((t, i) => t === shownTools[i])) {
+          return;
+        }
+        shownTools = wanted;
+        fill(manifest, wanted, (tool) => {
+          const item = el("li", { class: "tool" });
+          item.append(el("span", { class: "marker" }, CHANNEL_MARKER.keeper), el("span", {}, tool));
+          return item;
+        });
+      }
+
+      function paintGauge(): void {
         const chamber = view?.chamber ?? null;
         if (chamber !== peakChamber) {
           peakChamber = chamber;
@@ -431,13 +702,16 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
         // wrong, so it is discarded rather than drawn.
         const current = model.concord?.chamber === chamber ? model.concord : null;
         if (current?.bits != null) peakBits = Math.max(peakBits, current.bits);
-        meterFillEl.style.width = `${String(meterFill(current?.bits ?? null, peakBits) * 100)}%`;
-        bits.textContent =
-          current?.bits == null ? "NOT MEASURED" : `${current.bits.toFixed(2)} BITS`;
+        const lit = Math.round(meterFill(current?.bits ?? null, peakBits) * GAUGE_SEGMENTS);
+        segments.forEach((segment, index) => {
+          segment.classList.toggle("lit", index < lit);
+        });
+        bits.textContent = current?.bits == null ? "-" : `${current.bits.toFixed(2)} bits`;
       }
     },
 
     dispose() {
+      globalThis.removeEventListener("keydown", onKey);
       root.replaceChildren();
     },
   };
@@ -446,16 +720,18 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
 /**
  * Replace a list's contents.
  *
- * Rebuilding rather than diffing. These lists are at most a dozen short rows
- * and are repainted only when the model actually changes, which is a few times
- * a minute; a keyed diff would be more code than the thing it optimises.
+ * Rebuilding rather than diffing. These lists are at most a dozen short rows and
+ * are repainted only when the model actually changes, which is a few times a
+ * minute; a keyed diff would be more code than the thing it optimises. The
+ * manifest is the exception, and it is handled above, because it is the one list
+ * whose *changing* is the thing being demonstrated.
  */
 function fill<T>(list: HTMLElement, items: readonly T[], make: (item: T) => HTMLElement): void {
   list.replaceChildren(...items.map(make));
 }
 
 /**
- * The station's floors, as the only progress display the game has.
+ * The station's floors, as the only progress display the console has.
  *
  * Every floor is listed from the first minute, including the ones not reached
  * yet, because knowing the station has a Concord Lock in it is part of knowing
@@ -478,24 +754,3 @@ function paintFloors(list: HTMLElement, view: PilotView | null): void {
     return item;
   });
 }
-
-/** The session lengths, and what each one is, for the button's tooltip. */
-const BEGIN_MODES: readonly (readonly [string, string])[] = [
-  ["full", "Four chambers and the Archive. The whole shift."],
-  ["brief", "Three chambers. Chamber II is skipped."],
-  ["practice", "The full station, untimed."],
-] as const;
-
-/**
- * The things only PILOT can do, none of which is a tool.
- *
- * This list is the asymmetry from the other side. An agent cannot grip a bar
- * it has no body for, and it cannot restart a chamber it cannot see, so these
- * stay off the registry however convenient a `retry_chamber` tool would be.
- */
-const PILOT_ACTIONS: readonly (readonly [string, string])[] = [
-  ["grip the release bar", "grip_bar"],
-  ["let go of the bar", "release_bar"],
-  ["leave the archive", "leave_archive"],
-  ["reset the chamber", "retry_chamber"],
-] as const;
