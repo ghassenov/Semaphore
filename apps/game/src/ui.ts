@@ -426,6 +426,127 @@ const BEGIN_MODES: readonly (readonly [string, string])[] = [
   ["practice", "The full station, untimed."],
 ] as const;
 
+/** How narrow and how wide a drawer may be dragged, in pixels. */
+const DRAWER_MIN = 220;
+const DRAWER_MAX = 560;
+
+/** How much one arrow key moves a drawer's edge, in pixels. */
+const DRAWER_STEP = 24;
+
+/**
+ * One edge of the deck: a rail of tabs, and a drawer that slides over the room.
+ *
+ * **The drawer overlays the viewport rather than pushing it, and that is a
+ * constraint rather than a preference.** The camera frames against the
+ * viewport's measured shape (`render/camera.ts`), so a panel that squeezed the
+ * viewport would re-frame the shot every time somebody opened one, and the
+ * room would jump. Overlaying costs a little of the room and re-frames nothing.
+ *
+ * One panel open per edge at a time. The old console showed six at once around
+ * a small room, which is the thing being fixed: a player who has to find the
+ * spiral is looking at a room, and everything else is a thing they ask for.
+ */
+function edge(side: "left" | "right"): {
+  readonly tabs: HTMLElement;
+  readonly drawer: HTMLElement;
+  add(label: string, section: HTMLElement): void;
+  close(): void;
+} {
+  const tabs = el("nav", { class: `tabs tabs-${side}` });
+  const drawer = el("aside", { class: `drawer drawer-${side}` });
+  drawer.hidden = true;
+  const body = el("div", { class: "drawer-body" });
+
+  /**
+   * The resize handle, as a `separator` rather than a decorative div.
+   *
+   * It carries arrow keys as well as a pointer because a control that only
+   * answers to dragging is a control a keyboard cannot reach, and this repo
+   * treats that as a defect rather than a nicety.
+   */
+  const grip = el("div", {
+    class: "grip",
+    role: "separator",
+    tabindex: "0",
+    "aria-orientation": "vertical",
+    "aria-label": "Resize panel",
+    title: "Drag, or use the arrow keys",
+  });
+  drawer.append(body, grip);
+
+  const panels = new Map<string, HTMLElement>();
+  const buttons = new Map<string, HTMLButtonElement>();
+  let open: string | null = null;
+
+  /** How wide the drawer is allowed to get on this window. */
+  const ceiling = (): number => Math.min(DRAWER_MAX, globalThis.innerWidth * 0.62);
+
+  function resize(to: number): void {
+    drawer.style.width = `${String(Math.max(DRAWER_MIN, Math.min(ceiling(), to)))}px`;
+  }
+
+  function show(name: string | null): void {
+    open = name;
+    for (const [id, section] of panels) section.hidden = id !== name;
+    for (const [id, button] of buttons) {
+      const on = id === name;
+      button.classList.toggle("on", on);
+      button.setAttribute("aria-expanded", String(on));
+    }
+    drawer.hidden = name === null;
+  }
+
+  grip.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    grip.setPointerCapture(event.pointerId);
+    const from = event.clientX;
+    const was = drawer.getBoundingClientRect().width;
+    const move = (moved: PointerEvent): void => {
+      // A left drawer grows as the pointer moves right and a right drawer
+      // grows as it moves left, because both are measured from their own edge.
+      resize(was + (side === "left" ? moved.clientX - from : from - moved.clientX));
+    };
+    const done = (): void => {
+      grip.removeEventListener("pointermove", move);
+      grip.removeEventListener("pointerup", done);
+      grip.removeEventListener("pointercancel", done);
+    };
+    grip.addEventListener("pointermove", move);
+    grip.addEventListener("pointerup", done);
+    grip.addEventListener("pointercancel", done);
+  });
+
+  grip.addEventListener("keydown", (event) => {
+    const nudge = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+    if (nudge === 0) return;
+    event.preventDefault();
+    resize(drawer.getBoundingClientRect().width + nudge * DRAWER_STEP * (side === "left" ? 1 : -1));
+  });
+
+  return {
+    tabs,
+    drawer,
+    close: () => {
+      show(null);
+    },
+    add(label, section) {
+      section.hidden = true;
+      panels.set(label, section);
+      body.append(section);
+
+      const button = el("button", { type: "button", class: "tab" }, label);
+      button.setAttribute("aria-expanded", "false");
+      button.addEventListener("click", () => {
+        // Clicking the open tab closes it, so the room can always be got back
+        // to with the same control that covered it.
+        show(open === label ? null : label);
+      });
+      buttons.set(label, button);
+      tabs.append(button);
+    },
+  };
+}
+
 /**
  * The console: the room, and every readout around it.
  *
@@ -457,8 +578,10 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   const clock = el("span", { class: "clock" }, "--:--");
   rail.append(mark, room, resets, gauge, clock);
 
-  // ---- Left: the room, what it sounds like, the station, and PILOT's hands.
-  const left = el("main", { class: "bay bay-stage" });
+  // ---- The deck: the room, with everything else folded into its two edges. -
+  const deck = el("main", { class: "deck" });
+  const west = edge("left");
+  const east = edge("right");
 
   // The renderer appends its canvas and its caption layer straight into this
   // element, so the mount point *is* the viewport rather than a wrapper inside
@@ -595,8 +718,6 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
     mixer.append(named);
   }
 
-  const underdeck = el("div", { class: "underdeck" });
-
   const station = panel("The station");
   const floorList = el("ol", { class: "floors", "data-empty": "OUTSIDE THE STATION" });
   station.body.append(floorList, legendRow());
@@ -635,11 +756,7 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
     ),
   );
 
-  underdeck.append(station.section, controls.section);
-  left.append(viewport, audible, mixer, underdeck);
-
-  // ---- Right: KEEPER's surface, and the one surface they share. -----------
-  const right = el("aside", { class: "bay bay-right" });
+  // ---- KEEPER's surface, and the one surface they share. ------------------
 
   const card = panel("Your agent");
   const prompt = el("blockquote", { class: "prompt" }, STARTER_PROMPT);
@@ -677,14 +794,44 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
     ),
   );
 
-  right.append(card.section, manifestPanel.section, logPanel.section, padPanel.section);
+  /*
+   * Which panel sits on which edge, and the order they are stacked in.
+   *
+   * PILOT's own two on the west edge and KEEPER's four on the east, which is
+   * the same thesis the old three-bay layout stated and the same one the room
+   * itself states: what the human perceives on one side, what the agent can do
+   * on the other. The difference is that now neither side is in the way until
+   * it is asked for.
+   */
+  west.add("Station", station.section);
+  west.add("Your hands", controls.section);
+  east.add("Your agent", card.section);
+  east.add("Faculties", manifestPanel.section);
+  east.add("Activity", logPanel.section);
+  east.add("Notepad", padPanel.section);
+
+  deck.append(west.tabs, viewport, east.tabs, west.drawer, east.drawer);
+
+  // The audible strip and the mix, under the room. Both are about sound and
+  // neither belongs behind a tab: the strip is the deaf-accessible half of the
+  // `AUDIBLE` channel and has to be visible while a chamber is being played.
+  const foot = el("div", { class: "foot" });
+  foot.append(audible, mixer);
 
   // Out of the flow entirely: an empty container for the archive frame, which
   // is hidden and zero-sized when it exists at all.
   const archiveHost = el("div", { class: "archive-host", "aria-hidden": "true" });
 
-  console_.append(rail, left, right, archiveHost);
+  console_.append(rail, deck, foot, archiveHost);
   root.append(console_);
+
+  // Escape closes whatever is covering the room. The room is the thing the
+  // player is trying to look at, so getting back to it should not need aim.
+  globalThis.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || isTypingTarget(event.target)) return;
+    west.close();
+    east.close();
+  });
 
   /**
    * The most ambiguity seen in the current room, for the gauge's scale.
