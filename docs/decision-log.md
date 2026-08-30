@@ -2005,3 +2005,79 @@ announced to a screen reader, and returns to its label after a moment - a button
 stuck on its own past tense stops reading as something that can be pressed
 again, and a paste that went to the wrong window is exactly when somebody needs
 to press it again.
+
+---
+
+### D-063 A guided first shift, in two layers, and a told opening
+
+**2026-08-31.** Three things a player arriving cold was never given: a screen
+that says what this is, a way to be shown how it works, and any sense that a
+shift begins and ends rather than simply switching on.
+
+**The landing screen led with "Start the shift" over three unnamed buttons.**
+On a submission deadline every judge arrives cold, and that screen told them
+nothing about what they had arrived at. It now leads with the thesis and proves
+it in a picture: the same lever rendered the two ways the two players receive
+it, the mark drawn by the game's own `glyphCanvas` and tinted to PILOT's
+channel exactly as `kit.glyphPlane` tints it in the station, beside the real
+shape of text the agent gets. The two channel colours do the job they do
+everywhere else, so the graphic teaches the legend while it makes the argument,
+and it never names the glyph - which is the design law and also the point. The
+gate screen leads with the same two things, from the same code, and demotes
+"this browser cannot reach the station" to a marked aside: doc 07 section 6 is
+explicit that for some judges that screen *is* the submission, and a submission
+should not open with an error.
+
+**The tour is two layers because they teach different things.** The camera
+teaches the room - it is the only way to show a mark at the size PILOT actually
+has to describe it, and the third beat flies in until two glyph plates fill the
+frame. The dimming layer teaches the console, because a panel is a rectangle in
+a corner and no camera move can point at one. `plan.ts` holds the copy and the
+order and is pure; `tour.ts` drives and chooses nothing.
+
+*The order is the argument.* A player told the controls first learns a control
+scheme; a player shown the asymmetry first learns why there is a second player,
+which is the only thing here that looking at the screen does not tell them. It
+is asserted, because it is exactly the ordering a later edit reshuffles for
+flow. So is the rule that no step may name a glyph, and **that one has already
+paid**: the walking beat said "cross the room", and `cross` is one of the twelve
+glyphs. The test caught a leak in copy that nobody would have read as a leak.
+
+**A step names a fixture and only the stage can find one.** `focus` goes on
+`StationModel` and `stage.ts` resolves it against the live room, so a step
+naming a fixture the current room does not contain resolves to nothing and the
+camera carries on, rather than flying at the origin.
+
+**The opening and the ending are told over the station, not in front of it.**
+Four lines in, three out. A title-card sequence would have been cheaper and
+would have looked like something else's opening; the station is already on
+screen, lit, with a camera that moves. Reduced motion is honoured by showing the
+words without the entrance rather than by skipping them: they carry the premise,
+and somebody who asked their system for less movement did not ask to be told
+less.
+
+---
+
+### D-064 The ground is retuned, and the palette lock had a hole
+
+**2026-08-31.** The eleven ground and material colours are retuned for range and
+legibility - `mist` carries most of the secondary text on the page and at
+`#7c8a99` was too dim to read - and the type scale is lifted systematically,
+compressed upward so the smallest labels gain the most. Panels get a 9px radius
+and three named elevation steps. Sharp rectangles outlined in hairlines is most
+of why this console read as test equipment.
+
+**The channel set is untouched, deliberately.** Those hues are information, and
+D-061 measured their separation under all three dichromacies. Retuning them
+would be retuning the legend and the colourblind guarantee together.
+
+**And the lock had a hole.** `check-palette.mjs` compared *declarations*:
+`--name: #rrggbb` on one side against `palette.ts` on the other. A colour
+written inline - in a gradient, a shadow, a border - is not a declaration, so it
+was never checked, and twenty had accumulated. Eleven carried a hue, and when
+the ground moved they silently stayed at the old values: the panels kept the
+previous palette's blue while everything around them changed. That is precisely
+the drift the script exists to prevent, arriving through the one door it had
+left open. They are `color-mix` against tokens now, pure light and shadow are
+`white` and `black` percentages so they cannot become a twenty-first colour by
+the back door, and the script fails on any hex written into a rule.
