@@ -1613,3 +1613,150 @@ first build of this layout came up with both drawers open and empty.
 **Result.** 680 tests. Entry 22.4KB to 24.2KB gzipped of a 400KB budget. Still
 no asset files: the grain is a filter, the mark is inline SVG, and the client
 makes no request for anything. 17 of 17 browser checks, and the frames read.
+
+---
+
+### D-053 Every door in a hole you can walk through
+
+**2026-08-30.** Asked for directly, as the ground the next decision stands on:
+if PILOT is going to walk back through a door, the doors have to be where the
+doors are.
+
+**What was wrong.** Two systems decided where a room's openings were and neither
+had ever been shown the other's answer. `plan.ts` rasterises the whole station's
+floor to a one-metre grid and stands a wall on every cell that is not floor and
+touches floor (D-038), so a doorway is not a thing anybody places: it is the gap
+where a corridor meets a room. `chamber.ts` placed a `door` fixture wherever a
+room's composition had space for one. So the Airlock announced DOOR OPEN on its
+north wall, which is solid masonry, while the way to the Signal Room was an
+unmarked three-metre gap in the east wall that no fixture stood in and nothing
+named. The Signal Room had no door at all. Nothing was broken by this while a
+door was only a success light.
+
+**The corridors moved, not the doors.** That is the decision worth recording,
+because the cheap version was available and wrong. Two of the five openings
+could not carry a door at all: the Signal Room's corridor left through its
+**south face**, and every south face in the station is open rather than walled
+so the camera can see in - a 2.9m bulkhead standing there is exactly the
+"hanging between the camera and the room" defect D-048 spent a pass removing.
+The other arrived at the Blind Panel's north wall, which is eleven metres of
+gauge bank. Bending the doors to those openings would have meant either
+accepting both defects or rearranging the two chambers around their plumbing.
+Bending the corridors cost three metres of extra run down the east side and
+moved nothing anybody looks at. **The station's building shape is the cheapest
+thing in the model to change and it was the last thing anybody thought of
+changing.**
+
+`doorways.ts` holds the openings as a wall and a distance along it, room-local,
+so a room still does not know where it stands (D-035). It is its own module
+because the fact belongs beside the corridors in `plan.ts` and `plan.ts` imports
+`chamber.ts` for the room sizes, so putting it there would close a cycle. It is
+authored, like the corridors it has to agree with, and `doorways.test.ts`
+derives the real openings from `stationCells` and fails if a door is not
+standing in one - the same shape as the flood-fill that proves the floor is one
+connected space.
+
+**KEEPER's alcove follows the door.** Three of the five east walls have a
+doorway now, and the body was standing in every one of them: KEEPER is drawn
+*inside* the wall, so a doorway at the same place is a torso in a doorframe. The
+alcove moves to the far end of the wall from the door, chosen from the door
+rather than authored, because the Concord Lock's doorway is on opposite halves
+of the same wall in the two modes. The check that keeps the alcove clear now
+covers doors as well as racks, with the doorframe's thickness included: a door's
+anchor sits exactly on the alcove's outer edge, so with no depth every door in
+the game clears every alcove by a hair and the check proves nothing.
+
+### D-054 Walking back through a door already opened
+
+**2026-08-30.** Asked for: the avatar can return to rooms it has solved, by
+going through a door once that door is open.
+
+**It is a camera feature, and that was the constraint the design was chosen
+against.** Three shapes were on the table. Free-roam of the whole station, with
+PILOT's position in real station metres and collision against the existing grid.
+Door-triggered return, where a key at an open door changes the room. And telling
+KEEPER where PILOT is standing, so the two can never be describing different
+rooms. The second was chosen, with the clock left running.
+
+Nothing crosses the wire. The server is not told, the chamber timer keeps
+draining so backtracking costs time, `projectForKeeper` is untouched, and no
+field was added to `PilotView`. A room the pair has left is drawn from the last
+frame the server sent for it - the same projection that was already on screen -
+held in a client-side map. **The gate is one function.** `doorLeadsTo` asks
+three things: the door is open, it leads somewhere in play order, and the room
+beyond is one the pair has already stood in. A room ahead of them has never been
+drawn, so a door onto one answers null. That is what keeps this a camera feature
+rather than a hole in the design law: no projection the server has not already
+pushed can be reached through it.
+
+`asCleared` opens the doors of a room the pair has left, and touches nothing
+else. It exists because the Signal Room has no `solved` fact at all - the
+correct sequence is a subset of the keys and only the server knows how long it
+is - so that room alone cannot say from its own facts that it was got out of.
+Having got out of a room is knowable without asking, because the pair is in the
+next one.
+
+**Two things fall out of the body and the session being in different rooms, and
+both are better than the alternative.** KEEPER is not drawn in a room the
+session has left: an empty alcove in the room behind you is the honest picture
+and a good beat. And the console names the room the viewport is showing, with
+the floor rail marking both, because a header naming one room over a picture of
+another reads as a bug in whichever of the two the reader trusts less.
+
+**The tour found four defects and all four were about the key.** Going through a
+door was first laid on top of the lean-in - hold `E` at a door and you go
+through - on the grounds that it is the same gesture. It is not. `E` near a door
+stopped meaning "let me look at this", and the one frame in the tour that exists
+to show a lean-in came back as the camera halfway out of the building. It is
+`Q`, edge-triggered. Arriving in a chamber stood PILOT in its doorway, which
+reads well alone and drags the camera with it, because the room shot follows the
+body: every chamber opened with a third of the frame taken up by the outside of
+a wall. Only walking through a door puts PILOT in one now. **A caption on a side
+wall cannot be separated from another one horizontally**, because a wall running
+away from the camera barely moves across the frame - three metres in the Signal
+Room was a dozen pixels on screen, and BACK TO AIRLOCK printed across PAGE
+MARKED. And the console grew a horizontal scrollbar the moment a room name got
+eight characters longer, because its grid had no column and defaulted to `auto`,
+which floors at the rail's min-content.
+
+**Captions are checked in screen space now**, by projection through the real
+camera, because the existing check measures anchors in metres and its own
+comment says why that is not enough. It runs at 16:9 only, and that limit is
+stated in the test: at 4:3 and 1:1 it finds the Blind Panel's own gauge and dial
+banks touching, which is nobody's authoring mistake and predates every door
+here. See NEXT-STEPS.
+
+### D-055 The rooms move, and there is something in them to look at
+
+**2026-08-30.** Asked for alongside D-054: better rooms, more animation, more
+decoration.
+
+**Dressing was allowed to move.** It is built once per room and never touched
+again, on the stated grounds that it has no state and nothing to read. That is
+still true, and it had quietly been doing duty for a second claim - that nothing
+in it moves. A station a hundred metres down with a cable hanging dead still off
+every beam is a photograph of a room. Cables and pendant bulbs swing off their
+own ceiling anchors and vents have an extractor turning behind the louvres,
+driven off each piece's position so nothing is tracked between frames and no two
+pieces move together, and skipped entirely under `prefers-reduced-motion`.
+
+**The two rooms that had never had a composition pass got one**, and they are
+the same two doc 06 asks for height in - which nothing in either was measured
+against. A nine-metre room and a four-metre room are the same picture from a
+camera that frames each to fill the viewport. Both have a ladder now: a rung
+every third of a metre is a human dimension laid up a wall, and it is the
+cheapest thing in the model that says how big a room is. Plus a high pipe
+gallery and long cable drops in the Signal Room, and in the Concord Lock a
+service run above the door, charts between the columns, lockers framing the
+great door and a pair of pendants off the centre line. Nothing goes on the floor
+down the middle: that room's whole job is to make the last twelve metres feel
+like a walk.
+
+**A latent bug, found by the first long cable.** A cable's `length` was its
+drop, in a type where `length` is a run along x and `height` is a rise - two
+fields that exist precisely so that nothing reading a piece has to guess which a
+number is. So the check that keeps dressing inside its room was measuring every
+cable's drop out sideways through the wall, and passed only because no cable had
+ever been hung near enough to one. The Archive's sightline check was reading the
+same field and had to be corrected with it, or moving cables onto `height` would
+have silently made that check see every cable as a point with no drop at all.
