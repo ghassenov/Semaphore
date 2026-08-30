@@ -70,6 +70,7 @@ import {
   ARCHIVE_SCREEN,
   clearOf,
   interlude,
+  keeperAlcove,
   lampReveal,
   nearestFixture,
   roomPlan,
@@ -93,6 +94,7 @@ import {
   footprintOf,
   placementOf,
   stationCells,
+  stationOwners,
   stationStrips,
 } from "./plan.js";
 import { activeFloor, stationFloors, type FloorId } from "./floors.js";
@@ -235,15 +237,72 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
 
   // ---- The building, built once per mode. --------------------------------
   const building = new Group();
+  building.name = "building";
   scene.add(building);
   let built: SessionMode | null = null;
   const roomHalos = new Map<FloorId, ReturnType<Kit["halo"]>>();
 
+  /**
+   * The station's masonry, kept so a room shot can drop everything that is not
+   * the room being looked at. One entry per instanced mesh over the same block
+   * list: the wall itself, then its two trim bands.
+   */
+  let masonry: {
+    readonly blocks: readonly { x: number; z: number; height: number; of: readonly FloorId[] }[];
+    readonly meshes: { mesh: InstancedMesh; y: number | null; thickness: number }[];
+  } | null = null;
+  /** Which floor's shell is currently standing, so the rewrite happens once. */
+  let showing: FloorId | null | undefined = undefined;
+  /** Every floor slab with the room it belongs to, or `null` for a corridor. */
+  const slabs: { slab: Mesh; of: FloorId | null }[] = [];
+
+  /**
+   * Stand only the masonry that belongs to `floor`, or all of it for `null`.
+   *
+   * Instance matrices rather than a second mesh, so the whole station stays two
+   * draw calls and the switch costs one buffer upload on the frame a room
+   * changes rather than anything per frame.
+   */
+  function showMasonry(floor: FloorId | null): void {
+    if (masonry === null || showing === floor) return;
+    showing = floor;
+    for (const { slab, of } of slabs) slab.visible = floor === null || of === floor;
+    const matrix = new Matrix4();
+    for (const { mesh, y, thickness } of masonry.meshes) {
+      masonry.blocks.forEach((block, index) => {
+        const mine = floor === null || block.of.includes(floor);
+        // A band also needs its wall to be tall enough to carry it, which is
+        // the rule the bands were built with and has to survive the rewrite.
+        const up = mine && (y === null || block.height > y + thickness);
+        matrix.makeScale(1, up ? (y === null ? block.height : 1) : 1, 1);
+        // Hidden means **sunk below the world**, not flattened.
+        //
+        // Scaling y to a hair was the first attempt and it is wrong: a box
+        // scaled to 0.0001 still has a full-size top face, fully lit, and a
+        // grid of them reads as pale plates lying in the void. That is exactly
+        // what the corridor walls either side of the Signal Room's south
+        // doorway turned into, and it looked like a rendering fault rather
+        // than like anything anybody placed.
+        matrix.setPosition(
+          block.x + 0.5,
+          up ? (y === null ? block.height / 2 : y) : -1000,
+          block.z + 0.5,
+        );
+        mesh.setMatrixAt(index, matrix);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+
   function buildStation(mode: SessionMode): void {
     if (built === mode) return;
     built = mode;
+    masonry = null;
+    showing = undefined;
     building.clear();
     roomHalos.clear();
+    slabs.length = 0;
+    const owns = stationOwners(mode);
 
     // Floor slabs: one box per strip, rather than one per grid cell. A slab is
     // flat and a grid of slabs is the same flat thing with a thousand more
@@ -253,11 +312,16 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
       slab.position.set(strip.x, -SLAB / 2, strip.z);
       slab.receiveShadow = true;
       building.add(slab);
+      // Which room's floor this is, so a room shot can drop the neighbours'.
+      // Hiding the walls alone left their floors behind as dark planes lying
+      // outside the room, which is the same defect one layer down.
+      slabs.push({ slab, of: owns.get(cellKey(Math.round(strip.x), Math.round(strip.z))) ?? null });
     }
 
     // Walls: resolved from the floor in one pass, so junctions are openings.
     const cells = stationCells(mode);
-    const blocks: { x: number; z: number; height: number }[] = [];
+    const owners = owns;
+    const blocks: { x: number; z: number; height: number; of: readonly FloorId[] }[] = [];
     let minX = Infinity;
     let minZ = Infinity;
     let maxX = -Infinity;
@@ -282,7 +346,16 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
           cells.get(cellKey(x + 1, z)),
         ].filter((height): height is number => height !== undefined);
         if (neighbours.length === 0) continue;
-        blocks.push({ x, z, height: Math.max(...neighbours) });
+        // Which chambers this block is the wall of. Usually one; a block in a
+        // corner where two rooms meet belongs to both and is drawn for either.
+        const of = [
+          ...new Set(
+            [cellKey(x, z + 1), cellKey(x - 1, z), cellKey(x + 1, z)]
+              .map((key) => owners.get(key))
+              .filter((floor): floor is FloorId => floor !== undefined),
+          ),
+        ];
+        blocks.push({ x, z, height: Math.max(...neighbours), of });
       }
     }
 
@@ -295,8 +368,8 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
       matrix.setPosition(block.x + 0.5, block.height / 2, block.z + 0.5);
       wall.setMatrixAt(index, matrix);
     });
-    wall.instanceMatrix.needsUpdate = true;
     building.add(wall);
+    masonry = { blocks, meshes: [{ mesh: wall, y: null, thickness: 0 }] };
 
     // Panelling: a skirting band at the foot of every wall and a rail at
     // shoulder height. Two instanced meshes over the same block list, which
@@ -315,15 +388,18 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
       band.receiveShadow = true;
       blocks.forEach((block, index) => {
         // A band only where the wall is tall enough to carry it, which keeps
-        // the low corridor walls plain and the room walls detailed.
+        // the low corridor walls plain and the room walls detailed. Sunk
+        // rather than flattened, for the reason `showMasonry` records.
         const visible = block.height > y + thickness;
-        matrix.makeScale(1, visible ? 1 : 0.0001, 1);
-        matrix.setPosition(block.x + 0.5, y, block.z + 0.5);
+        matrix.setPosition(block.x + 0.5, visible ? y : -1000, block.z + 0.5);
         band.setMatrixAt(index, matrix);
       });
-      band.instanceMatrix.needsUpdate = true;
       building.add(band);
+      masonry?.meshes.push({ mesh: band, y, thickness });
     }
+    // Nothing is standing anywhere yet, so start on the whole building. The
+    // first frame narrows it the moment a floor is known.
+    showMasonry(null);
 
     // One halo per room, standing in for a light. Free, and it is what makes
     // the wide shot read as a building with rooms in it rather than as a plan.
@@ -340,6 +416,7 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
 
   // ---- The room the pair is standing in. ---------------------------------
   const roomGroup = new Group();
+  roomGroup.name = "room";
   scene.add(roomGroup);
   const fixtures = new Map<string, FixtureView>();
   /**
@@ -350,6 +427,7 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
    * it once per room rather than diffing it per frame is the whole difference.
    */
   const dressing = new Group();
+  dressing.name = "dressing";
   roomGroup.add(dressing);
   let fixtureRoom: FloorId | null = null;
 
@@ -454,8 +532,16 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
   const onKeyUp = (event: KeyboardEvent): void => {
     held.delete(event.key.toLowerCase());
   };
+  // A key held when the window loses focus never sees its `keyup`, so it stays
+  // in the set forever: alt-tab away mid-stride and PILOT walks into a wall
+  // until the key is pressed and released again. Dropping everything on blur is
+  // the only correct answer, since we cannot know what is still down.
+  const onBlur = (): void => {
+    held.clear();
+  };
   globalThis.addEventListener("keydown", onKeyDown);
   globalThis.addEventListener("keyup", onKeyUp);
+  globalThis.addEventListener("blur", onBlur);
 
   function aspect(): number {
     const width = parent.clientWidth || 1;
@@ -490,7 +576,14 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
       fixtureRoom = plan.id;
       const at = placementOf(mode, floor);
       roomGroup.position.set(at?.x ?? 0, 0, at?.z ?? 0);
-      for (const item of plan.dressing) dressing.add(buildDressing(kit, item));
+      for (const item of plan.dressing) {
+        const piece = buildDressing(kit, item);
+        // Named so the scene graph is diagnosable. Finding which piece of
+        // geometry is standing in a frame used to mean bisecting the graph by
+        // hiding groups one at a time; a name turns that into one dump.
+        piece.name = `dress:${item.kind}`;
+        dressing.add(piece);
+      }
     }
 
     const seen = new Set<string>();
@@ -779,13 +872,25 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
     }
     const wide = shot.floor === null && leaning === null;
 
+    // Keyed on the shot, not the request: the walk between rooms is a wide
+    // shot, and standing only one room's walls up during it would show the
+    // building with a hole where the pair is going.
+    showMasonry(wide ? null : floor);
+
     // The wide shot is a model on a table and needs to be lit like one. In a
     // room the ambient is kept low on purpose, so that the practical and the
     // emissive facts do the work; pulled back, that same ambient leaves four
     // of the five rooms as black boxes with a smudge in them, which is what
     // the first wide-shot probe came back as.
-    sky.intensity = wide ? 2.4 : 0.42;
-    moon.intensity = wide ? 2.1 : 0.75;
+    // In a room the ambient stays low so the practical and the emissive facts
+    // do the work - but **low is not zero**. At 0.42 anything the practical
+    // did not reach came back as flat black: a four-metre rack of tape reels
+    // against the Archive's east wall read as a hole cut in the room, and it
+    // was reported as a rendering bug rather than as a dark corner, which is
+    // the correct reading. 0.62 is still well under half the wide shot's fill
+    // and is enough that unlit geometry keeps its shape.
+    sky.intensity = wide ? 2.4 : 0.62;
+    moon.intensity = wide ? 2.1 : 0.95;
 
     syncFixtures(plan, floor, mode);
     dressRoom(plan);
@@ -880,7 +985,10 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
         // into every cavity at once. They can see each other and reach each
         // other nowhere.
         keeper.root.visible = true;
-        keeper.root.position.set(at.x + plan.size.width / 2 - 0.4, 0, at.z);
+        // The east wall, from the one constant the room plans are checked
+        // against, so a rack of shelves can never be written into the body.
+        const alcove = keeperAlcove(plan.size);
+        keeper.root.position.set(at.x + (alcove.x0 + alcove.x1) / 2, 0, at.z);
         keeper.root.rotation.y = -Math.PI / 2;
       }
     } else {
@@ -937,6 +1045,7 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
       running = false;
       globalThis.removeEventListener("keydown", onKeyDown);
       globalThis.removeEventListener("keyup", onKeyUp);
+      globalThis.removeEventListener("blur", onBlur);
       clearFixtures();
       keeper.dispose();
       building.clear();
