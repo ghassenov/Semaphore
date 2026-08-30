@@ -595,6 +595,7 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
         continue;
       }
       const view = new FixtureView(kit, fixture);
+      view.root.name = `fix:${fixture.id}`;
       fixtures.set(fixture.id, view);
       roomGroup.add(view.root);
     }
@@ -909,6 +910,11 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
       for (const fixtureView of fixtures.values()) fixtureView.reveal(1);
     }
     for (const fixtureView of fixtures.values()) fixtureView.step(deltaMs, now);
+    // Captions last, once the camera for this frame is settled, so a caption is
+    // the same size on screen in a room shot, a lean-in and the wide shot.
+    for (const fixtureView of fixtures.values()) {
+      fixtureView.sizeCaption(camera.position, camera.fov);
+    }
 
     // The grate's light, where there is a grate to stand behind.
     {

@@ -11,7 +11,16 @@
 
 import { describe, expect, it } from "vitest";
 import type { SessionMode } from "@semaphore/protocol";
-import { ROOM_FOV, WIDE_FOV, distanceFor, roomShot, shotFor, wideShot } from "./camera.js";
+import {
+  CAPTION_SCREEN,
+  ROOM_FOV,
+  WIDE_FOV,
+  captionHeight,
+  distanceFor,
+  roomShot,
+  shotFor,
+  wideShot,
+} from "./camera.js";
 import { centreOf, floorsOf, footprintOf, stationBounds } from "./plan.js";
 
 const MODES: readonly SessionMode[] = ["full", "brief"];
@@ -232,5 +241,27 @@ describe("choosing a shot", () => {
 
   it("frames the room otherwise", () => {
     expect(shotFor("full", "IN_CHAMBER", "signal_room", false, 1.6).floor).toBe("signal_room");
+  });
+});
+
+describe("how big a caption is", () => {
+  it("holds the same size on screen at any distance", () => {
+    // The whole point: a caption twenty-five metres away and one six metres
+    // away must occupy the same fraction of the frame.
+    const near = captionHeight(6, ROOM_FOV);
+    const far = captionHeight(25, ROOM_FOV);
+    const share = (h: number, d: number) => h / (2 * d * Math.tan((ROOM_FOV * Math.PI) / 360));
+    expect(share(near, 6)).toBeCloseTo(share(far, 25), 5);
+    expect(share(far, 25)).toBeCloseTo(CAPTION_SCREEN, 5);
+  });
+
+  it("grows with distance rather than shrinking", () => {
+    expect(captionHeight(25, ROOM_FOV)).toBeGreaterThan(captionHeight(6, ROOM_FOV));
+  });
+
+  it("never becomes a billboard across the station", () => {
+    // The wide shot stands over a hundred metres back, where a constant screen
+    // share would ask for a caption several metres tall.
+    expect(captionHeight(200, WIDE_FOV)).toBeLessThanOrEqual(1);
   });
 });

@@ -362,6 +362,43 @@ export function shotFor(
 export const SHOT_MS = 800;
 
 /**
+ * How tall a caption should be on screen, as a fraction of the viewport.
+ *
+ * Captions used to be a fixed height in **metres**, which means their size on
+ * screen is whatever the camera happens to be doing. Sized to read at the
+ * twenty-five metres a room shot stands at, the same caption at the six metres
+ * the lean-in stands at is four times too big: "PAGE MARKED" filled a third of
+ * the frame and washed across the door it was labelling.
+ *
+ * A constant fraction of the viewport is the only setting that is right at both
+ * distances, and it is also the answer to captions being hard to read in the
+ * first place: legibility stops being a function of where the camera is.
+ */
+export const CAPTION_SCREEN = 0.032;
+
+/**
+ * The smallest and largest a caption may get, in world metres.
+ *
+ * The floor is low enough that it never binds at the six metres the lean-in
+ * stands at, which is the closest the camera ever gets: it is there for a
+ * degenerate camera, not as a second opinion about legibility.
+ */
+const CAPTION_MIN = 0.08;
+const CAPTION_MAX = 0.9;
+
+/**
+ * How tall a caption must be in metres to occupy `CAPTION_SCREEN` of the frame.
+ *
+ * An object of height `h` at distance `d` subtends `h / (2 d tan(fov/2))` of
+ * the viewport, so this is that solved for `h`, then clamped so the wide shot
+ * cannot turn a caption into a billboard laid across the station.
+ */
+export function captionHeight(distance: number, fovDegrees: number): number {
+  const wanted = CAPTION_SCREEN * 2 * distance * Math.tan((fovDegrees * Math.PI) / 360);
+  return Math.min(CAPTION_MAX, Math.max(CAPTION_MIN, wanted));
+}
+
+/**
  * How long the camera holds the whole building when the pair changes room.
  *
  * The walk between chambers. It is timed rather than driven by a phase for the
