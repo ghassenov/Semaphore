@@ -1281,3 +1281,55 @@ arithmetic - the exact kind of proof the tour exists to replace. It is held
 through a real CDP `rawKeyDown`, because the stage listens on `globalThis` and a
 synthetic `KeyboardEvent` would not prove the browser path works. The frame it
 produced is the best in the game and it is the one nobody had ever looked at.
+
+### D-048 The last frame of the game is a frame nobody had looked at
+
+**2026-08-30.** The Archive and the finale were the two beats the screenshot
+tour reached last and the two nobody had inspected closely. Between them they
+held six defects, and the largest of them had been shipping since the 3D client
+landed.
+
+**The finale drew an empty room.** The machine clears `chamber` on the way into
+`FINALE` and again into `ESCAPED`, and the worker sends no facts for a phase
+with no puzzle left in it. `roomPlan` asked the chamber, found null, and
+returned nothing: the Concord Lock's bare shell with THE DOOR IS OPEN written
+over it, and no door, no bolts, no columns and nobody standing there. It is the
+payoff of the whole game and it was a grey box for two beats.
+
+The finale is now a plan of its own, the way the Archive already was. *The
+mechanisms are absent rather than zeroed*, which is the part worth recording: a
+cipher wheel reading `WHEEL 0` where it read `WHEEL 14` is not a stale number,
+it is a false one. What is left is what is still true - twelve bolts home, and a
+door standing open.
+
+**A door announced as open showed a crack.** The seam of light between the two
+leaves was tuned when it was a five-centimetre crack in a shut door, and it grew
+to 0.45m of a 3.2m opening. It now fills the doorway, at an emissive held under
+the tone curve's shoulder so the opening keeps its colour rather than clipping
+to flat white.
+
+**The bolt ring floated over the lintel**, at radius 2.5 about y 3.4 on a door
+2.9m tall, reading as a row of lamps on blank masonry rather than as the bolts
+holding a door shut. And bolt 0 is at the *bottom* of that ring, so its
+`N/3 ALIGNED` caption clamped to the same floor height as the door's own sign
+directly beneath it. Two captions, one anchor, printed over each other - the
+third distinct way this client has managed that.
+
+**The room lit itself at full strength with the outer door open**, which came
+back as a pale warehouse with a bright rectangle in it. The doorway only reads
+as bright if the room around it stays dark, so the practical drops to a quarter
+once that door is open.
+
+**And a pendant lamp hung between the camera and the Archive's monitor.** Same
+fault as D-046's beams, in the same room, one fitting later. So this one is
+*measured*: `chamber.test.ts` takes the real camera from `camera.ts`, the real
+plan from `chamber.ts`, and continues a ray to every hanging piece on to the
+plane of the screen, at three window shapes. Two pendants flanking the monitor
+now, which is a sightline decision before it is a symmetry one.
+
+*The lesson, which is the same one D-046 wrote down and is worth writing twice.*
+Every one of these was visible in a screenshot that had already been taken.
+Frames were being generated and not looked at, which is worse than not
+generating them, because it produces the feeling of having checked. The tour is
+only an instrument if somebody reads the output; three of these six were found
+by cropping one PNG and looking at the corner of it.
