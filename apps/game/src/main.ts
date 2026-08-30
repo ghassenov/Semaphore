@@ -20,6 +20,7 @@ import { SessionClient, sessionIdFrom } from "./net/sessionClient.js";
 import { SessionSocket } from "./net/socket.js";
 import { ToolDirector } from "./webmcp/director.js";
 import { renderGate, renderStation } from "./ui.js";
+import { createStationAudio } from "./audio/index.js";
 import { startStation, type StationHandle } from "./render/station.js";
 
 const root = document.getElementById("app");
@@ -44,9 +45,15 @@ async function start(root: HTMLElement): Promise<void> {
     import.meta.env.VITE_WORKER_ORIGIN ?? "",
   );
 
+  // Silent and inert until the launch card is clicked. Every browser refuses
+  // an AudioContext opened outside a user gesture, and refuses it silently, so
+  // the handle exists from here and the graph does not.
+  const audio = createStationAudio();
+
   let station: StationHandle | null = null;
   const shell = renderStation(root, {
     client,
+    audio,
     onNote: (line) => station?.note(line),
   });
 
@@ -77,7 +84,14 @@ async function start(root: HTMLElement): Promise<void> {
   // that can happen on the very first response.
   const director = new ToolDirector(client, {
     onState: (state) => station?.setState(state),
-    onCallStart: (tool) => station?.callStarted(tool),
+    onCallStart: (tool) => {
+      station?.callStarted(tool);
+      // The `AUDIBLE` channel's other half (doc 06 section 11): PILOT cannot
+      // see what KEEPER is doing but always hears that it is doing something,
+      // muffled and through the deck. It is what makes a rotation that
+      // registers no detents distinguishable from KEEPER sitting still.
+      audio.toolCall(tool);
+    },
     onCall: (call) => station?.recordCall(call),
     notepadHost: shell.notepadHost,
     // Which tools this page registers, and which it asks the other origin

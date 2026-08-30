@@ -46,7 +46,7 @@ import {
   Vector3,
 } from "three";
 import type { Fixture } from "./chamber.js";
-import { GAUGE_MAX, MONITOR_DEPTH } from "./chamber.js";
+import { GAUGE_MAX, GRATE_WIDTH, MONITOR_DEPTH } from "./chamber.js";
 import type { Dressing } from "./chamber.js";
 import { GLYPHS, glyphCanvas } from "./glyphs.js";
 import { CHANNEL, PALETTE } from "./palette.js";
@@ -452,7 +452,7 @@ function buildGrate(kit: Kit, _fixture: Fixture, root: Group): Animator {
   // countable pattern rather than a haze. The bars are what the room's only
   // warm-side light has to pass through, so their spacing is a lighting
   // decision as much as a modelling one.
-  const width = 9.5;
+  const width = GRATE_WIDTH;
   const frame = solid(root, new Mesh(new BoxGeometry(width + 0.3, 0.12, 0.22), kit.brass));
   frame.position.y = 0.92;
   solid(root, new Mesh(new BoxGeometry(width + 0.3, 0.12, 0.22), kit.brass)).position.y = -0.06;

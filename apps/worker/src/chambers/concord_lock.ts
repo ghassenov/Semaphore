@@ -39,7 +39,15 @@
  * against a 6-minute timer.
  */
 
-import { audible, hidden, shared, tactile, visual, type Tagged } from "@semaphore/protocol";
+import {
+  audible,
+  hidden,
+  shared,
+  tactile,
+  visual,
+  type Cue,
+  type Tagged,
+} from "@semaphore/protocol";
 import type { Rng } from "@semaphore/seed";
 
 /** How many bolts must be aligned, in order, before the passphrase is spoken. */
@@ -291,10 +299,15 @@ export function correctAction(state: ConcordLockState): string | null {
 }
 
 /** The sound of the last thing that happened, heard by both through the door. */
-function lastSound(state: ConcordLockState, nowMs: number): string | null {
-  if (state.solved) return "twelve bolts running back in sequence";
-  if (isLockedOut(state, nowMs)) return "a klaxon, and the wheel spinning to a new setting";
-  if (isArmed(state, nowMs)) return "the lock humming under tension";
+function lastSound(
+  state: ConcordLockState,
+  nowMs: number,
+): { readonly cue: Cue; readonly text: string } | null {
+  if (state.solved) return { cue: "bolts", text: "twelve bolts running back in sequence" };
+  if (isLockedOut(state, nowMs)) {
+    return { cue: "klaxon", text: "a klaxon, and the wheel spinning to a new setting" };
+  }
+  if (isArmed(state, nowMs)) return { cue: "hum", text: "the lock humming under tension" };
   return null;
 }
 
@@ -323,7 +336,9 @@ export function facts(state: ConcordLockState, nowMs: number) {
     /** Both know what has already been tried and rejected. */
     attemptedPhrases: shared(state.attemptedPhrases),
     /** Both hear the lock. */
-    lastSound: audible(lastSound(state, nowMs)),
+    lastSound: audible(lastSound(state, nowMs)?.text ?? null),
+    /** The same event, as the cue the client synthesises. */
+    lastCue: audible(lastSound(state, nowMs)?.cue ?? null),
     /** The answer, perceivable by neither. */
     passphrase: hidden(state.params.passphrase),
   } satisfies Record<string, Tagged<unknown>>;

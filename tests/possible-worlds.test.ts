@@ -22,7 +22,7 @@
  * checks to make it pass is never an accepted change.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Rng } from "@semaphore/seed";
 import * as airlock from "@semaphore/worker/chambers/airlock";
 import * as signalRoom from "@semaphore/worker/chambers/signal_room";
@@ -36,6 +36,24 @@ import {
   measure,
   type ChamberWorlds,
 } from "@semaphore/worker/worlds";
+
+/*
+ * A longer timeout, for this file only.
+ *
+ * This is a proof rather than a unit test: each case enumerates the whole
+ * consistent world set for twenty seeds at every point on a solve path, and
+ * the file takes about ten seconds of honest work to do it. Run alone it
+ * passes every time; run beside the other thirty-nine files it competes for
+ * the machine and individual cases cross the five-second default, so the suite
+ * failed roughly one run in four with a timeout that said nothing about the
+ * proof. An intermittent red is worse than a slow green: it trains everybody
+ * to re-run rather than to read.
+ *
+ * Scoped here with `vi.setConfig` rather than raised in `vitest.config.ts`,
+ * because everything else in the repository should still be held to five
+ * seconds and a genuine hang should still be caught quickly.
+ */
+vi.setConfig({ testTimeout: 30_000 });
 
 /** A fixed corpus. Fixed rather than random so a failure is always reproducible. */
 const SEEDS = Array.from({ length: 20 }, (_, i) => `proof-seed-${i}`);

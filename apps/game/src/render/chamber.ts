@@ -854,6 +854,35 @@ export function clearOf(
 export const GAUGE_MAX = 8;
 
 /**
+ * How wide the grate across the dial recess is, in metres.
+ *
+ * Exported because two files need it and they used to hold it separately:
+ * `fixtures.ts` drew a 9.5m grate while this file spread the dials across
+ * eleven, which stood the outer two 0.6m past its ends in a room whose own
+ * description puts every dial behind it. One number, both ends, for the same
+ * reason `MONITOR_DEPTH` is shared.
+ */
+export const GRATE_WIDTH = 9.5;
+
+/**
+ * How wide the dial bank is, in metres.
+ *
+ * Deliberately much narrower than the gauge bank, and that is the fix for the
+ * defect described on the dial loop below rather than a spacing preference. It
+ * has to clear the grate's ends and it has to miss every gauge column.
+ */
+const DIAL_SPAN = 5.4;
+
+/**
+ * How many dials KEEPER can reach.
+ *
+ * A constant rather than `gauges.length`, because it is one: `blind_panel.ts`
+ * declares four dials for every session. Deriving it from the gauge facts was
+ * part of what tied the two banks together in the first place.
+ */
+const DIAL_COUNT = 4;
+
+/**
  * The Blind Panel: four gauges PILOT reads and four dials KEEPER turns.
  *
  * A gauge is a column of lit cells rather than a swinging needle, and that is a
@@ -892,7 +921,15 @@ function blindPanel(facts: Readonly<Record<string, unknown>>): RoomPlan {
       level: value / GAUGE_MAX,
       target: target / GAUGE_MAX,
       steps: GAUGE_MAX,
-      label: `${String(value)}/${String(target)}`,
+      // The gauge's own number, and it is load-bearing rather than a nicety.
+      //
+      // The reading alone gave a gauge no name. PILOT could see `0/6` and had
+      // no word for which `0/6`, so the only handle in reach was the dial
+      // caption underneath - which is how a playtester came to tell KEEPER
+      // "dial 4 has 0/6" about a gauge dial 4 does not drive. The pair needs a
+      // shared noun for a thing whose *value* stays PILOT's alone, and the
+      // server already has one: these are its own gauge ids.
+      label: `GAUGE ${gauge}  ${String(value)}/${String(target)}`,
       // At the top of its own column, beside the cells it is counting.
       //
       // Both this and the dial beneath it used to fall back to the same
@@ -901,14 +938,33 @@ function blindPanel(facts: Readonly<Record<string, unknown>>): RoomPlan {
       // reading is where you are already looking when you count the cells.
       captionAt: 3.55,
     });
+  });
 
-    // KEEPER's dial, under the gauge it does not necessarily drive.
+  // KEEPER's dials, in a bank of their own.
+  //
+  // **Built in a separate loop from the gauges, and that is the whole fix.**
+  // They used to be pushed inside the loop above at the gauge's own `x`, which
+  // drew DIAL n directly beneath GAUGE n for every n. The wiring is a random
+  // permutation of dials onto gauges, so that column pairing was an assertion
+  // of the one fact this chamber exists to withhold - and it was a false one.
+  // A player read it straight off the frame and reported the pairing back to
+  // KEEPER as fact.
+  //
+  // The bank is narrow because it has to sit behind the grate, which the gauge
+  // spacing did not: at eleven metres the outer two dials stood past its ends.
+  // Nothing here may line up with a gauge column again, and the test says so.
+  spread(DIAL_COUNT, DIAL_SPAN).forEach((x, index) => {
     fixtures.push({
       id: `dial-${String(index + 1)}`,
       kind: "dial",
       at: { x, y: 0.42, z: -size.depth / 2 + 0.55 },
       channel: "keeper",
-      on: value === target,
+      // Settles when the *room* is solved, never when one gauge reaches its
+      // target. `buildDial` stops a settled dial turning, which is a cue PILOT
+      // can act on, and keying it to `value === target` at the paired index
+      // published a dial-to-gauge link that the renderer cannot know and that
+      // was wrong in every session where the permutation was not the identity.
+      on: solved,
       label: `DIAL ${String(index + 1)}`,
     });
   });

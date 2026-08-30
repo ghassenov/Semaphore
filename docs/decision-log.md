@@ -1342,3 +1342,274 @@ against a live worker: 17 of 17 browser checks, and ten frames written and *read
 - the Archive's monitor unobstructed, the lean-in framed at eye height with the
 glyphs legible, and an ending that is a dark cathedral with a shaft of sea light
 across the floor instead of a grey box.
+
+---
+
+### D-049 The dial bank was claiming which gauge it drives
+
+**2026-08-30.** A fourth sitting, and the first with somebody playing KEEPER
+over the tool surface while somebody else watched the room. The Blind Panel
+gave up a defect in the first minute of being played rather than looked at.
+
+PILOT reported the chamber as "dial 1 has 0/2, dial 2 has 0/1, dial 3 has 0/6,
+dial 4 has 0/6", and then, after a probe, "dial 4 now turned from 0/6 to 1/6" -
+about a gauge that dial 4 does not drive. Nothing was wrong with the reporting.
+The renderer had told them that.
+
+**The dials were built inside the gauge loop, at the gauge's own `x`.** So
+`DIAL n` stood directly beneath `GAUGE n` for every n, in matched columns, in
+the one chamber whose entire secret is that the dial-to-gauge wiring is a random
+permutation. The renderer cannot know that wiring - it is `HIDDEN` and no
+projection carries it - so any alignment between the two banks is a claim the
+renderer is not entitled to make. This one was also false: the tour's own dump
+for the session played that afternoon reads `2>4, 4>2`.
+
+Two more faults fell out of the same shared loop and coordinate.
+
+**A gauge had no name.** Its only caption was its reading, `0/6`, so PILOT had
+no word for *which* `0/6` and the nearest handle in reach was the dial caption
+underneath. The pair needs a shared noun for a thing whose *value* stays
+PILOT's alone, and the server already had one: these are its own gauge ids. The
+caption is `GAUGE 3  0/6` now.
+
+**And a dial settled on the wrong gauge.** `buildDial` stops a settled dial
+turning, which is a cue PILOT can act on, and `on` was keyed to `value ===
+target` at the paired index - publishing the same false link, in motion, in
+every session whose permutation is not the identity. It settles on the *room*
+being solved now, which is a thing the renderer actually knows.
+
+Separately, at the gauge bank's eleven-metre spacing the outer two dials stood
+0.6m past the ends of a 9.5m grate, in a room whose own description puts every
+dial behind it. `GRATE_WIDTH` is one number shared with `fixtures.ts` now rather
+than two that disagreed, which is D-048's lesson about two positions measured
+from different origins, arriving for the third time.
+
+*Why no test saw it.* Every existing check was about a fixture's own fields -
+levels inside the scale, ids unique, no glyph in a caption. Not one was about
+the relation between two fixtures, which is where this lived. The three added
+are written as relations rather than as the coordinates that happen to be right
+today: no dial within 0.75m of a gauge's column, every dial inside the grate,
+and no dial `on` while the room is unsolved.
+
+*And the lesson, which is new.* The previous eleven defects were all found by
+looking at a frame. This one was found by **playing**, and it could not have
+been found by looking: the frame is unambiguous and perfectly composed, and it
+is composed into a lie. What exposed it was a second person having to *say the
+room out loud* to somebody who could not see it. That is the one instrument
+this project had not used on its own renderer, and it is the cheapest one it
+has: the game is about describing a room to somebody blind, so describing a
+room to somebody blind is the test.
+
+---
+
+### D-050 The station has a voice
+
+**2026-08-30.** Doc 06 section 11 and plan phase 5.2, built in full: the eight
+mechanism cues, the ambience bed, the four adaptive tension layers, the
+behind-the-wall sound of a KEEPER tool call, and the mix. It was the largest
+hole left in the art direction - the station looked like a place and sounded
+like nothing - and it is the half of the `AUDIBLE` channel that did not exist.
+
+**Options.** The `AUDIBLE` channel alone, roughly one module; cues plus the
+ambience bed; or all of 5.2 including the timer-keyed score. The last was
+chosen. The first two were the cheaper answers and the argument for them was
+that the music half moves no judging criterion the cues do not already move.
+
+**Everything is synthesised, and that is not a flourish.** D-044 took the last
+asset out of the bundle, and the client fetches no images, no fonts and no
+media at all. A reverb tail is exponentially decaying noise, which is cheaper
+to generate than to download. Entry chunk 16.9KB to 22.1KB gzipped of a 400KB
+budget; no new request of any kind.
+
+**Two of these are puzzle mechanisms rather than atmosphere.**
+
+The detents. Doc 02 section 3.3 has PILOT counting clicks through the grate to
+learn what KEEPER's rotation actually registered, so they are 180ms apart, never
+overlapped, identical every time, and the score ducks 6dB under them. A rotation
+that registers *nothing* is silent - which is itself the information, since it
+says the linkage is against a bound - and the tool call's own muffled thump is
+what still says KEEPER did something. That is the whole reason doc 06 asks for a
+per-tool-call sound, and it only became obvious while wiring the two together.
+
+And the tool call. PILOT cannot see what KEEPER is doing and can always hear
+that it is doing something, pitched off a hash of the tool name so a new tool
+gets its own note without anybody maintaining a table.
+
+**`PilotView` gains `seq`, without which none of it works.** Cues fire on the
+event counter, never on a diff of the facts. Two rotations that each register
+three clicks produce frames identical in every field, and PILOT has to hear six
+detents rather than three: "sound it only when something changed" hears the
+second rotation as silence, in the one chamber where the count *is* the puzzle.
+It leaks nothing - KEEPER already knows how many calls it has made.
+
+**The worker picks the cue, from the same branch that writes the subtitle.**
+Each chamber's `lastSound` returns a cue and its prose together, so a cue with
+no text equivalent cannot be added without deleting the other half on purpose.
+Doc 06 requires that and deaf players depend on it; making it structural was
+cheaper than remembering it. The vocabulary lives in `@semaphore/protocol`,
+because a vocabulary held separately at each end is a vocabulary that drifts.
+
+**The split that made it testable.** Web Audio does not exist in the test
+environment and never will, so every decision is in `audio/plan.ts` and is
+checked, and `voices.ts` decides nothing and only knows how a bolt sounds. This
+is the same pure/impure split `chamber.ts` and `stage.ts` already use, and it is
+the reason there are eleven tests here rather than none.
+
+**Sound is the one subsystem allowed to be absent.** A machine with no audio
+device throws on `new AudioContext()`, and a headless browser is one - the
+screenshot tour clicks the same launch card. It fails to silence rather than
+taking the session down.
+
+**Result.** 671 tests, up from 657. Pipeline green, palette check green, both
+builds green. Driven in Chrome 151 against a live worker: 17 of 17 browser
+checks, twice, with no console error from the audio graph.
+
+One thing the frames caught that no test would have: the three faders rendered
+as three identical unlabelled sliders. The control that has to be findable is
+the mechanism one, because a player who cannot hear the detents needs to turn
+the score down off the answer. They are named in the frame now.
+
+---
+
+### D-051 A warm theme, against doc 06's chiptune
+
+**2026-08-30.** Asked for directly: warm, instrumental, mysterious. Built as a
+fifth continuous layer that is on from the first bar of a session to the last.
+
+**It contradicts doc 06 section 11, and that is the decision rather than a side
+effect.** That section asks for music that is "chiptune-adjacent but wet -
+square and triangle waves through long convolution reverb". A warm instrumental
+is not chiptune-adjacent. The reasoning for changing it: the chiptune direction
+was written for the *tension* layers, where it is exactly right - the arpeggio
+that arrives at a quarter of the clock is a square wave and should stay one -
+but it left the resting state of the station with no music in it at all, only
+ambience and a drone. A station that sounds like nothing until it is nearly out
+of time is a station with no character for the eighty percent of a session when
+nothing is going wrong.
+
+So the two coexist rather than one replacing the other, which is also why this
+cost one layer rather than a rewrite: **warm and unresolved while there is
+time, chiptune urgency on top when there is not.**
+
+**Three devices, none of them a timbre.** It sits on a pedal - the drone
+already held A and its fifth under the whole station, so the harmony moves over
+a bass that never agrees to leave. Nothing resolves: A minor add9, F major
+seventh, A minor add11, D minor ninth, four colours sharing most of their notes
+and no dominant anywhere, so each change is a shift of light rather than a
+progression arriving. And the mode has a hole in it: the melody draws on A C D
+E F G, natural minor with the second taken out, which is what stops six notes
+sounding like a tune with an answer.
+
+Warm was then the easy part. Triangles rather than the squares and sawtooths
+the tension layers use, slow attacks so nothing is struck, chords scheduled as
+overlapping swells so the harmony is never *seen* to change, and a long send to
+the same tower everything else rings in.
+
+**The drone moved from sawtooth to triangle** in the same change, and it is not
+cosmetic: it is the pedal the theme hangs over, so its timbre decides whether
+the whole score reads as warm, and a sawtooth's partials buzz through the
+lowpass and make the room sound electrical rather than old.
+
+**It rides the ambience gain rather than carrying a level of its own**, so it
+ducks with the bed under the heartbeat instead of competing in the last tenth.
+It is never taken away. Two knobs that are always turned together are one knob
+and a chance to forget the second.
+
+*What the tests can and cannot do.* Nothing in this pipeline can hear - the
+screenshot tour runs in a headless browser with no audio device - so the tests
+hold the one thing a machine can check: every pitch is a real equal-tempered
+note rather than a number near one, every pitch is in the mode, no chord
+carries a leading note, and the second never appears in the melody. A mistyped
+frequency is a wrong note, a wrong note is the entire difference between
+mysterious and broken, and it would otherwise ship past every check in the
+repository. Whether it is actually *good* is still unverified and needs an ear.
+
+**Result.** 677 tests, up from 671. Entry 22.4KB gzipped of a 400KB budget, up
+0.3KB. Still no asset files. 17 of 17 browser checks with the theme scheduling
+on every step, and no console error.
+
+**Heard, the same day.** D-050 and D-051 both shipped with the same open risk
+recorded against them - built, proved not to throw, and never actually listened
+to, because nothing in this pipeline has an ear. That risk is now closed: the
+whole score was played on a real machine on 2026-08-30 and signed off, cues and
+theme and tension layers together. It is worth recording that it took about a
+minute to settle, against two entries' worth of hedging: **a subsystem nothing
+in CI can perceive stays a guess until one person spends sixty seconds
+perceiving it**, and the cost of not doing that is carrying the uncertainty
+through every document that mentions it.
+
+One narrow thing is deliberately *not* covered by that sign-off, because it is a
+different question: whether eight detents at 180ms are countable by ear by
+somebody who does not already know the answer. That is Chamber II's mechanism
+and it needs a playtester rather than an author, so it stays with the playtest
+item rather than with the audio one.
+
+---
+
+### D-052 The room is the page
+
+**2026-08-30.** A design pass over the console, asked for directly: a mood, a
+layout that does not overwhelm, panels on demand, a centred game screen, and an
+avatar that is doing something.
+
+**What was wrong.** The console was three bays of panels around the viewport -
+six readouts, all open, all the time - and the room was letterboxed to 16:9
+under a 66vh ceiling so it would leave them space. Every panel was reasonable on
+its own and the sum of them was a dashboard with a game in the corner. In a game
+whose whole task is *looking at a room and describing it*, that is the wrong
+thing to be optimising.
+
+**The layout.** The room fills the deck and carries no aspect of its own, which
+is safe for the reason the old stylesheet comment already gave: `camera.ts` fits
+the room against whatever aspect it is handed. Everything else folds into the
+two edges - PILOT's two panels west, KEEPER's four east, which is the same
+thesis the three-bay layout stated - behind labelled tabs, one open per edge,
+closed again with Escape.
+
+**A drawer overlays the deck and never pushes it, and that is a constraint
+rather than a preference.** The camera frames against the viewport's measured
+shape, so a panel that squeezed it would re-frame the shot every time somebody
+opened one and the room would jump. Overlaying costs a little of the room and
+re-frames nothing.
+
+**Colour: the ground only.** Three options were on the table and the narrow one
+was taken. Lamplight, tidewater and pearl are untouched, so the design law, the
+3D scene and the blue-yellow separation that carries protanopia and deuteranopia
+are all exactly as they were, and `check-palette.mjs` stayed green for free.
+What changed is how the ground is *used*: three light sources falling off rather
+than one flat dark colour, and a grain layer generated by an inline filter
+because large flat gradients band on an 8-bit display. **This is worth recording
+as a general finding: the palette was not what made the page feel flat.** The
+existing set is a carefully argued noir palette (D-043) and changing its values
+would mostly have made it worse. Depth, layering and motion were the missing
+things, and none of them is a colour.
+
+**Motion.** One slow pass of lamplight across the start card and the gate every
+eight seconds - the beacon the station is named for, and the only thing on the
+page that moves on its own - a staggered arrival, and a mark that breathes
+between the two channels. All of it behind `prefers-reduced-motion`.
+
+**The avatar.** Four poses, derived from what the stage already holds: the
+stride, the fixture `E` is holding, and the room's own solved flag. Nothing new
+travels to get there, so a pose cannot disagree with the room, and they ease
+rather than snap for the same reason a fixture converges rather than playing an
+animation (D-037).
+
+The largest single improvement was the smallest change in it. At `speed` 0 every
+walk term was exactly zero, so the figure stood *perfectly* still - not calm,
+frozen, which at forty pixels tall reads as a rendering fault rather than as a
+person waiting. A four-second breath cycle fixed more than the other three poses
+combined. The flame flickers on two sines at unrelated periods: a random flicker
+at frame rate reads as an artefact and a periodic one reads as a pulse, and two
+slow ones that rarely agree read as a flame.
+
+*Two things found on the way, both committed separately.* Typing into the shared
+notepad walked PILOT across the room, because `stage.ts` added every keydown to
+the held-key set with no target filter while `ui.ts` had guarded its own key
+since it was written - two surfaces, one predicate, and only one of them grew
+it. And `display: flex` beats the user agent's `[hidden]`, which is why the
+first build of this layout came up with both drawers open and empty.
+
+**Result.** 680 tests. Entry 22.4KB to 24.2KB gzipped of a 400KB budget. Still
+no asset files: the grain is a filter, the mark is inline SVG, and the client
+makes no request for anything. 17 of 17 browser checks, and the frames read.

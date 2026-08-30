@@ -21,6 +21,7 @@ import {
   ARCHIVE_PLAN,
   CHAMBER_ACCENT,
   GAUGE_MAX,
+  GRATE_WIDTH,
   ROOM_SIZES,
   arc,
   facingCentre,
@@ -53,6 +54,7 @@ function viewOf(over: Partial<PilotView>): PilotView {
     mode: "full",
     designation: "TESTER",
     remainingMs: 60_000,
+    seq: 0,
     retries: 0,
     facts: {},
     notes: [],
@@ -293,6 +295,73 @@ describe("what a room contains", () => {
     }
   });
 
+  it("never stands a dial under a gauge, and never outside the grate", () => {
+    // The chamber's whole secret is which dial drives which gauge, and the
+    // renderer does not know it: the wiring is HIDDEN and no projection carries
+    // it. So any alignment between the two banks is a claim the renderer is not
+    // entitled to make, and the first build made it for every dial by drawing
+    // the two in matched columns. A playtester read the pairing off the frame
+    // and reported it to KEEPER as fact.
+    //
+    // Written as a relation rather than as the coordinates that happen to be
+    // right today, because the coordinates need re-deriving whenever either
+    // bank moves and the relation does not.
+    const plan = roomPlan(CHAMBERS[2]?.view ?? viewOf({}));
+    const gauges = plan?.fixtures.filter((fixture) => fixture.kind === "gauge") ?? [];
+    const dials = plan?.fixtures.filter((fixture) => fixture.kind === "dial") ?? [];
+    expect(dials).toHaveLength(4);
+
+    for (const dial of dials) {
+      for (const gauge of gauges) {
+        // A dial and a gauge sharing a column read as wired together at any
+        // depth, because the caption is drawn over the geometry either way.
+        expect(
+          Math.abs(dial.at.x - gauge.at.x),
+          `${dial.id} stands in ${gauge.id}'s column`,
+        ).toBeGreaterThan(0.75);
+      }
+      // Every dial is behind the grate, which is where the chamber says KEEPER
+      // reaches through to them.
+      expect(Math.abs(dial.at.x), `${dial.id} stands past the end of the grate`).toBeLessThan(
+        GRATE_WIDTH / 2,
+      );
+    }
+  });
+
+  it("gives every gauge a name PILOT can say out loud", () => {
+    // A reading is not a name. With `0/6` as the only text on a gauge, the
+    // nearest handle PILOT had was the dial caption below it, which is the
+    // wrong noun for the wrong object.
+    const plan = roomPlan(CHAMBERS[2]?.view ?? viewOf({}));
+    const gauges = plan?.fixtures.filter((fixture) => fixture.kind === "gauge") ?? [];
+    expect(gauges).toHaveLength(4);
+    const named = new Set(gauges.map((gauge) => gauge.label));
+    expect(named.size, "two gauges answer to the same caption").toBe(gauges.length);
+    for (const gauge of gauges) {
+      expect(gauge.label).toMatch(/^GAUGE \d+\s+\d+\/\d+$/);
+    }
+  });
+
+  it("settles a dial on the room, never on one gauge", () => {
+    // `buildDial` stops a settled dial turning, so `on` is visible. Keying it
+    // to the gauge at the same index published a link the renderer cannot know
+    // and that is wrong in every session whose permutation is not the identity.
+    const midway = roomPlan(
+      viewOf({
+        chamber: "blind_panel",
+        facts: {
+          gaugeValues: { 1: 2, 2: 0, 3: 0, 4: 0 },
+          targets: { 1: 2, 2: 1, 3: 6, 4: 6 },
+          solved: false,
+        },
+      }),
+    );
+    const dials = midway?.fixtures.filter((fixture) => fixture.kind === "dial") ?? [];
+    expect(dials).toHaveLength(4);
+    // Gauge 1 is on target and the room is not solved. No dial may claim it.
+    expect(dials.every((dial) => !dial.on)).toBe(true);
+  });
+
   it("lights each chamber in the channel whose room it is", () => {
     for (const { name, view } of CHAMBERS) {
       const plan = roomPlan(view);
@@ -503,8 +572,8 @@ describe("captions that change", () => {
   it("says a different thing when a gauge moves", () => {
     const before = gaugeLabels({ 1: 0, 2: 0, 3: 0, 4: 0 });
     const after = gaugeLabels({ 1: 1, 2: 0, 3: 0, 4: 0 });
-    expect(before[0]).toBe("0/7");
-    expect(after[0]).toBe("1/7");
+    expect(before[0]).toBe("GAUGE 1  0/7");
+    expect(after[0]).toBe("GAUGE 1  1/7");
     // And only the one that moved.
     expect(after.slice(1)).toEqual(before.slice(1));
   });
