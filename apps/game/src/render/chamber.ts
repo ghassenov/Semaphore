@@ -1230,7 +1230,14 @@ export const ARCHIVE_PLAN: RoomPlan = {
       at: { x: 3.05, y: 0, z: -ROOM_SIZES.archive.depth / 2 + 0.45 },
       length: 1.8,
     },
-    { kind: "bulb", at: { x: 0, y: ROOM_SIZES.archive.height, z: -0.6 }, height: 0.75 },
+    // **A pair, off the centre line**, and that is a sightline decision rather
+    // than a symmetry one. A single pendant hung at x 0 is a lamp swinging
+    // directly between the camera and the screen: it projected onto the middle
+    // of the picture, and it was reported the same way the beams were - "I
+    // can't see the screen". Flanking the monitor also lights the room from
+    // both sides, which a records room wants more than a bulb in the middle.
+    { kind: "bulb", at: { x: -2.6, y: ROOM_SIZES.archive.height, z: 0.6 }, height: 0.7 },
+    { kind: "bulb", at: { x: 2.6, y: ROOM_SIZES.archive.height, z: 0.6 }, height: 0.7 },
     { kind: "cable", at: { x: 2.1, y: ROOM_SIZES.archive.height, z: 1.6 }, length: 1.1 },
     { kind: "puddle", at: { x: -0.5, y: 0, z: 1.9 }, length: 2.4 },
     // **No beams.** The room is 3.2m tall and the monitor is 2.9m of that, so

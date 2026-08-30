@@ -36,7 +36,11 @@ import {
   spread,
   type RoomPlan,
   keeperAlcove,
+  ARCHIVE_SCREEN,
+  type DressingKind,
+  type Vec3,
 } from "./chamber.js";
+import { roomShot } from "./camera.js";
 import { GLYPH_IDS } from "./glyphs.js";
 
 /** A view with everything the chambers do not care about filled in. */
@@ -612,6 +616,77 @@ describe("KEEPER's alcove", () => {
           item.at.z - halfZ >= box.z1;
         expect(clear, `${plan.id}: ${item.kind} stands in KEEPER's alcove`).toBe(true);
       }
+    }
+  });
+});
+
+describe("the Archive's sightline to its monitor", () => {
+  /*
+   * The Archive's entire content is one screen. Anything hanging from its
+   * ceiling between the camera and that screen is a fitting drawn across the
+   * only thing in the room, and both of the two that were there - the beams
+   * and then the pendant bulb - were reported as "I can't see the screen".
+   *
+   * This measures it rather than eyeballing it: the real camera from
+   * `camera.ts`, the real plan from this file, and a ray to each hanging piece
+   * continued on to the plane of the screen. It is a projection test, so it
+   * holds however either end is later retuned.
+   */
+  const SCREEN_PLANE = -ROOM_SIZES.archive.depth / 2 + 0.25 + ARCHIVE_SCREEN.proud;
+  const HANGS = new Set<DressingKind>(["bulb", "cable", "pipe", "beam"]);
+
+  /** Where a ray from `eye` through `at` crosses the screen's plane. */
+  function onScreen(eye: Vec3, at: Vec3): { x: number; y: number } | null {
+    const dz = at.z - eye.z;
+    if (Math.abs(dz) < 1e-6) return null;
+    const t = (SCREEN_PLANE - eye.z) / dz;
+    // Behind the camera, or past the screen already: it cannot be in the way.
+    if (t <= 0) return null;
+    return { x: eye.x + (at.x - eye.x) * t, y: eye.y + (at.y - eye.y) * t };
+  }
+
+  it("hangs nothing between the camera and the screen", () => {
+    const plan = roomPlan({ phase: "ARCHIVE", chamber: null, facts: {} } as never);
+    expect(plan).not.toBeNull();
+    const size = ROOM_SIZES.archive;
+    // Both windows the tour and a phone are likely to use.
+    for (const aspect of [16 / 9, 4 / 3, 1]) {
+      const shot = roomShot({ x: 0, z: 0 }, "archive", aspect);
+      for (const item of plan?.dressing ?? []) {
+        if (!HANGS.has(item.kind)) continue;
+        /*
+         * How far a piece reaches, by kind, because `length` does not mean the
+         * same thing for all of them: a pipe and a beam run horizontally along
+         * their own x, a cable's length is how far it *hangs*, and a bulb's
+         * drop is its height. Reading `length` as a run for all four made this
+         * check report a cable four times wider than it is and no taller.
+         */
+        const yaw = item.facing ?? 0;
+        const hangs = item.kind === "cable" || item.kind === "bulb";
+        const run = hangs ? 0 : (item.length ?? 0) / 2;
+        const halfX = Math.abs(Math.cos(yaw)) * run;
+        const halfZ = Math.abs(Math.sin(yaw)) * run;
+        const drop = item.kind === "cable" ? (item.length ?? 0) : (item.height ?? 0.3);
+        for (const dx of [-halfX, 0, halfX]) {
+          for (const dz of [-halfZ, 0, halfZ]) {
+            for (const dy of [0, -drop]) {
+              const hit = onScreen(shot.eye, {
+                x: item.at.x + dx,
+                y: item.at.y + dy,
+                z: item.at.z + dz,
+              });
+              if (hit === null) continue;
+              const across = Math.abs(hit.x) < ARCHIVE_SCREEN.width / 2;
+              const up = Math.abs(hit.y - ARCHIVE_SCREEN.y) < ARCHIVE_SCREEN.height / 2;
+              expect(
+                across && up,
+                `${item.kind} is drawn across the screen at aspect ${aspect.toFixed(2)}`,
+              ).toBe(false);
+            }
+          }
+        }
+      }
+      expect(size.height).toBeGreaterThan(0);
     }
   });
 });
