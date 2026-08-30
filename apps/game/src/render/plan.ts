@@ -221,6 +221,35 @@ export function stationCells(mode: SessionMode): ReadonlyMap<string, number> {
   return heights;
 }
 
+/**
+ * Which room owns each cell of the station's floor, corridors excluded.
+ *
+ * The companion to `stationCells`, and pure for the same reason: it decides
+ * which masonry belongs to which chamber, and the renderer uses it to drop
+ * every wall that is not the current room's when the camera is standing in a
+ * room.
+ *
+ * That matters because the station is a **cutaway**. Open at the top and on
+ * the south face, a camera in one chamber looks straight over its east wall
+ * into whatever stands beyond it, and what stands beyond it is unlit: the
+ * neighbouring corridor and rooms arrive in the frame as flat black slabs
+ * crowding the room the player is actually in. Hiding them is not a trick to
+ * hide a defect, it is the model rule applied one level further in: in a room
+ * you see that room's shell, and `M` steps back to see the building.
+ *
+ * Corridors are deliberately unowned. A corridor wall borders no chamber, so
+ * it is hidden in every room shot and drawn only in the wide one.
+ */
+export function stationOwners(mode: SessionMode): ReadonlyMap<string, FloorId> {
+  const owners = new Map<string, FloorId>();
+  for (const floor of floorsOf(mode)) {
+    const strip = roomStrip(mode, floor);
+    if (strip === null) continue;
+    for (const key of cellsOf(strip)) owners.set(key, floor);
+  }
+  return owners;
+}
+
 /** How tall a corridor's walls are. Lower than any room, so rooms read taller. */
 export const CORRIDOR_HEIGHT = 2.6;
 

@@ -26,6 +26,7 @@ import {
   roomStrip,
   stationBounds,
   stationCells,
+  stationOwners,
   stationStrips,
   type Strip,
 } from "./plan.js";
@@ -169,6 +170,43 @@ describe("the station's geometry", () => {
     const cells = stationCells("full");
     for (const floor of floorsOf("full")) {
       expect(cells.get(centreCell("full", floor))).toBe(footprintOf(floor).height);
+    }
+  });
+});
+
+describe("who owns each cell", () => {
+  it("gives every room's own floor to that room", () => {
+    for (const mode of ["full", "brief"] as const) {
+      const owners = stationOwners(mode);
+      for (const floor of floorsOf(mode)) {
+        const at = placementOf(mode, floor);
+        if (at === null) continue;
+        expect(owners.get(cellKey(Math.round(at.x), Math.round(at.z)))).toBe(floor);
+      }
+    }
+  });
+
+  it("leaves corridors unowned, so they stand only in the wide shot", () => {
+    for (const mode of ["full", "brief"] as const) {
+      const owners = stationOwners(mode);
+      const cells = stationCells(mode);
+      // Every owned cell is floor, and there are strictly fewer owned cells
+      // than floor cells, which is the corridors being left out.
+      for (const key of owners.keys()) expect(cells.has(key)).toBe(true);
+      expect(owners.size).toBeLessThan(cells.size);
+    }
+  });
+
+  it("never gives one cell to two rooms", () => {
+    // Rooms may not overlap, and the owner map would silently pick a winner
+    // if they did, leaving one chamber's walls attributed to its neighbour.
+    for (const mode of ["full", "brief"] as const) {
+      let counted = 0;
+      for (const floor of floorsOf(mode)) {
+        const strip = roomStrip(mode, floor);
+        if (strip !== null) counted += Math.round(strip.width) * Math.round(strip.depth);
+      }
+      expect(stationOwners(mode).size).toBe(counted);
     }
   });
 });
