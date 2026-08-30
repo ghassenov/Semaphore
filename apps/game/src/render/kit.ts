@@ -445,6 +445,9 @@ export class Kit {
     );
     const sprite = new Sprite(material);
     sprite.renderOrder = 10;
+    // The canvas aspect, kept so the caption can be resized every frame to a
+    // constant size on screen without re-measuring the text.
+    sprite.userData.aspect = canvas.width / canvas.height;
     sprite.scale.set((height * canvas.width) / canvas.height, height, 1);
     return sprite;
   }
