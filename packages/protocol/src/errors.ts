@@ -103,9 +103,24 @@ export const errors = {
       "That mechanism is behind you now. Call get_status to see where you are.",
     ),
 
-  /** Schema validation is advisory, so the real check is here (doc 03 section 3). */
-  invalidInput: (field: string, expected: string, received: unknown): GameError =>
-    new GameError("E_INVALID_INPUT", `${field} must be ${expected}. Received ${String(received)}.`),
+  /**
+   * Schema validation is advisory, so the real check is here (doc 03 section 3).
+   *
+   * An absent value is reported as the word `nothing` rather than as its own
+   * rendering. Every route reads its arguments off a query string or a JSON
+   * body and coerces a missing one to `""` on the way in, so an agent that
+   * misspelled a parameter name - which is the common way to get here, because
+   * `inspect({target})` and `inspect({object_id})` are equally plausible
+   * guesses - was told `Received .`, a sentence with a hole in it that asserts
+   * an empty value was sent when in fact none was. `undefined` and `null` get
+   * the same treatment for the same reason: the agent needs to know the field
+   * did not arrive, which is a different repair from sending a wrong one.
+   */
+  invalidInput: (field: string, expected: string, received: unknown): GameError => {
+    const shown =
+      received === undefined || received === null || received === "" ? "nothing" : String(received);
+    return new GameError("E_INVALID_INPUT", `${field} must be ${expected}. Received ${shown}.`);
+  },
 
   /** Chamber III: the penalty for speaking a wrong passphrase while armed. */
   lockedOut: (secondsRemaining: number): GameError =>
