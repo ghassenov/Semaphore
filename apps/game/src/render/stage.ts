@@ -102,7 +102,7 @@ import { activeFloor, stationFloors, type FloorId } from "./floors.js";
 import { isTypingTarget } from "./hud.js";
 import { ghostFrame } from "./ghost.js";
 import { FixtureView, buildDressing } from "./fixtures.js";
-import { KeeperBody, buildPilot } from "./keeper.js";
+import { KeeperBody, buildPilot, type PilotPose } from "./keeper.js";
 import { CHANNEL, PALETTE, hex } from "./palette.js";
 import { Kit } from "./kit.js";
 import type { StationModel } from "./station.js";
@@ -1028,7 +1028,26 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
         // of a key reads as a token rather than as a person.
         if (pressing > 0.01) facing = Math.atan2(acrossKeys, intoKeys);
         pilot.root.rotation.y = facing;
-        if (!reduceMotion) pilot.step(now, stride);
+        /*
+         * What the body is doing, derived from what the stage already knows
+         * rather than pushed to it: the room's own solved flag, whether `E` is
+         * holding a fixture, and the stride. Nothing new travels to get here,
+         * so the pose cannot disagree with the room.
+         *
+         * Called even under reduced motion, with the stride zeroed. The walk
+         * cycle is the part that could trouble anybody; a body that breathes
+         * and turns to look at what it is lighting is not vestibular motion,
+         * and freezing it entirely was leaving those players a mannequin.
+         */
+        const pose: PilotPose =
+          plan.solved && stride < 0.05
+            ? "solved"
+            : leaning !== null
+              ? "leaning"
+              : stride > 0.05
+                ? "walking"
+                : "idle";
+        pilot.step(now, reduceMotion ? 0 : stride, pose);
         // KEEPER stands in the east wall of whichever room the pair is in. It
         // is not *in* the room: it is behind the station's panels, reaching
         // into every cavity at once. They can see each other and reach each

@@ -541,11 +541,29 @@ export class KeeperBody {
  * the first time somebody checked it against the screen. The lamp is the one
  * warm thing, and it is a lamp.
  */
+/**
+ * What PILOT is doing, which is the only thing the body needs to be told.
+ *
+ * Every one of these is read from something the stage already holds - the
+ * stride, whether `E` is being held on a fixture, whether the room is solved -
+ * rather than from a new event path. A pose the renderer has to be *notified*
+ * of is a pose that can disagree with the room.
+ */
+export type PilotPose =
+  /** Standing, breathing, lamp held up. The resting state. */
+  | "idle"
+  /** Under way. */
+  | "walking"
+  /** Holding `E`: leaning in on something, lamp pushed out toward it. */
+  | "leaning"
+  /** The room is solved. Straightened up, lamp raised, looking at it. */
+  | "solved";
+
 export function buildPilot(kit: Kit): {
   readonly root: Group;
   readonly lamp: Object3D;
-  /** Advance the walk cycle. `speed` is 0 standing still, 1 walking. */
-  readonly step: (elapsedMs: number, speed: number) => void;
+  /** Advance the body. `speed` is 0 standing still, 1 walking. */
+  readonly step: (elapsedMs: number, speed: number, pose: PilotPose) => void;
 } {
   const root = new Group();
   const add = (parent: Object3D, mesh: Mesh): Mesh => {
@@ -738,23 +756,90 @@ export function buildPilot(kit: Kit): {
    * `speed` folds in rather than gating: a body that snaps between a still pose
    * and a full stride is worse than one that never moved.
    */
-  const step = (elapsedMs: number, speed: number): void => {
+  /**
+   * How far into each pose the body currently is, 0 to 1.
+   *
+   * Eased toward the target rather than set, for the same reason a fixture
+   * converges rather than playing an animation (D-037): a pose that snapped
+   * when a key went down would make the body look like it was being switched
+   * rather than moving. One number per pose, so two can overlap while one is
+   * arriving and the other leaving.
+   */
+  let leanIn = 0;
+  let hail = 0;
+
+  /** Where the lamp arm rests, and how far it travels in each pose. */
+  const ARM_REST = -0.95;
+  const ARM_LEAN = -1.5;
+  const ARM_HAIL = -2.3;
+
+  const step = (elapsedMs: number, speed: number, pose: PilotPose): void => {
     const phase = (elapsedMs / 520) * Math.PI * 2;
     const swing = Math.sin(phase) * 0.55 * speed;
     legs[0]?.rotation.set(swing, 0, 0);
     legs[1]?.rotation.set(-swing, 0, 0);
     swingArm.rotation.x = -swing * 0.8;
+
+    // Ease toward whichever pose is wanted. The rate is per frame rather than
+    // per second because the caller is the render loop and a body that took a
+    // fixed wall-clock time to lean would lean at a different speed on a
+    // different machine anyway once the frame rate moved.
+    leanIn += ((pose === "leaning" ? 1 : 0) - leanIn) * 0.12;
+    hail += ((pose === "solved" ? 1 : 0) - hail) * 0.06;
+
+    /*
+     * Breathing, and it is on in every pose including walking.
+     *
+     * This is the single largest difference between a figure and a prop. At
+     * `speed` 0 every one of the five walk terms above is exactly zero, so the
+     * body used to stand *perfectly* still - not calm, but frozen, which at
+     * forty pixels tall reads as a rendering fault rather than as a person
+     * waiting. A four-second cycle is slow enough that nobody sees it move and
+     * fast enough that nobody thinks the frame has stopped.
+     */
+    const breath = Math.sin((elapsedMs / 4000) * Math.PI * 2);
+    chest.scale.set(1, 1 + breath * 0.012, 1);
+    chest.position.y = HIP_Y + breath * 0.006;
+
     // Twice per stride: a body rises on each foot, not once per cycle.
     root.position.y = Math.abs(Math.sin(phase)) * 0.03 * speed;
-    hips.rotation.y = Math.sin(phase) * 0.07 * speed;
-    chest.rotation.y = -Math.sin(phase) * 0.05 * speed;
+    // A slow weight shift while standing, on a period that shares no factor
+    // with the breath, so the two never line up into a bounce.
+    const sway = Math.sin((elapsedMs / 6700) * Math.PI * 2) * (1 - speed);
+    hips.rotation.y = Math.sin(phase) * 0.07 * speed + sway * 0.035;
+    chest.rotation.y = -Math.sin(phase) * 0.05 * speed - sway * 0.02;
     skirt.rotation.z = Math.sin(phase - Math.PI / 2) * 0.06 * speed;
+
+    // Leaning in: the whole body tips from the ankles and the lamp goes out
+    // ahead of it, which is what somebody actually does to look at a thing.
+    // Solved straightens the same body back up and lifts the lamp instead.
+    root.rotation.x = leanIn * 0.16 - hail * 0.05;
+    raised.rotation.z = ARM_REST + (ARM_LEAN - ARM_REST) * leanIn + (ARM_HAIL - ARM_REST) * hail;
     // The lamp arm swings least of anything: it is being held deliberately
     // still, which is what someone carrying a light actually does.
     raised.rotation.x = Math.sin(phase) * 0.05 * speed;
+    // The head follows the lamp in both directions, because a figure looking
+    // at what it is lighting is the entire character.
+    head.position.z = leanIn * 0.05;
+    neck.position.z = leanIn * 0.04;
     // The hat lags the body, which is what a tall hat does and what stops it
     // reading as welded on.
     hat.rotation.z = Math.sin(phase - 0.7) * 0.045 * speed;
+    hat.rotation.x = leanIn * 0.1;
+    hat.position.z = leanIn * 0.05;
+
+    /*
+     * The flame, which is never quite steady.
+     *
+     * Two sines at unrelated periods rather than a random walk: a random
+     * flicker at frame rate reads as a rendering artefact, and a periodic one
+     * reads as a pulse. Two slow ones that rarely agree read as a flame. It
+     * burns a little harder while leaning in, which is the light being pushed
+     * at something.
+     */
+    const flicker =
+      1 + Math.sin(elapsedMs / 190) * 0.05 + Math.sin(elapsedMs / 470) * 0.035 + leanIn * 0.25;
+    flame.material.emissiveIntensity = 3.6 * flicker;
   };
 
   return { root, lamp, step };
