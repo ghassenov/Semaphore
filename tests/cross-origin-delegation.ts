@@ -688,6 +688,22 @@ await until((v) => v.phase === "ESCAPED", "the ending");
 await shot("ending");
 await sleep(600);
 
+// The ending's other half (doc 08 phase 3.2). A link the pair can take away is
+// the only part of the finale that outlives the session and it is the entry
+// point to the replay viewer, so it is worth a browser assertion rather than a
+// unit test over a phase name.
+{
+  const href = await evaluate<string>(
+    `(()=>{const card=document.querySelector(".ending");
+      return card && !card.hidden ? (card.querySelector("a")?.getAttribute("href") ?? "") : "";})()`,
+  );
+  check(
+    "the ending offers a replay link for this session",
+    href.includes("/replay") && href.includes(SEED),
+    href || "(no card)",
+  );
+}
+
 const ending = await all();
 check(
   DELEGATED ? "the registry drains to empty, on both origins" : "the registry drains to empty",

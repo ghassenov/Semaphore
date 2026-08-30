@@ -1626,3 +1626,140 @@ button[hidden] {
 .why .ablation {
   margin-top: var(--gap);
 }
+
+/**
+ * The replay viewer (doc 08 phase 7.2).
+ *
+ * Two tracks over one axis and the CONCORD trace beneath them. The channel
+ * colours are the design law and they mean here exactly what they mean in the
+ * station: lamplight is what only PILOT perceived, tidewater is what only
+ * KEEPER could reach. A reader who has played will recognise the rows without
+ * a legend, and one who has not is told by the labels.
+ */
+.replay {
+  max-width: 68rem;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 4rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.replay-head h1 {
+  font-family: var(--mono);
+  font-size: 2rem;
+  letter-spacing: 0.1em;
+  margin: 0.3rem 0;
+  color: var(--pearl);
+}
+
+.replay-screen {
+  max-width: 32rem;
+}
+
+.replay-tracks {
+  width: 100%;
+  height: auto;
+  border: var(--edge);
+  border-radius: var(--radius);
+  background: var(--ink);
+}
+
+/* A chamber boundary is the frame the tracks are read against, not an event. */
+.replay-boundary {
+  stroke: var(--ash);
+  stroke-width: 1;
+}
+
+.replay-room {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  fill: var(--mist);
+}
+
+/* PILOT: lamplight. Only this party ever saw the room. */
+.replay-pilot {
+  fill: var(--lamp);
+}
+
+/* A cue PILOT heard rather than a thing PILOT did. Dimmer, not a new hue:
+   both belong to the same party and the channel colour says so. */
+.replay-pilot.audible {
+  fill: var(--lamp-deep);
+}
+
+/* KEEPER: tidewater. Only this party could reach a mechanism. */
+.replay-keeper {
+  fill: var(--tide);
+}
+
+/* A call that told KEEPER nothing it did not already know. Hollow, because
+   the point is that it took time and bought nothing. */
+.replay-keeper.wasted {
+  fill: none;
+  stroke: var(--tide-deep);
+  stroke-width: 1;
+}
+
+.replay-keeper.failed {
+  fill: var(--alarm);
+}
+
+/* Ambiguity, falling as the pair narrows the world down. */
+.replay-concord {
+  fill: none;
+  stroke: var(--pearl-dim);
+  stroke-width: 1.5;
+}
+
+.replay-playhead {
+  stroke: var(--pearl);
+  stroke-width: 1;
+}
+
+.replay-scrub {
+  width: 100%;
+  accent-color: var(--lamp);
+}
+
+.replay-readout {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  color: var(--mist);
+  margin: 0;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.replay-share {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  flex-wrap: wrap;
+  margin-top: var(--gap);
+}
+
+.replay-share code {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--mist);
+  background: var(--slate);
+  border: var(--edge);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.6rem;
+  overflow-wrap: anywhere;
+}
+
+/**
+ * The card at the end of a session, carrying the replay link.
+ *
+ * Shares `.launch`'s shape because it occupies the same place over the room
+ * and does the same job: it is the one thing worth touching at a phase where
+ * the station is no longer asking anything of the pair.
+ */
+.ending .spectate {
+  display: inline-block;
+  text-decoration: none;
+}

@@ -43,6 +43,7 @@
 import { CHAMBER_NAMES, type PilotView } from "@semaphore/protocol";
 import type { Fader, StationAudio } from "./audio/index.js";
 import { startChamberFrom, type SessionClient } from "./net/sessionClient.js";
+import { replayUrl } from "./replay.js";
 import type { StationModel } from "./render/station.js";
 import {
   LEGEND,
@@ -863,6 +864,29 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   }
   restartIdle();
 
+  // The ending's other half (doc 08 phase 3.2): the link to the replay, on the
+  // same monitor the ghosts were on.
+  //
+  // It lives over the room like the start card does and appears only at
+  // ESCAPED, which is the one phase where the pair has stopped playing and has
+  // something to take away. The session's own id is the replay's id, so there
+  // is nothing to look up.
+  const ending = el("div", { class: "launch ending" });
+  ending.hidden = true;
+  const replayHref = replayUrl(deps.client.sessionId);
+  const replayLink = el("a", { class: "spectate", href: replayHref }, "WATCH THE REPLAY");
+  ending.append(
+    el("h3", {}, "The door is open"),
+    el(
+      "p",
+      { class: "note" },
+      "The whole shift is on the station's log: what you did, what your agent " +
+        "called, and the ambiguity between you. The link is shareable.",
+    ),
+    replayLink,
+  );
+  viewport.append(ending);
+
   viewport.append(launch);
 
   const audible = el("p", { class: "audible", "aria-live": "polite" });
@@ -1076,6 +1100,8 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
       // A recording playing over a room the pair is standing in would be a
       // second station. The card going away takes it with it.
       if (launch.hidden) stopAttract();
+      // And the replay link, at the one phase where the pair has finished.
+      ending.hidden = phase !== "ESCAPED";
 
       paintFloors(floorList, view, model.standing);
       paintGauge();
