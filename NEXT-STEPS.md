@@ -10,12 +10,12 @@ It answers three questions and only three: where the repo is right now, what to 
 
 | | |
 |---|---|
-| **Last updated** | 2026-08-29, Ahmed Saad |
+| **Last updated** | 2026-08-30, Ahmed Saad |
 | **Branch** | `feat/three-d-interface`, off `main` at `5e5635f` |
-| **Pipeline** | Green: 623 tests, typecheck, lint, format, both `vite build`s plus the bundle budget and the palette check, real `wrangler deploy --dry-run` |
+| **Pipeline** | Green: 650 tests, typecheck, lint, format, both `vite build`s plus the bundle budget and the palette check, real `wrangler deploy --dry-run` |
 | **Interface** | **Rebuilt in real-time 3D** (D-042 to D-045). Phaser and the tile renderer are gone. The station is a lit cutaway model: rooms open at the top and on their south face, camera always to the south, four lights and no post-processing. New colour language (D-043), procedural assets and **no asset files at all** (D-044), and a console laid out as two surfaces with the room between them (D-045). |
 | **Licence** | **MIT throughout again.** The vendored art pack went with the tile renderer, so `LICENSE` has no carve-out (D-044). |
-| **Played** | A full session end to end in Chrome 152 against a live `wrangler dev`: all four chambers, the Archive, the finale, the ending. 17/17 browser checks green on the single-origin path. Every frame of the tour was looked at; the five defects it found are fixed and written up in the journal. |
+| **Played** | A full session end to end in Chrome 152 against a live `wrangler dev`: all four chambers, the Archive, the finale, the ending. 17/17 browser checks green on the single-origin path. **A second pass on a real machine found five more defects, all of them things a frame shows and no test does** (D-046, D-047): neighbouring rooms crowding a room shot, hidden masonry left as lit plates, the Archive's beams across its own monitor, KEEPER's body sharing a wall with a shelf rack, and every fixture carrying two stacked captions. All fixed. The tour now also presses `E`. |
 | **Bundle** | Entry **16.9KB** gzipped of a 400KB budget. Three.js is a **143KB** chunk fetched only when a shift starts, against Phaser's 358KB. No images, no fonts, no asset requests at all. |
 | **Archive** | Both halves still built (D-039). KEEPER calls `read_station_log`; PILOT watches the same log on a CRT drawn to a canvas. The exclusion is asserted in both directions, on the projection and again on the wire. |
 | **Delegation** | Working and proved. `ARCHIVE_ORIGIN` stays `same` (D-033). `tests/cross-origin-delegation.ts` is also the screenshot tour: `SHOTS=<dir>` writes a frame at every beat and is a no-op without it. |
@@ -29,7 +29,7 @@ It answers three questions and only three: where the repo is right now, what to 
 | Path | State |
 |---|---|
 | `docs/design/` | Numbered set 00-12. **Doc 06 rewritten for 3D**; the rest unchanged. |
-| `docs/` | Decision log at D-045, lessons journal live. |
+| `docs/` | Decision log at D-047, lessons journal live. |
 | `packages/seed`, `packages/protocol` | Done. Untouched by the rework. |
 | `apps/worker/**` | Done and untouched. Four chambers, the reducer, the Archive beat, the timer, the read-only tool surface, the manual, PILOT's view socket, CONCORD, the notepad. |
 | `apps/game/src/webmcp/*` | Done and untouched. Adapter, three-tier director, 14 tools, the archive frame. |
@@ -37,8 +37,8 @@ It answers three questions and only three: where the repo is right now, what to 
 | `apps/game/src/render/palette.ts` | **New.** "Low Tide": 20 colours in two locked sets. Channel colours carry information; ground and material colours carry none. |
 | `apps/game/src/render/glyphs.ts` | **New.** The twelve glyphs, pixel maps carried over unchanged from `sprites.ts`. Still the one thing with hard edges. |
 | `apps/game/src/render/chamber.ts` | **Pure. New.** What is in a room, as fixtures in metres. Replaces `room.ts`'s tile plans. |
-| `apps/game/src/render/plan.ts` | **Pure. Rewritten** in world units. Also owns `stationCells`, the one-metre rasterisation the walls resolve from. |
-| `apps/game/src/render/camera.ts` | **Pure. New.** Where the camera stands. `fitBox` frames a room corner by corner rather than by bounding sphere. |
+| `apps/game/src/render/plan.ts` | **Pure. Rewritten** in world units. Also owns `stationCells`, the one-metre rasterisation the walls resolve from, and `stationOwners`, which says whose masonry is whose so a room shot can drop the neighbours (D-046). |
+| `apps/game/src/render/camera.ts` | **Pure. New.** Where the camera stands. `fitBox` frames a room corner by corner rather than by bounding sphere. Also `captionHeight`, which keeps a caption a constant fraction of the frame at any distance (D-047). |
 | `apps/game/src/render/floors.ts`, `hud.ts`, `ghost.ts` | Unchanged in substance. `ghost.ts` reports a footprint in metres rather than tiles. |
 | `apps/game/src/render/kit.ts` | Materials, generated textures, labels, halos. **The only place a material is created.** |
 | `apps/game/src/render/fixtures.ts` | One geometry builder per fixture kind, and the converge-toward-the-server stepper. |
@@ -47,7 +47,7 @@ It answers three questions and only three: where the repo is right now, what to 
 | `apps/game/src/ui.ts`, `style.css` | The console and the gate screen, rebuilt (D-045). The gate screen now carries the ablation and the split-lamp mark. |
 | `apps/game/scripts/check-palette.mjs` | **New.** Holds `style.css` and `palette.ts` to the same values, both directions, on every build. Replaces `check-art.mjs`. |
 | `tests/possible-worlds.test.ts` | Done and passing for all four chambers. Untouched. |
-| `tests/cross-origin-delegation.ts` | The browser proof and the screenshot tour. Its wait is now stated against the camera's own constants. |
+| `tests/cross-origin-delegation.ts` | The browser proof and the screenshot tour. Its wait is stated against the camera's own constants, and `shotHolding` presses `E` so the lean-in has a frame (D-047). |
 | `bench/` | Ablation and Cooperative Benchmark, both run and published. Untouched. |
 
 ---
@@ -117,6 +117,8 @@ seconds with zero tokens. Budget the tokens before running, not after.
 
 ### The renderer
 
+- **A renderer's defects are in the frame, and the only instrument that sees them is a frame.** Five defects in one sitting (D-046, D-047) were each invisible to 650 passing tests, and two of them were *introduced by the fix for another*. When a room looks wrong, do not reason about the plan: take the frame, crop it, and if that is not enough, name the scene graph and dump it. Every object now carries a name (`building`, `room`, `dressing`, `dress:<kind>`, `fix:<id>`) precisely so that dump is one call rather than a bisection.
+- **A test written around a bug you already found will not find its sibling.** The dressing-overlap check compared centre points and skipped any fixture above 1.4m, which is exactly why it missed a 4m monitor with two cabinets buried in it. Widen the check to what the rule actually says, not to what reproduces the one case.
 - **Run the tour and look at the frames before calling a rendering change done.** `SHOTS=/tmp/tour ARCHIVE="" GAME=http://localhost:5173 node --experimental-strip-types tests/cross-origin-delegation.ts` plays a whole session against live servers in about a minute. Three renderers in a row have shipped green and produced defects in their first tour that six hundred unit tests could not see. Servers and flags are in the header of that file.
 - **The tour's wait must stay longer than `WALK_MS + SHOT_MS`** in `render/camera.ts`. A frame grabbed early is the previous room with the next room's name over it, or the whole building from four hundred metres up. Both have happened.
 - **Fog is squared in distance, so it is a wide-shot setting.** A density that is imperceptible in a room erases the building when the camera pulls back. If the wide shot looks broken, check the fog before the lights.
