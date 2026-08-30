@@ -56,10 +56,68 @@ It answers three questions and only three: where the repo is right now, what to 
 
 In order. Each item ends somewhere the pipeline is green and the repo is committable.
 
-### 1. Playtest with humans [needs people]
+### 1. Finish the session that is still open, then keep playing and fixing
 
-Unchanged and now the most valuable thing on the list, because the interface it
-would be tested against is finally the one we intend to ship. Doc 08 section 0.1
+**This is the item to pick up first, and it is deliberately not "playtest with
+six people" - it is one person, this repo, an afternoon.** Three sittings on a
+real machine have now produced eleven defects that 650 passing tests did not see
+(D-046 to D-048), and the rate has not fallen off. There is every reason to
+think a fourth sitting finds more.
+
+**Bring it up.** Two shells, then a browser:
+
+```bash
+cd apps/worker && npx wrangler dev --port 8787   # shell one
+cd apps/game   && pnpm dev                       # shell two, serves :5173
+```
+
+Vite proxies `/session` to the worker, WebSocket included. Open
+`http://localhost:5173/`, click a session length, and paste the starter prompt
+from the console's YOUR AGENT panel into whichever agent is playing KEEPER. If
+you want a second pair of eyes on the same session, the seed is in the URL.
+
+**There is a session mid-play.** Seed `play-1788042567794`, sitting in the
+ARCHIVE with all eight ghost-log entries read, one chamber short of the finale.
+It survives as long as the Durable Object's local state does
+(`apps/worker/.wrangler/`); if it has gone, start a fresh one, since nothing
+downstream depends on that particular seed. Reaching the Concord Lock from there
+is the last stretch nobody has played by hand since the ending was rebuilt.
+
+**What to actually do while playing.** Walk into every corner of every room with
+**WASD**, hold **E** on everything that will take it, press **M** in each
+chamber, and go **fullscreen with F** - the console is a different shape there
+and has had far less looking-at. The three faults that keep recurring are worth
+watching for by name: geometry standing inside other geometry, text printed on
+top of text, and anything hanging between the camera and the thing a room exists
+for.
+
+**Then run the tour and read every frame.**
+
+```bash
+SHOTS=/tmp/tour ARCHIVE="" GAME=http://localhost:5173 \
+  WORKER=http://127.0.0.1:8787 CDP=http://127.0.0.1:9222 \
+  node --experimental-strip-types tests/cross-origin-delegation.ts
+```
+
+It needs a Chrome on port 9222
+(`google-chrome-stable --ozone-platform=wayland --enable-features=WebMCPTesting
+--remote-debugging-port=9222 --user-data-dir=/tmp/chrome-semaphore about:blank`).
+Ten frames in about a minute, and 17 assertions alongside them.
+**Open all ten and crop into the corners.** Every one of the eleven defects above
+was already present in a frame that had been captured and not read; three of the
+last six were found only by cropping a single PNG.
+
+**Two known-unverified things, neither of them a bug yet.** The Signal Room and
+the Concord Lock are the two chambers that have not had a dedicated composition
+pass, so they are the likeliest to be carrying something. And every tuned
+renderer constant - ambient at 0.62, the doorway spotlight at 110, the caption's
+0.032 of viewport height - was set by looking at a 1400x900 desktop window and
+has been checked at no other size.
+
+### 2. Playtest with humans [needs people]
+
+The thing item 1 cannot do: item 1 is one person who knows where everything is,
+and that person cannot be surprised by the game. Doc 08 section 0.1
 wants six. What a script cannot answer: whether it is fun, whether a cold
 player's description of a glyph reaches the manual's canonical name, and whether
 the vandalised Signal Room page actually fools anybody. The glyph vocabulary's
@@ -70,7 +128,7 @@ as a building you are inside, or as a diorama you are outside? Does anybody find
 **M**? And does KEEPER's body land - do people notice the arms changing at a
 chamber boundary without being told to look?
 
-### 2. Run the spike in ChatGPT's in-app browser, and meet a real model [needs a human]
+### 3. Run the spike in ChatGPT's in-app browser, and meet a real model [needs a human]
 
 Unchanged, and the rework adds one thing to check: **WebGL performance in the
 in-app browser on a phone.** The renderer is deliberately cheap - four lights,
@@ -82,7 +140,7 @@ Two spike rows still decide things: `crossorigin.delegation`, which flips
 `ARCHIVE_ORIGIN`, and `declarative.agentinvoked`, which the notepad's per-line
 authorship depends on.
 
-### 3. Sound, which is the largest hole in the art direction now
+### 4. Sound, which is the largest hole in the art direction now
 
 Doc 06 section 11 is unbuilt and it is the half of the `AUDIBLE` channel that
 does not exist. The visible half does: the console's audible strip carries the
@@ -93,7 +151,7 @@ detents. Phase 5.2 in doc 08.
 The visual rework makes this the obvious next thing rather than a phase to get
 to: the station now looks like a place and sounds like nothing.
 
-### 4. Decide what to do about the two things the ablation found
+### 5. Decide what to do about the two things the ablation found
 
 Numbers and reasoning in D-040. Neither is a bug, which is why both are a
 decision rather than a task. **Chamber II falls off a cliff at a slow agent
@@ -102,13 +160,13 @@ rhythm** (4.00 of four at 4s, 3.80 at 6s, 2.00 at 9s), and **the Signal Room's
 until doc 11 sections 6 and 7 carry measured round trips; then re-run both the
 ablation and the benchmark.
 
-### 5. Deploy the archive origin as its own Pages project
+### 6. Deploy the archive origin as its own Pages project
 
 The code is done and proved locally; the second Cloudflare Pages project and its
 preview-deploy wiring are not. `VITE_ARCHIVE_ORIGIN` and the worker's
 `ALLOWED_ORIGINS` are the only two settings involved.
 
-### 6. Point a model at the benchmark [blocked on step 2]
+### 7. Point a model at the benchmark [blocked on step 3]
 
 The harness, the suite, the partner axis and the report all exist and run in
 seconds with zero tokens. Budget the tokens before running, not after.
@@ -117,8 +175,11 @@ seconds with zero tokens. Budget the tokens before running, not after.
 
 ### The renderer
 
-- **A renderer's defects are in the frame, and the only instrument that sees them is a frame.** Five defects in one sitting (D-046, D-047) were each invisible to 650 passing tests, and two of them were *introduced by the fix for another*. When a room looks wrong, do not reason about the plan: take the frame, crop it, and if that is not enough, name the scene graph and dump it. Every object now carries a name (`building`, `room`, `dressing`, `dress:<kind>`, `fix:<id>`) precisely so that dump is one call rather than a bisection.
+- **A renderer's defects are in the frame, and the only instrument that sees them is a frame.** Eleven defects across three sittings (D-046 to D-048) were each invisible to 650 passing tests, and two of them were *introduced by the fix for another*. When a room looks wrong, do not reason about the plan: take the frame, crop it, and if that is not enough, name the scene graph and dump it. Every object now carries a name (`building`, `room`, `dressing`, `dress:<kind>`, `fix:<id>`) precisely so that dump is one call rather than a bisection.
 - **A test written around a bug you already found will not find its sibling.** The dressing-overlap check compared centre points and skipped any fixture above 1.4m, which is exactly why it missed a 4m monitor with two cabinets buried in it. Widen the check to what the rule actually says, not to what reproduces the one case.
+- **A test written from the code rather than from the intent will guard the bug.** A green unit test asserted that the finale had no room to draw. That was the defect: the last two beats of the game rendered an empty shell for as long as the 3D client had existed, and the test said so approvingly.
+- **Hidden has to mean gone.** An instance scaled to a hair in y keeps a full-size lit top face. Two of the eleven were introduced by the fix for another, and both were of this shape: geometry made *conditionally* absent, and not absent enough.
+- **Prefer a relation to a number.** "Nothing hangs between the camera and the Archive's screen" as a coordinate range needs re-deriving whenever either end moves; as a ray from `roomShot`'s eye to the plane of the monitor it is true by construction, and it caught a fault in itself on its first run.
 - **Run the tour and look at the frames before calling a rendering change done.** `SHOTS=/tmp/tour ARCHIVE="" GAME=http://localhost:5173 node --experimental-strip-types tests/cross-origin-delegation.ts` plays a whole session against live servers in about a minute. Three renderers in a row have shipped green and produced defects in their first tour that six hundred unit tests could not see. Servers and flags are in the header of that file.
 - **The tour's wait must stay longer than `WALK_MS + SHOT_MS`** in `render/camera.ts`. A frame grabbed early is the previous room with the next room's name over it, or the whole building from four hundred metres up. Both have happened.
 - **Fog is squared in distance, so it is a wide-shot setting.** A density that is imperceptible in a room erases the building when the camera pulls back. If the wide shot looks broken, check the fog before the lights.
