@@ -40,6 +40,7 @@ import {
   ARCHIVE_SCREEN,
   type DressingKind,
   type Vec3,
+  boltRing,
 } from "./chamber.js";
 import { roomShot } from "./camera.js";
 import { GLYPH_IDS } from "./glyphs.js";
@@ -740,6 +741,74 @@ describe("the caption band", () => {
     }
     for (const phase of ["IN_CHAMBER", "PENALISED", "DEADLOCK", "ARCHIVE"] as const) {
       expect(hasInterlude(viewOf({ phase })), `${phase} talks over the room`).toBe(false);
+    }
+  });
+});
+
+describe("the bolt ring", () => {
+  it("sits on the door rather than on the wall above it", () => {
+    // The door is 2.9m tall. A ring centred at 3.4 is centred above its lintel,
+    // and it read as a row of lamps on blank masonry.
+    const DOOR_HEIGHT = 2.9;
+    const DOOR_WIDTH = 3.2;
+    for (const at of boltRing(ROOM_SIZES.concord_lock)) {
+      expect(at.y, "a bolt is underground").toBeGreaterThan(0);
+      expect(at.y, "a bolt floats over the lintel").toBeLessThan(DOOR_HEIGHT + 1);
+      expect(Math.abs(at.x), "a bolt is out past the jamb").toBeLessThan(DOOR_WIDTH / 2 + 0.6);
+    }
+    // And it is a ring: something above the door, something below, both sides.
+    const ys = boltRing(ROOM_SIZES.concord_lock).map((at) => at.y);
+    expect(Math.max(...ys)).toBeGreaterThan(DOOR_HEIGHT * 0.9);
+    expect(Math.min(...ys)).toBeLessThan(DOOR_HEIGHT * 0.3);
+  });
+
+  it("is one definition, so the chamber and the finale agree", () => {
+    const finalePlan = roomPlan(viewOf({ phase: "FINALE", chamber: null, facts: {} }));
+    const ring = boltRing(ROOM_SIZES.concord_lock);
+    const bolts = finalePlan?.fixtures.filter((fixture) => fixture.kind === "bolt") ?? [];
+    expect(bolts.length).toBe(ring.length);
+    bolts.forEach((bolt, index) => {
+      expect(bolt.at).toEqual(ring[index]);
+    });
+  });
+});
+
+describe("where captions land", () => {
+  it("puts no two captions in the same place", () => {
+    /*
+     * Two captions at one anchor is two strings printed over each other, and it
+     * has happened in this client in three different ways: a fixture carrying
+     * two sprites of its own, a gauge's reading over its name, and the Concord
+     * Lock's door sign under the bolt ring's count - bolt 0 is at the bottom of
+     * the ring, so its caption clamped to the same floor height as the door's,
+     * directly below it.
+     *
+     * Anchors rather than text boxes, deliberately. How wide a caption is
+     * depends on measured text and on how far the camera is, neither of which
+     * belongs in a pure test; two captions at the same point is a defect at any
+     * width.
+     */
+    for (const plan of allPlans()) {
+      const anchors: { id: string; x: number; y: number; z: number }[] = [];
+      for (const fixture of plan.fixtures) {
+        if (fixture.label === undefined) continue;
+        const drop = fixture.captionAt ?? Math.max(-0.34, 0.24 - fixture.at.y);
+        anchors.push({
+          id: fixture.id,
+          x: fixture.at.x,
+          y: fixture.at.y + drop,
+          z: fixture.at.z,
+        });
+      }
+      for (const [a, one] of anchors.entries()) {
+        for (const two of anchors.slice(a + 1)) {
+          const apart =
+            Math.abs(one.x - two.x) > 0.5 ||
+            Math.abs(one.y - two.y) > 0.5 ||
+            Math.abs(one.z - two.z) > 0.5;
+          expect(apart, `${plan.id}: ${one.id} and ${two.id} caption the same spot`).toBe(true);
+        }
+      }
     }
   });
 });

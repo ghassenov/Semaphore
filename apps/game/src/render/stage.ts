@@ -930,22 +930,27 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
      * two frames of the game were a grey box: the room was lit by a single
      * ceiling practical and there was nothing in it to catch the light.
      */
+    const outerDoor =
+      plan?.solved === true
+        ? plan.fixtures.find((fixture) => fixture.kind === "door" && fixture.on)
+        : undefined;
     {
       const at = floor === null ? null : placementOf(mode, floor);
       const grate = plan?.fixtures.find((fixture) => fixture.kind === "grate");
-      const doorway =
-        plan?.solved === true
-          ? plan.fixtures.find((fixture) => fixture.kind === "door" && fixture.on)
-          : undefined;
-      const opening = grate ?? doorway;
+      const opening = grate ?? outerDoor;
       if (opening !== undefined && at !== null && plan !== null) {
         // Cold and much stronger through a door than through a grate: a grate
         // is a hatch and the outer door is the sea.
         const throughDoor = grate === undefined;
         behindGrate.color.setHex(throughDoor ? PALETTE.tideBright : PALETTE.tide);
-        behindGrate.intensity = throughDoor ? 260 : 55;
-        behindGrate.distance = throughDoor ? 42 : 18;
-        behindGrate.angle = throughDoor ? 0.62 : 0.95;
+        // Enough to throw a shaft across the floor, and **not** enough to fill
+        // the room. At 260 it lit every wall of a nine-metre cathedral evenly
+        // and the room came back as a pale warehouse: the doorway only reads as
+        // bright if the room around it stays dark. The door's own lit opening
+        // does the rest, and that is emissive rather than a light.
+        behindGrate.intensity = throughDoor ? 110 : 55;
+        behindGrate.distance = throughDoor ? 34 : 18;
+        behindGrate.angle = throughDoor ? 0.34 : 0.95;
         behindGrate.position.set(
           at.x + opening.at.x,
           opening.at.y + (throughDoor ? 2.2 : 0.45),
@@ -966,7 +971,13 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
         // Scaled to the room's floor area rather than flat. One number for a
         // 56 square metre Archive and a 168 square metre Concord Lock lit the
         // first as a showroom and the second barely at all.
-        practical.intensity = 26 + plan.size.width * plan.size.depth * 0.5;
+        // **A quarter of that once the outer door is open.** The room's own
+        // lights stop mattering at the end: the only light worth having is the
+        // one coming in from outside, and a nine-metre cathedral lit evenly by
+        // its own practical came back as a pale warehouse with a bright
+        // rectangle in it. Dropping the fill is what makes the doorway read.
+        practical.intensity =
+          (26 + plan.size.width * plan.size.depth * 0.5) * (outerDoor === undefined ? 1 : 0.26);
         practical.position.set(at.x, plan.size.height * 0.82, at.z + plan.size.depth * 0.1);
         const lit = wide ? centreOfStation(mode) : at;
         moon.target.position.set(lit.x, 0, lit.z);
