@@ -51,6 +51,15 @@ possible-worlds proof and for the CONCORD meter, so this is a subtraction rather
 estimate. A confident mis-description scores negative, because it moves the agent from a set
 that contains the answer to one that does not.
 
+**This table is where `wrong` stops looking free.** It clears the same chambers `oracle` does,
+and a reader stopping at the headline would conclude that a partner who is confidently mistaken
+a quarter of the time costs the pair nothing. What it actually costs is calls and bits: it needs
+well over half again as many mutating calls per chamber it clears, and its descriptions carry a
+fraction of the information `oracle`'s do, because the mistaken ones score negative. Standard
+difficulty is forgiving enough at this rhythm to absorb that; a shorter timer would not be, and
+neither would a chamber whose wrong answers were irreversible. That is the argument for
+measuring a pair on more than its completion rate, made by this harness against itself.
+
 ## Per chamber, share of runs solved
 
 | Chamber | oracle | vague | slow | wrong |
