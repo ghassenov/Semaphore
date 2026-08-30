@@ -113,3 +113,24 @@ export function stationFloors(view: PilotView): readonly Floor[] {
     cleared: order >= 0 && index < order,
   }));
 }
+
+/**
+ * The floor before this one in play order, or null for the first.
+ *
+ * The way back is defined by the order the pair walks the building, not by
+ * geometry: the Concord Lock's east door opens onto the southern spine, which
+ * physically reaches both the Blind Panel and the Archive, and only play order
+ * knows that the room behind you is the Archive.
+ */
+export function previousFloor(mode: PilotView["mode"], floor: FloorId): FloorId | null {
+  const floors = floorsFor(mode);
+  const index = floors.indexOf(floor);
+  return index > 0 ? (floors[index - 1] ?? null) : null;
+}
+
+/** The floor after this one in play order, or null for the last. */
+export function nextFloor(mode: PilotView["mode"], floor: FloorId): FloorId | null {
+  const floors = floorsFor(mode);
+  const index = floors.indexOf(floor);
+  return index >= 0 && index < floors.length - 1 ? (floors[index + 1] ?? null) : null;
+}

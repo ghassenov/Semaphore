@@ -71,7 +71,7 @@ import {
   clearOf,
   hasInterlude,
   interlude,
-  keeperAlcove,
+  alcoveOf,
   lampReveal,
   nearestFixture,
   roomPlan,
@@ -1053,10 +1053,18 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
         // into every cavity at once. They can see each other and reach each
         // other nowhere.
         keeper.root.visible = true;
-        // The east wall, from the one constant the room plans are checked
-        // against, so a rack of shelves can never be written into the body.
-        const alcove = keeperAlcove(plan.size);
-        keeper.root.position.set(at.x + (alcove.x0 + alcove.x1) / 2, 0, at.z);
+        // The east wall, from the one function the room plans are checked
+        // against, so a rack of shelves can never be written into the body -
+        // and neither can a doorway, which three of the five east walls now
+        // have (D-053). It answers with a z as well as an x, so the body is
+        // placed on both axes from it rather than defaulting to the room's
+        // own centre line.
+        const alcove = alcoveOf(mode, plan.id, plan.size);
+        keeper.root.position.set(
+          at.x + (alcove.x0 + alcove.x1) / 2,
+          0,
+          at.z + (alcove.z0 + alcove.z1) / 2,
+        );
         keeper.root.rotation.y = -Math.PI / 2;
       }
     } else {

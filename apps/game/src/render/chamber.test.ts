@@ -37,7 +37,7 @@ import {
   roomTitle,
   spread,
   type RoomPlan,
-  keeperAlcove,
+  alcoveOf,
   ARCHIVE_SCREEN,
   type DressingKind,
   type Vec3,
@@ -45,6 +45,12 @@ import {
 } from "./chamber.js";
 import { roomShot } from "./camera.js";
 import { GLYPH_IDS } from "./glyphs.js";
+import { DOORWAY_WIDTH } from "./doorways.js";
+import { floorsFor } from "./floors.js";
+import { MODE_CHAMBERS, type SessionMode } from "@semaphore/protocol";
+
+/** Both buildings. A door in the east wall is on a different half in each. */
+const MODES = Object.keys(MODE_CHAMBERS) as SessionMode[];
 
 /** A view with everything the chambers do not care about filled in. */
 function viewOf(over: Partial<PilotView>): PilotView {
@@ -127,10 +133,16 @@ const CHAMBERS: readonly { readonly name: string; readonly view: PilotView }[] =
   },
 ];
 
-/** Every plan the game can draw, including the Archive's constant one. */
-function allPlans(): readonly RoomPlan[] {
+/**
+ * Every plan the game can draw, including the Archive's constant one.
+ *
+ * Takes a mode, because a room is no longer mode-independent: its doors stand
+ * in the openings its corridors actually make, and BRIEF routes two of them to
+ * a different part of the same wall (`doorways.ts`).
+ */
+function allPlans(mode: SessionMode = "full"): readonly RoomPlan[] {
   const plans = CHAMBERS.map(({ name, view }) => {
-    const plan = roomPlan(view);
+    const plan = roomPlan({ ...view, mode });
     if (plan === null) throw new Error(`${name} produced no room`);
     return plan;
   });
@@ -705,26 +717,68 @@ describe("KEEPER's alcove", () => {
      * of tape reels exactly where KEEPER's body is, and the two largest things
      * in the room drew through each other.
      */
-    for (const plan of allPlans()) {
-      const box = keeperAlcove(plan.size);
-      for (const item of plan.dressing) {
-        // Only what stands on the floor and has bulk. A cable or a bulb hangs
-        // from the ceiling above the alcove, which is where they belong.
-        if (item.kind !== "shelf" && item.kind !== "cabinet" && item.kind !== "locker") continue;
-        const yaw = item.facing ?? 0;
-        const run = (item.length ?? 0) / 2;
-        const halfX = Math.abs(Math.cos(yaw)) * run + 0.25;
-        const halfZ = Math.abs(Math.sin(yaw)) * run + 0.25;
-        const clear =
-          item.at.x + halfX <= box.x0 ||
-          item.at.x - halfX >= box.x1 ||
-          item.at.z + halfZ <= box.z0 ||
-          item.at.z - halfZ >= box.z1;
-        expect(clear, `${plan.id}: ${item.kind} stands in KEEPER's alcove`).toBe(true);
+    for (const mode of MODES) {
+      for (const plan of allPlans(mode)) {
+        if (!floorsFor(mode).includes(plan.id)) continue;
+        const box = alcoveOf(mode, plan.id, plan.size);
+        checkAlcove(plan, box, mode);
       }
     }
   });
 });
+
+/**
+ * Nothing with bulk stands where KEEPER's body is.
+ *
+ * Doors are checked alongside the dressing now. Three of the five rooms have a
+ * doorway in the east wall since the doors were put in the actual openings
+ * (D-053), and KEEPER is drawn *inside* that wall - a body and a bulkhead at
+ * the same place is a torso in a doorframe. `alcoveOf` moves the body to the
+ * far end of the wall, and this is what proves it moved far enough.
+ */
+function checkAlcove(
+  plan: RoomPlan,
+  box: { x0: number; x1: number; z0: number; z1: number },
+  mode: SessionMode,
+): void {
+  const clearOfBox = (x: number, z: number, halfX: number, halfZ: number, what: string): void => {
+    const clear =
+      x + halfX <= box.x0 || x - halfX >= box.x1 || z + halfZ <= box.z0 || z - halfZ >= box.z1;
+    expect(clear, `${mode}/${plan.id}: ${what} stands in KEEPER's alcove`).toBe(true);
+  };
+
+  for (const fixture of plan.fixtures) {
+    if (fixture.kind !== "door") continue;
+    // A door runs along the wall it is set into, which is across its own x,
+    // and it has the frame's thickness through that wall. The thickness is not
+    // a detail: a door's anchor sits exactly on `width / 2`, which is the
+    // alcove's own outer edge, so with no depth at all every door in the game
+    // clears every alcove by a hair and this proves nothing.
+    const yaw = fixture.facing ?? 0;
+    const run = DOORWAY_WIDTH / 2 + 0.3;
+    const thick = 0.25;
+    clearOfBox(
+      fixture.at.x,
+      fixture.at.z,
+      Math.abs(Math.cos(yaw)) * run + Math.abs(Math.sin(yaw)) * thick,
+      Math.abs(Math.sin(yaw)) * run + Math.abs(Math.cos(yaw)) * thick,
+      `door ${fixture.id}`,
+    );
+  }
+
+  {
+    for (const item of plan.dressing) {
+      // Only what stands on the floor and has bulk. A cable or a bulb hangs
+      // from the ceiling above the alcove, which is where they belong.
+      if (item.kind !== "shelf" && item.kind !== "cabinet" && item.kind !== "locker") continue;
+      const yaw = item.facing ?? 0;
+      const run = (item.length ?? 0) / 2;
+      const halfX = Math.abs(Math.cos(yaw)) * run + 0.25;
+      const halfZ = Math.abs(Math.sin(yaw)) * run + 0.25;
+      clearOfBox(item.at.x, item.at.z, halfX, halfZ, item.kind);
+    }
+  }
+}
 
 describe("the Archive's sightline to its monitor", () => {
   /*
