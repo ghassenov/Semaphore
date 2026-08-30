@@ -1333,3 +1333,12 @@ Frames were being generated and not looked at, which is worse than not
 generating them, because it produces the feeling of having checked. The tour is
 only an instrument if somebody reads the output; three of these six were found
 by cropping one PNG and looking at the corner of it.
+
+**Result across D-046 to D-048.** 657 tests, up from 623: the additions are the
+checks that would have caught these, which is the only kind of test worth adding
+after the fact. Entry chunk 18.8KB gzipped against a 400KB budget, Three.js
+still a 148KB chunk fetched only when a shift starts. Driven in Chrome 152
+against a live worker: 17 of 17 browser checks, and ten frames written and *read*
+- the Archive's monitor unobstructed, the lean-in framed at eye height with the
+glyphs legible, and an ending that is a dark cathedral with a shaft of sea light
+across the floor instead of a grey box.
