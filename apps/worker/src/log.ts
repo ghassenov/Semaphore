@@ -14,7 +14,7 @@
  * the benchmark corpus, and the Archive's ghosts.
  */
 
-import { toJsonl, type SessionEvent } from "@semaphore/protocol";
+import { parseJsonl, toJsonl, type SessionEvent } from "@semaphore/protocol";
 
 const EVENT_KEY_WIDTH = 6; // headroom well past any session's real event count
 const EVENT_PREFIX = "evt:";
@@ -59,4 +59,31 @@ export async function gzipJsonl(events: readonly SessionEvent[]): Promise<Uint8A
   const stream = new Blob([text]).stream().pipeThrough(new CompressionStream("gzip"));
   const buffer = await new Response(stream).arrayBuffer();
   return new Uint8Array(buffer);
+}
+
+/**
+ * Read a gzipped JSONL log back out of a D1 row.
+ *
+ * The inverse of `gzipJsonl`, and the replay viewer's way in.
+ *
+ * **D1 hands a BLOB back as a plain array of byte numbers**, not as the
+ * `ArrayBuffer` the type declarations suggest and not as the `Uint8Array` the
+ * write side produced. Passing that array to `Blob` does not fail: it
+ * stringifies it, so the stream carries the ASCII text "31,139,8,0,..." and
+ * the only symptom is `TypeError: Decompression failed` from a line that looks
+ * correct. Normalising every accepted shape through `Uint8Array.from` is what
+ * makes this survive both D1's real behaviour and a caller holding either of
+ * the other two.
+ */
+export async function gunzipJsonl(
+  gzipped: ArrayBuffer | Uint8Array | readonly number[],
+): Promise<SessionEvent[]> {
+  const bytes =
+    gzipped instanceof Uint8Array
+      ? gzipped
+      : gzipped instanceof ArrayBuffer
+        ? new Uint8Array(gzipped)
+        : Uint8Array.from(gzipped);
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return parseJsonl(await new Response(stream).text());
 }

@@ -53,9 +53,46 @@ and the ending, rendered in real-time 3D. Not yet deployed, and not yet played b
 | `tests/` - possible-worlds proof, cross-origin delegation | Green across all four chambers |
 | `bench/` - the ablation and the Cooperative Benchmark | Built and published |
 | Art - the station, both bodies, KEEPER's anatomy | Built, procedural, no asset files |
-| Audio, full accessibility, the replay viewer | Not started |
+| Audio - synthesised, no asset files | Built and signed off |
+| The replay viewer, `/replay?id=` | Built |
+| Accessibility - the mirror, contrast, motion, colourblind verification | Built; not yet tested with a screen reader |
 
 [NEXT-STEPS.md](NEXT-STEPS.md) is the live handoff and says what is next and what will bite you.
+
+---
+
+## Accessibility, and one honest trade-off
+
+The station can be played without hearing and without a mouse. Every cue in the
+`AUDIBLE` channel carries a text equivalent beside it, including the detent
+count Chamber II is built on, which is printed as "3 clicks registered" rather
+than left to the ear. Every control is reachable by keyboard. The two channel
+colours are verified against protanopia, deuteranopia and tritanopia by
+simulation in `apps/game/src/render/palette.test.ts`, and every channel-coded
+element carries a shape marker as well as a hue, because colour alone must
+never carry information.
+
+**The mirror is the trade-off, and it is worth stating plainly.** The game's
+design law is that puzzle-critical visuals render to the canvas and never to
+the DOM: a text node holding a glyph is a text node an agent with page access
+can scrape, and KEEPER not being able to see is the entire game. A blind player
+needs exactly that text.
+
+So the Access panel can describe the room into an `aria-live` region, and doing
+so genuinely hands an agent with page access part of PILOT's half. Three things
+keep it honest:
+
+- It is **off by default** and turned on by the person it is for, in a panel
+  that says what it does before it does it.
+- It **never names a glyph**. It says a plate carries a mark and leaves the
+  describing to the player, exactly as the picture does. Asserted for every
+  chamber in `apps/game/src/render/mirror.test.ts`.
+- It changes nothing on the server. The mirror renders the same
+  `projectForPilot` frame the canvas does, in a different medium.
+
+We would rather ship a game with a stated limitation than one a blind player
+cannot start. The remaining gap is that it has not been tested with a real
+screen reader, only with the accessibility tree.
 
 ---
 

@@ -104,10 +104,10 @@ import {
 import { activeFloor, previousFloor, stationFloors, type FloorId } from "./floors.js";
 import { doorLeadsTo, doorsOf, type Doorway } from "./doorways.js";
 import { isTypingTarget } from "./hud.js";
-import { ghostFrame } from "./ghost.js";
+import { paintMonitor } from "./monitor.js";
 import { FixtureView, buildDressing } from "./fixtures.js";
 import { KeeperBody, buildPilot, type PilotPose } from "./keeper.js";
-import { CHANNEL, PALETTE, hex } from "./palette.js";
+import { CHANNEL, PALETTE } from "./palette.js";
 import { Kit } from "./kit.js";
 import type { StationModel } from "./station.js";
 
@@ -151,7 +151,18 @@ export function createStage(
   model: StationModel,
   onStanding: () => void = () => {},
 ): StageHandle {
-  const reduceMotion = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+  /**
+   * Whether the station holds still: the camera's drift, and PILOT's stride.
+   *
+   * Read every frame rather than once at boot, because the console's Access
+   * panel can turn it on mid-session (doc 08 phase 6) and a value captured at
+   * construction could not hear it. `prefers-reduced-motion` still counts, and
+   * the attribute is the manual switch beside it: a system preference is not
+   * something somebody should have to change desktop-wide to still one game.
+   */
+  const stillness = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)");
+  const holdStill = (): boolean =>
+    stillness?.matches === true || document.documentElement.hasAttribute("data-still");
 
   const renderer = new WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
   renderer.outputColorSpace = SRGBColorSpace;
@@ -494,7 +505,6 @@ export function createStage(
 
   // ---- Dust. ---------------------------------------------------------------
   const dust = buildDust(kit);
-  dust.visible = !reduceMotion;
   scene.add(dust);
 
   // ---- Camera state. -------------------------------------------------------
@@ -741,79 +751,18 @@ export function createStage(
     }
   }
 
-  /** Draw the ghost onto the monitor's canvas. */
+  /**
+   * Draw the ghost onto the monitor's canvas.
+   *
+   * The picture itself lives in `monitor.ts`, because the gate screen plays
+   * the same recording and must not reach a module that imports Three.js to
+   * do it. What stays here is the pair of things that are this scene's and
+   * not the picture's: when playback started, and telling the texture the
+   * canvas underneath it changed.
+   */
   function paintScreen(track: PilotView["ghost"], elapsedMs: number): void {
-    const context = screenCanvas.getContext("2d");
-    if (!context) return;
-    const { width, height } = screenCanvas;
-
-    context.fillStyle = hex(PALETTE.abyss);
-    context.fillRect(0, 0, width, height);
-
-    if (track === null) {
-      context.fillStyle = hex(PALETTE.lampDeep);
-      context.font = "600 22px ui-monospace, Menlo, monospace";
-      context.textAlign = "center";
-      context.fillText("NO TAPE", width / 2, height / 2);
-      screenTexture.needsUpdate = true;
-      return;
-    }
-
     ghostFrom ??= elapsedMs;
-    const frame = ghostFrame(track, elapsedMs - ghostFrom);
-
-    // The designation. A session log carries no other name, and it is the
-    // reason the beat lands at all: the pair are watching somebody.
-    context.fillStyle = hex(PALETTE.lampDeep);
-    context.font = "600 17px ui-monospace, Menlo, monospace";
-    context.textAlign = "left";
-    context.fillText(track.designation, 14, 26);
-
-    // The room the ghost was in, as a plan at its true proportion.
-    const bandTop = 40;
-    const bandHeight = height - 96;
-    const scale = Math.min((width - 60) / frame.width, bandHeight / frame.depth);
-    const planWidth = frame.width * scale;
-    const planDepth = frame.depth * scale;
-    const planX = (width - planWidth) / 2;
-    const planY = bandTop + (bandHeight - planDepth) / 2;
-
-    context.strokeStyle = hex(frame.ended ? PALETTE.lampDeep : PALETTE.lamp);
-    context.lineWidth = 2;
-    context.strokeRect(planX, planY, planWidth, planDepth);
-
-    // The ghost, walking. Every position between two beats is `ghost.ts`'s
-    // invention: PILOT's position is client-local and no session log has ever
-    // carried it. The beats themselves are real, which is what makes the
-    // interpolation honest rather than a fiction.
-    const bodySize = Math.max(6, scale * 0.9);
-    const bodyX = planX + frame.walk * (planWidth - bodySize);
-    const bodyY = planY + planDepth - bodySize - 4;
-    context.fillStyle = hex(frame.ended ? PALETTE.lampDeep : PALETTE.lamp);
-    context.fillRect(bodyX, bodyY, bodySize, bodySize);
-    // Gripping is the one posture worth drawing: the ghost is holding the bar,
-    // and the reason the recording stops is that they could not hold it.
-    if (frame.gripping) context.fillRect(bodyX, bodyY - bodySize - 2, bodySize, bodySize);
-
-    // One line, centred, saying what is happening.
-    context.fillStyle = hex(frame.ended ? PALETTE.pearl : PALETTE.lamp);
-    context.font = "600 16px ui-monospace, Menlo, monospace";
-    context.textAlign = "center";
-    context.fillText(frame.caption, width / 2, height - 34);
-
-    // The scrub bar, so a pair arriving part way through can see there is a
-    // beginning to wait for.
-    context.fillStyle = hex(PALETTE.lampDeep);
-    context.fillRect(14, height - 18, width - 28, 3);
-    context.fillStyle = hex(PALETTE.lamp);
-    context.fillRect(14, height - 18, (width - 28) * frame.progress, 3);
-
-    // Scanlines, last, over everything. A monitor in a station this old is not
-    // a clean surface, and the lines are what stop the schematic reading as a
-    // modern overlay pasted onto a 3D scene.
-    context.fillStyle = "rgba(5,7,10,0.28)";
-    for (let y = 0; y < height; y += 3) context.fillRect(0, y, width, 1);
-
+    paintMonitor(screenCanvas, track, elapsedMs - ghostFrom);
     screenTexture.needsUpdate = true;
   }
 
@@ -854,7 +803,7 @@ export function createStage(
     // A still camera in a still room reads as a paused game, so it breathes.
     // Suppressed under reduced motion, where a camera that moves on its own is
     // not atmosphere but a problem.
-    if (!reduceMotion) {
+    if (!holdStill()) {
       const phase = (now / DRIFT_PERIOD_MS) * Math.PI * 2;
       camera.position.x += Math.sin(phase) * DRIFT_METRES;
       camera.position.y += Math.cos(phase * 0.7) * DRIFT_METRES * 0.5;
@@ -1265,7 +1214,7 @@ export function createStage(
               : stride > 0.05
                 ? "walking"
                 : "idle";
-        pilot.step(now, reduceMotion ? 0 : stride, pose);
+        pilot.step(now, holdStill() ? 0 : stride, pose);
         // KEEPER stands in the east wall of whichever room the *session* is
         // in. It is not *in* the room: it is behind the station's panels,
         // reaching into every cavity at once. They can see each other and
@@ -1308,12 +1257,12 @@ export function createStage(
     // The water, everywhere it appears, and the room's own small movements.
     // Both suppressed under reduced motion, along with everything else that
     // moves on its own.
-    if (!reduceMotion) {
+    if (!holdStill()) {
       kit.tideStep(now);
       stepDressing(now);
     }
 
-    if (!reduceMotion) {
+    if (!holdStill()) {
       dust.rotation.y = now / 42000;
       const flicker = 1 + Math.sin(now / 260) * 0.03 + Math.sin(now / 91) * 0.015;
       practical.intensity *= flicker;
@@ -1338,7 +1287,27 @@ export function createStage(
       caption.dataset.shown = "false";
     }
 
+    // Set here rather than at construction so the console's Access switch
+    // can still the room mid-session.
+    dust.visible = !holdStill();
+
     frame(shot, now);
+
+    // Whether the camera has stopped travelling, published on the canvas so
+    // something outside the loop can wait for it.
+    //
+    // The browser tour used to sleep for a hand-copied `WALK_MS + SHOT_MS`
+    // before every screenshot, and a frame grabbed one tick early is the
+    // previous room wearing the next room's name, or the whole station seen
+    // from four hundred metres up. That has now shipped three times, most
+    // recently as an Archive frame taken at 2000ms against a 2400ms arrival:
+    // the constants moved and the sleeps did not, because a number copied out
+    // of another module has no way to hear that it changed. A flag the camera
+    // sets itself cannot drift, and it is the only honest answer to "is the
+    // shot ready" - the shot's own easing is the thing being asked about.
+    renderer.domElement.dataset.settled =
+      now >= shotAt + SHOT_MS && now >= walkUntil ? "true" : "false";
+
     renderer.render(scene, camera);
     globalThis.requestAnimationFrame(tick);
   }

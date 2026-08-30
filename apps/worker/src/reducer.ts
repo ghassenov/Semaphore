@@ -82,6 +82,17 @@ export interface PersistedSession {
   /** Distinct ghost-log entries KEEPER has read so far. Doc 02 section 4: not a puzzle, just required at least once. */
   readonly archiveEntriesRead: readonly number[];
   /**
+   * Whether this session was opened part way in by a `?chamber=N` deep link.
+   *
+   * It changes nothing about how the session plays. It exists so that nothing
+   * downstream mistakes a demonstration for a run: the benchmark's corpus, the
+   * ablation and any future leaderboard all read finished sessions out of D1,
+   * and a session that was handed three solved chambers is not evidence about
+   * a pair. Recorded on the session rather than inferred from the log, because
+   * inferring it means every consumer re-deriving the same rule.
+   */
+  readonly deepLinked: boolean;
+  /**
    * The shared notepad, oldest first, capped at `NOTE_CAPACITY`.
    *
    * Server-side rather than in the browser, for three reasons that are all the
@@ -119,6 +130,7 @@ export function newSession(sessionId: string, seed: string, nowMs: number): Pers
     designation: null,
     difficulty: "standard",
     machine: { phase: "ENTRY", chamber: null, mode: "full", retries: 0 },
+    deepLinked: false,
     chamberDeadlineMs: null,
     airlock: null,
     signalRoom: null,
@@ -135,7 +147,19 @@ export function newSession(sessionId: string, seed: string, nowMs: number): Pers
 
 export type Action =
   | { readonly type: "begin_shift"; readonly designation: string }
-  | { readonly type: "start"; readonly difficulty: Difficulty; readonly mode: SessionMode }
+  | {
+      readonly type: "start";
+      readonly difficulty: Difficulty;
+      readonly mode: SessionMode;
+      /**
+       * Which chamber to open in, for `?chamber=N` deep links (doc 08 phase 4).
+       *
+       * Absent means the first one, which is every real session. A judge with
+       * ten minutes should be able to look at the Concord Lock without solving
+       * three chambers to get there.
+       */
+      readonly startAt?: ChamberId;
+    }
   | { readonly type: "pull_lever"; readonly leverId: airlock.LeverId }
   | { readonly type: "press_key"; readonly keyId: signalRoom.KeyId }
   | { readonly type: "reset_sequence" }
@@ -376,7 +400,7 @@ function apply(session: PersistedSession, action: Action, nowMs: number): Reduce
     case "begin_shift":
       return beginShift(session, action.designation, nowMs);
     case "start":
-      return start(session, action.difficulty, action.mode, nowMs);
+      return start(session, action.difficulty, action.mode, nowMs, action.startAt);
     case "pull_lever":
       return pullLever(session, action.leverId, nowMs);
     case "press_key":
@@ -585,6 +609,7 @@ function start(
   difficulty: Difficulty,
   mode: SessionMode,
   nowMs: number,
+  startAt?: ChamberId,
 ): ReduceResult {
   if (session.machine.phase === "ENTRY") throw errors.noSession();
   if (session.machine.phase !== "LOBBY") {
@@ -621,7 +646,72 @@ function start(
     seq: session.seq + 2,
     lastRespondedAtMs: nowMs,
   };
-  return { session: next, events: [startEvent, event], toolText: describeChamber(next) };
+  const opened = skipTo(next, startAt, nowMs);
+  return {
+    session: opened.session,
+    events: [startEvent, event, ...opened.events],
+    toolText: describeChamber(opened.session),
+  };
+}
+
+/**
+ * Fast-forward a fresh session to a later chamber, for `?chamber=N`.
+ *
+ * **It walks the real path rather than assigning a state.** Each hop is the
+ * same `CHAMBER_SOLVED` the chamber's own solve raises, followed by the same
+ * `settleTransition` that runs inside it, and the Archive hop is the same
+ * `ARCHIVE_COMPLETE` that leaving the Archive raises. So a deep-linked session
+ * reaches a chamber through the transitions the machine already allows, with
+ * the same generated puzzle state and the same deadline, and there is no
+ * second way into a chamber for a test or a proof to disagree about.
+ *
+ * The skipped chambers are recorded as solved in the log, because they were:
+ * not by the pair, but the session really did pass through them, and a replay
+ * or a benchmark reading that log must not be told a chamber was never
+ * entered. `deepLinked` on the session is what says these were not earned.
+ *
+ * Bounded by the mode's own chamber list, so a request naming a chamber this
+ * mode does not contain, or one already behind the session, simply stops
+ * where it is rather than looping.
+ */
+function skipTo(
+  session: PersistedSession,
+  target: ChamberId | undefined,
+  nowMs: number,
+): { session: PersistedSession; events: readonly SessionEvent[] } {
+  const chambers = MODE_CHAMBERS[session.machine.mode];
+  if (target === undefined || !chambers.includes(target)) return { session, events: [] };
+
+  const events: SessionEvent[] = [];
+  let current = session;
+  // One iteration per chamber at most: every hop moves forward by one.
+  for (let hop = 0; hop < chambers.length; hop++) {
+    if (current.machine.chamber === target && current.machine.phase === "IN_CHAMBER") break;
+    if (current.machine.phase === "ARCHIVE") {
+      // The Archive sits between two chambers rather than being one, and a
+      // deep link past it has to leave the way a pair does.
+      const machine = transition(current.machine, { type: "ARCHIVE_COMPLETE" });
+      current = { ...current, machine, seq: current.seq + 1 };
+      const settled = settleTransition(current, nowMs);
+      current = settled.session;
+      events.push(...settled.events);
+      continue;
+    }
+    if (current.machine.phase !== "IN_CHAMBER" || !current.machine.chamber) break;
+
+    events.push({
+      t: elapsed(session, nowMs),
+      seq: current.seq,
+      type: "chamber_solved",
+      chamber: current.machine.chamber,
+    });
+    const machine = transition(current.machine, { type: "CHAMBER_SOLVED" });
+    current = { ...current, machine, seq: current.seq + 1, deepLinked: true };
+    const settled = settleTransition(current, nowMs);
+    current = settled.session;
+    events.push(...settled.events);
+  }
+  return { session: { ...current, deepLinked: true }, events };
 }
 
 function pullLever(
