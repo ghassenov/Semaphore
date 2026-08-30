@@ -245,6 +245,10 @@ export class Kit {
    */
   readonly coat: MeshStandardMaterial;
   readonly skin: MeshStandardMaterial;
+  /** The sea, seen through a porthole. The darkest surface in the station. */
+  readonly sea: MeshStandardMaterial;
+  /** Painted hazard stripes. Brass, never alarm: alarm is for penalties. */
+  readonly hazard: MeshStandardMaterial;
   /** A dead screen, and anything glazed. */
   readonly glass: MeshStandardMaterial;
   /**
@@ -306,6 +310,12 @@ export class Kit {
     );
     this.skin = this.#keep(
       new MeshStandardMaterial({ color: PALETTE.pearlDim, roughness: 0.72, metalness: 0 }),
+    );
+    this.sea = this.#keep(
+      new MeshStandardMaterial({ color: PALETTE.abyss, roughness: 0.22, metalness: 0.55 }),
+    );
+    this.hazard = this.#keep(
+      new MeshStandardMaterial({ color: PALETTE.brass, roughness: 0.75, metalness: 0.15 }),
     );
 
     this.ripple = new CanvasTexture(rippleCanvas());

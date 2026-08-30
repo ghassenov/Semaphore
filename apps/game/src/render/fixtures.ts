@@ -141,9 +141,12 @@ export class FixtureView {
 
     if (fixture.label !== undefined) {
       const caption = kit.label(fixture.label, CHANNEL[fixture.channel].key);
-      // Clamped in world height, not in the fixture's own frame: the anchor is
-      // what varies between a floor-standing lever and a gauge up a wall.
-      const drop = Math.max(-CAPTION_DROP, CAPTION_FLOOR - fixture.at.y);
+      // A fixture may name its own caption height - a door's sign belongs above
+      // the doorway, not at the foot of the lever standing in front of it.
+      // Otherwise it hangs below the anchor, clamped in *world* height, because
+      // the anchor is what varies between a floor-standing lever and a gauge up
+      // a wall.
+      const drop = fixture.captionAt ?? Math.max(-CAPTION_DROP, CAPTION_FLOOR - fixture.at.y);
       caption.position.set(0, drop, 0.3);
       this.root.add(caption);
       this.#readable.push({ material: caption.material, base: caption.material.opacity });
@@ -799,6 +802,83 @@ export function buildDressing(kit: Kit, item: Dressing): Group {
         const bar = solid(root, new Mesh(new BoxGeometry(0.16, 0.1, 0.86), kit.copper));
         bar.position.set(0.02, 0.36 - slat * 0.18, 0);
         bar.rotation.z = 0.22;
+      }
+      break;
+    }
+    case "porthole": {
+      // The only view out of the station, and the reason the Airlock is cold.
+      // A heavy ring, a cross of bars, and black water behind it: the glass is
+      // the darkest thing in the room, which is what makes it read as a hole in
+      // the wall rather than as a light.
+      const ring = solid(root, new Mesh(new TorusGeometry(0.46, 0.09, 8, 20), kit.brass));
+      ring.rotation.y = Math.PI / 2;
+      const pane = solid(root, new Mesh(new CylinderGeometry(0.42, 0.42, 0.06, 20), kit.sea));
+      pane.rotation.z = Math.PI / 2;
+      for (const angle of [0, Math.PI / 2]) {
+        const bar = solid(root, new Mesh(new BoxGeometry(0.05, 0.86, 0.05), kit.iron));
+        bar.rotation.x = angle;
+      }
+      // Six bolts round the rim, which is what a pressure fitting looks like.
+      for (let bolt = 0; bolt < 6; bolt += 1) {
+        const angle = (bolt / 6) * Math.PI * 2;
+        const stud = solid(root, new Mesh(new CylinderGeometry(0.05, 0.05, 0.1, 6), kit.iron));
+        stud.rotation.z = Math.PI / 2;
+        stud.position.set(0.04, Math.sin(angle) * 0.56, Math.cos(angle) * 0.56);
+      }
+      break;
+    }
+    case "locker": {
+      solid(root, new Mesh(new BoxGeometry(0.5, 1.9, 0.9), kit.iron)).position.y = 0.95;
+      // Two doors with a handle between them, and a vented top: a cabinet, not
+      // a box.
+      for (const side of [-1, 1]) {
+        const door = solid(root, new Mesh(new BoxGeometry(0.06, 1.6, 0.42), kit.copper));
+        door.position.set(0.26, 0.95, side * 0.22);
+      }
+      const handle = solid(root, new Mesh(new CylinderGeometry(0.03, 0.03, 0.3, 6), kit.brass));
+      handle.position.set(0.32, 0.95, 0);
+      for (let slat = 0; slat < 3; slat += 1) {
+        solid(root, new Mesh(new BoxGeometry(0.07, 0.05, 0.62), kit.iron)).position.set(
+          0.27,
+          1.66 + slat * 0.09,
+          0,
+        );
+      }
+      break;
+    }
+    case "chevron": {
+      // Hazard stripes painted across a threshold. Brass rather than the alarm
+      // red, deliberately: alarm is reserved for penalties and may never be
+      // spent on decoration, or the one time it means something it will not
+      // read.
+      const count = 5;
+      for (let stripe = 0; stripe < count; stripe += 1) {
+        const bar = new Mesh(new BoxGeometry(length / count - 0.08, 0.02, 0.5), kit.hazard);
+        bar.position.set(-length / 2 + (length / count) * (stripe + 0.5), 0.015, 0);
+        bar.rotation.y = 0.5;
+        bar.receiveShadow = true;
+        root.add(bar);
+      }
+      break;
+    }
+    case "bulkhead": {
+      // The frame a door is set into. It is what makes a door a bulkhead rather
+      // than a rectangle, and it gives the doorway a depth to be recessed in.
+      const height = 3.1;
+      for (const side of [-1, 1]) {
+        solid(root, new Mesh(new BoxGeometry(0.45, height, 0.6), kit.iron)).position.set(
+          (side * (length + 0.45)) / 2,
+          height / 2,
+          0,
+        );
+      }
+      solid(root, new Mesh(new BoxGeometry(length + 0.9, 0.45, 0.6), kit.iron)).position.y =
+        height + 0.22;
+      // A row of studs across the lintel.
+      for (let stud = 0; stud < 7; stud += 1) {
+        const bolt = solid(root, new Mesh(new CylinderGeometry(0.05, 0.05, 0.14, 6), kit.brass));
+        bolt.rotation.x = Math.PI / 2;
+        bolt.position.set(-length / 2 + (length / 6) * stud, height + 0.22, 0.32);
       }
       break;
     }
