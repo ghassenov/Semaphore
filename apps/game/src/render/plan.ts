@@ -70,18 +70,24 @@ export const FLOOR_ACCENT: Readonly<Record<FloorId, RenderChannel>> = {
  *
  * FULL is a ring. The Airlock is north-west, the Signal Room north-east, the
  * Blind Panel south-east and the Concord Lock south-west, with the Archive
- * hanging south off the middle of the lower spine. Walking it in play order
- * takes the pair clockwise round the building and back to the corner they came
- * in at, which is the shape of the story: you end up where you started, on the
- * other side of the door.
+ * hanging off the southern spine. Walking it in play order takes the pair
+ * clockwise round the building and back to the corner they came in at, which
+ * is the shape of the story: you end up where you started, on the other side
+ * of the door.
  *
  * The Archive is deliberately a **detour off the spine** rather than a room on
  * the way. You go down into the records and come back up, which is what makes
  * it feel like something you found rather than something you were routed
  * through.
  *
- * BRIEF has three rooms and no Archive, so it is an L: across the top, then
- * down and back in to the Concord Lock.
+ * BRIEF has three rooms and no Archive, so it is a horseshoe: across the top,
+ * down the outside, then back west into the Concord Lock.
+ *
+ * **The corridors go round the outside on the east side, not through the
+ * middle** (D-053). A corridor may only meet a wall a door can stand in, and
+ * that rules out every south face - they are open, so the camera can see in -
+ * and it rules out the Blind Panel's north wall, which is eleven metres of
+ * gauge bank. See `doorways.ts`.
  *
  * Every number here is checked by `plan.test.ts`, which proves that nothing
  * overlaps, that the floor is one connected space, that every fixture in every
@@ -101,13 +107,27 @@ export const STATION_LAYOUT: Readonly<Record<SessionMode, StationLayout>> = {
     corridors: [
       // Airlock to Signal Room, across the north side.
       { x: -1.25, z: -14, width: 17.5, depth: CORRIDOR },
-      // Signal Room down the east side into the Blind Panel.
-      { x: 14, z: 0.5, width: CORRIDOR, depth: 16 },
+      // Out of the Signal Room's east wall, directly opposite the doorway it
+      // was entered by, so the room is walked straight through.
+      { x: 22.5, z: -13.5, width: CORRIDOR, depth: CORRIDOR },
+      // The eastern spine, down the outside of the building and in through the
+      // Blind Panel's east wall.
+      //
+      // It ran down the *middle* until the doors were put in the holes
+      // (D-053): it left the Signal Room through its open south face, which is
+      // the one face no door may stand in, and arrived at the Blind Panel's
+      // north wall, which is eleven metres of gauge bank. Two rooms were
+      // therefore entered through openings that nothing could mark. Outside
+      // the building both walls are free, and the run is three metres longer.
+      { x: 23.5, z: -0.5, width: CORRIDOR, depth: 25 },
       // The southern spine, joining the Blind Panel to the Concord Lock.
       { x: -1.25, z: 12, width: 15.5, depth: CORRIDOR },
-      // The stub south off that spine into the Archive, which is why the
-      // Archive is somewhere you go down to rather than somewhere you pass.
-      { x: 0, z: 14, width: CORRIDOR, depth: 1 },
+      // Down off that spine and back east into the Archive's west wall, which
+      // is why the Archive is somewhere you go down to rather than somewhere
+      // you pass. West rather than north because the north wall is the
+      // monitor's, and this room is an aisle with a screen at the end of it.
+      { x: -6.5, z: 16.5, width: CORRIDOR, depth: 5 },
+      { x: -5, z: 17.5, width: 2, depth: CORRIDOR },
     ],
   },
   brief: {
@@ -118,17 +138,18 @@ export const STATION_LAYOUT: Readonly<Record<SessionMode, StationLayout>> = {
     },
     corridors: [
       { x: -1.25, z: -14, width: 17.5, depth: CORRIDOR },
-      // Down out of the Signal Room, then west into the Concord Lock's east
-      // wall. An L rather than a straight run, because the Concord Lock sits
-      // under the middle of the building in this mode and a vertical drop from
-      // the Signal Room would miss it entirely.
-      { x: 14, z: -0.5, width: CORRIDOR, depth: 14 },
-      // Stops exactly on the Concord Lock's east wall. It ran half a metre
-      // past it in the first draft, which does not fail to render: it takes a
-      // strip of the room's floor, and because a corridor never overwrites a
-      // room the strip keeps the room's height and reads as nothing at all
-      // until you notice the wall is missing. `plan.test.ts` caught it.
-      { x: 10.25, z: 5, width: 10.5, depth: CORRIDOR },
+      // Out of the Signal Room's east wall and down the outside, the same
+      // shape FULL uses and for the same reason (D-053): the room's south face
+      // is the one the camera looks through and no door may stand in it.
+      { x: 22.5, z: -13.5, width: CORRIDOR, depth: CORRIDOR },
+      { x: 23.5, z: -3, width: CORRIDOR, depth: 20 },
+      // West along the bottom into the Concord Lock's east wall. It stops
+      // exactly on that wall: it ran half a metre past it in the first draft,
+      // which does not fail to render - it takes a strip of the room's floor,
+      // and because a corridor never overwrites a room the strip keeps the
+      // room's height and reads as nothing at all until you notice the wall is
+      // missing. `plan.test.ts` caught it.
+      { x: 15, z: 5.5, width: 20, depth: CORRIDOR },
     ],
   },
 };

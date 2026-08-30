@@ -152,6 +152,19 @@ body::after {
 .console {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
+  /*
+   * One column that is allowed to be narrower than its contents.
+   *
+   * A grid column defaults to `auto`, which floors at the content's own
+   * min-content width, and the rail is a flex row of nowrap parts. So the rail
+   * sized itself to whatever was in it and took the page with it: the room
+   * name grew by eight characters when PILOT walked back into a room (D-054)
+   * and the whole console gained a horizontal scrollbar, with the east tab
+   * rail pushed off the edge of the window. `min-width: 0` on the room name
+   * could not help - it had all the room it wanted, because the column had
+   * already grown to give it some.
+   */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--gap);
   max-width: 108rem;
   min-height: calc(100vh - var(--gap) * 2);

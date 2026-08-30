@@ -11,17 +11,19 @@ It answers three questions and only three: where the repo is right now, what to 
 | | |
 |---|---|
 | **Last updated** | 2026-08-30, Ahmed Saad |
-| **Branch** | `feat/audible-channel`, off `main` at `94cbcca` |
-| **Pipeline** | Green: 680 tests, typecheck, lint, format, both `vite build`s plus the bundle budget and the palette check, real `wrangler deploy --dry-run` |
+| **Branch** | `feat/room-traversal`, off `main` at `ee40c20` |
+| **Pipeline** | Green: 702 tests, typecheck, lint, format, both `vite build`s plus the bundle budget and the palette check |
 | **Sound** | **Built and heard** (D-050, D-051). Listened to on a real machine on 2026-08-30 and signed off. Plan phase 5.2 in full: eight mechanism cues, the ambience bed, four timer-keyed tension layers, a behind-the-wall thump per KEEPER tool call, and a mix with a mute. Plus **a warm unresolved theme** on top, always on, which is a deliberate departure from doc 06's chiptune direction (D-051). All synthesised in `apps/game/src/audio/`; still no asset file of any kind. `PilotView` gained `seq`, without which the detents cannot repeat. |
+| **Doors and the way back** | **Every door stands in an opening you can actually walk through, and PILOT can go back through one** (D-053 to D-055). `doorways.ts` holds each room's openings room-local and its test derives the real ones from `stationCells`; two openings could not carry a door (a south face, and eleven metres of gauge bank) so the **corridors were rerouted**, not the doors. `Q` at an open door walks PILOT back into a room the pair has already cleared, drawn from the last frame the server sent for it with its doors opened by `asCleared`. Nothing crosses the wire: the clock keeps running, KEEPER's 14 tools are untouched, and KEEPER's body is not drawn in a room the session has left. Every room also got a decoration and ambient-motion pass, including the two that had never had a composition pass. |
 | **Console** | **Rebuilt around the room** (D-052). The room fills the deck and is centred; panels live behind labelled tabs on the two edges, open on demand, one per edge, resizable by drag or arrow keys, closed with Escape. Deeper ground, a grain layer, a beacon sweep on the start card and the gate, and PILOT has four poses and a flickering lamp. Channel colours untouched. |
 | **Interface** | **Rebuilt in real-time 3D** (D-042 to D-045). Phaser and the tile renderer are gone. The station is a lit cutaway model: rooms open at the top and on their south face, camera always to the south, four lights and no post-processing. New colour language (D-043), procedural assets and **no asset files at all** (D-044), and a console laid out as two surfaces with the room between them (D-045). |
 | **Licence** | **MIT throughout again.** The vendored art pack went with the tile renderer, so `LICENSE` has no carve-out (D-044). |
+| **Toured** | **21 of 21 browser checks and eleven frames, on Chrome 151, 2026-08-30.** The tour now walks back through a door and forward again, and checks the key, the cached room, the console header and that the session never notices. It found four defects, all of them in the frames and none in 700 passing tests: `E` held at a door hijacking the lean-in (it is `Q` now, edge-triggered), arriving in a chamber standing PILOT in the doorway and dragging the camera onto the outside of a wall, `BACK TO AIRLOCK` printed across `PAGE MARKED`, and the console growing a horizontal scrollbar when a room name got eight characters longer. All fixed, and captions are now checked by projection as well as by anchor. |
 | **Played** | A full session end to end in Chrome 152 against a live `wrangler dev`: all four chambers, the Archive, the finale, the ending. 17/17 browser checks green on the single-origin path. **A second pass on a real machine found five more defects, all of them things a frame shows and no test does** (D-046, D-047): neighbouring rooms crowding a room shot, hidden masonry left as lit plates, the Archive's beams across its own monitor, KEEPER's body sharing a wall with a shelf rack, and every fixture carrying two stacked captions. All fixed. **A third pass then found six more in the two beats nobody had inspected** (D-048): the finale drew an empty room for its last two phases, an open door showed a crack instead of its opening, the bolt ring floated over the lintel, its count printed on top of the door sign, the room lit itself flat with the door open, and a pendant hung between the camera and the Archive monitor. All fixed. The tour now also presses `E`. **A fourth pass was *played* rather than looked at** - one person as PILOT in the browser, one driving KEEPER over the worker's HTTP tool surface - and found a twelfth that no frame could show (D-049): the Blind Panel drew `DIAL n` directly beneath `GAUGE n`, asserting the one thing that chamber exists to withhold. Fixed. |
-| **Bundle** | Entry **24.2KB** gzipped of a 400KB budget: 5.5KB of audio and 1.8KB of the console rework. Three.js is a **143KB** chunk fetched only when a shift starts, against Phaser's 358KB. No images, no fonts, no asset requests at all. |
+| **Bundle** | Entry **25.4KB** gzipped of a 400KB budget: 5.5KB of audio, 1.8KB of the console rework and 1.2KB of the doors. Three.js is a **143KB** chunk fetched only when a shift starts, against Phaser's 358KB. No images, no fonts, no asset requests at all. |
 | **Archive** | Both halves still built (D-039). KEEPER calls `read_station_log`; PILOT watches the same log on a CRT drawn to a canvas. The exclusion is asserted in both directions, on the projection and again on the wire. |
 | **Delegation** | Working and proved. `ARCHIVE_ORIGIN` stays `same` (D-033). `tests/cross-origin-delegation.ts` is also the screenshot tour: `SHOTS=<dir>` writes a frame at every beat and is a no-op without it. |
-| **Ablation / Benchmark** | Unchanged and still published (D-040, D-041). Nothing in this rework touched `bench/`, `apps/worker/`, `packages/` or the possible-worlds proof. |
+| **Ablation / Benchmark** | Unchanged and still published (D-040, D-041). Nothing in the last two reworks touched `bench/`, `apps/worker/`, `packages/` or the possible-worlds proof. |
 | **Verify with** | `pnpm install && pnpm typecheck && pnpm lint && pnpm test && pnpm build` |
 | **Run it** | `cd apps/worker && npx wrangler dev` in one shell, `cd apps/game && pnpm dev` in another. Vite proxies `/session` to `127.0.0.1:8787`, WebSocket included. |
 | **Cloudflare** | Logged in. D1 database `semaphore-sessions` provisioned and migrated, local and remote. |
@@ -39,7 +41,8 @@ It answers three questions and only three: where the repo is right now, what to 
 | `apps/game/src/net/*` | Done and untouched. |
 | `apps/game/src/render/palette.ts` | **New.** "Low Tide": 20 colours in two locked sets. Channel colours carry information; ground and material colours carry none. |
 | `apps/game/src/render/glyphs.ts` | **New.** The twelve glyphs, pixel maps carried over unchanged from `sprites.ts`. Still the one thing with hard edges. |
-| `apps/game/src/render/chamber.ts` | **Pure. New.** What is in a room, as fixtures in metres. Replaces `room.ts`'s tile plans. |
+| `apps/game/src/render/chamber.ts` | **Pure. New.** What is in a room, as fixtures in metres. Replaces `room.ts`'s tile plans. Now also places every door from `doorways.ts`, moves KEEPER's alcove off whichever doorway is in the east wall, and holds `asCleared` (D-053, D-054). |
+| `apps/game/src/render/doorways.ts` | **Pure. New** (D-053). Which wall of each room has a hole in it, room-local, per mode. Its own module because the fact belongs beside the corridors and `plan.ts` imports `chamber.ts`, so putting it there would close a cycle. Also `doorLeadsTo`, which is the whole gate for walking back. |
 | `apps/game/src/render/plan.ts` | **Pure. Rewritten** in world units. Also owns `stationCells`, the one-metre rasterisation the walls resolve from, and `stationOwners`, which says whose masonry is whose so a room shot can drop the neighbours (D-046). |
 | `apps/game/src/render/camera.ts` | **Pure. New.** Where the camera stands. `fitBox` frames a room corner by corner rather than by bounding sphere. Also `captionHeight`, which keeps a caption a constant fraction of the frame at any distance (D-047). |
 | `apps/game/src/render/floors.ts`, `hud.ts`, `ghost.ts` | Unchanged in substance. `ghost.ts` reports a footprint in metres rather than tiles. |
@@ -51,7 +54,7 @@ It answers three questions and only three: where the repo is right now, what to 
 | `apps/game/src/audio/*` | **New** (D-050, D-051). `plan.ts` is pure and tested; `engine.ts` owns the only `AudioContext`; `voices.ts` synthesises everything, including the theme's note tables; `index.ts` schedules. Has its own `CLAUDE.md`. |
 | `apps/game/scripts/check-palette.mjs` | **New.** Holds `style.css` and `palette.ts` to the same values, both directions, on every build. Replaces `check-art.mjs`. |
 | `tests/possible-worlds.test.ts` | Done and passing for all four chambers. Untouched. |
-| `tests/cross-origin-delegation.ts` | The browser proof and the screenshot tour. Its wait is stated against the camera's own constants, and `shotHolding` presses `E` so the lean-in has a frame (D-047). |
+| `tests/cross-origin-delegation.ts` | The browser proof and the screenshot tour. Its wait is stated against the camera's own constants, `shotHolding` presses `E` so the lean-in has a frame (D-047), and it now walks back through a door and forward again (D-054). 21 checks, eleven frames. |
 | `bench/` | Ablation and Cooperative Benchmark, both run and published. Untouched. |
 
 ---
@@ -62,9 +65,9 @@ In order. Each item ends somewhere the pipeline is green and the repo is committ
 
 ### 1. Keep playing and fixing, and play it properly this time
 
-**Still the item to pick up first.** Four sittings have now produced twelve
-defects that 670 passing tests did not see (D-046 to D-049), and the rate has
-not fallen off.
+**Still the item to pick up first.** Five sittings have now produced sixteen
+defects that 700 passing tests did not see (D-046 to D-049, D-054), and the rate
+has not fallen off.
 
 **The fourth sitting changed how this should be done, and the change matters
 more than the defect it found.** The first three were one person looking at
@@ -111,8 +114,9 @@ the URL is what lets a second pair of eyes join the same session.
 did not survive. Nothing downstream depended on it.
 
 **What to actually do while playing.** Walk into every corner of every room with
-**WASD**, hold **E** on everything that will take it, press **M** in each
-chamber, and go **fullscreen with F** - the console is a different shape there
+**WASD**, hold **E** on everything that will take it, press **Q** at every open
+door and walk the station backwards, press **M** in each chamber, and go
+**fullscreen with F** - the console is a different shape there
 and has had far less looking-at. Four faults are worth watching for by name:
 geometry standing inside other geometry, text printed on top of text, anything
 hanging between the camera and the thing a room exists for, and - new with
@@ -140,11 +144,17 @@ Ten frames in about a minute, and 17 assertions alongside them. **Open all ten
 and crop into the corners.** Eleven of the twelve defects were already present
 in a frame that had been captured and not read.
 
-**Two known-unverified things, neither of them a bug yet.** The Signal Room and
-the Concord Lock are the two chambers that have not had a dedicated composition
-pass. And every tuned renderer constant - ambient at 0.62, the doorway spotlight
-at 110, the caption's 0.032 of viewport height - was set by looking at a
-1400x900 desktop window and has been checked at no other size.
+**One known-unverified thing, and it now has numbers.** Every tuned renderer
+constant - ambient at 0.62, the doorway spotlight at 110, the caption's 0.032 of
+viewport height - was set by looking at a 1400x900 desktop window, and two
+things have now been measured going wrong at narrower ones. See item 2a. (The
+Signal Room and the Concord Lock have had their composition pass, D-055.)
+
+**And `Q` is new.** Walking back through an open door (D-054) has been proved in
+a browser by the tour but never *played*. What a script cannot tell you: whether
+anybody finds it, whether going back is ever worth the clock it costs, and
+whether an empty alcove where KEEPER was reads as the beat it is meant to be or
+as a missing body.
 
 **The audio has been heard and signed off** (2026-08-30), so this is no longer
 the open risk it was for the length of one session. What is *not* yet separately
@@ -152,6 +162,29 @@ confirmed is the narrow thing Chamber II depends on: whether eight detents at
 180ms are countable **by ear** by somebody who does not already know the answer.
 That one is a playtest question rather than a listening one - see item 2 - and
 `MECH` on the mixer is the fader to reach for if they are hard to pick out.
+
+### 2a. Decide what captions do in a narrow window [measured, not fixed]
+
+Two separate crowding problems, both from the same cause: a caption is a fixed
+fraction of the **viewport height** by construction (`CAPTION_SCREEN`), so a
+narrower window brings captions together without making them smaller. Neither is
+an authoring mistake and neither is new.
+
+- **The Blind Panel's gauge and dial banks touch at 4:3 and 1:1.** Four captions
+  across an eleven-metre wall. Measured by the new projection test, which is
+  restricted to 16:9 for exactly this reason and says so in its own comment.
+  Worst pair at 4:3: `gauge-3|gauge-4`, 0.2263 of viewport height apart where
+  0.2304 is needed. It is that close. Widening the test's aspect list is the
+  check for whatever fix is chosen; do not widen it before fixing something.
+- **The console's room name ellipsises below about 800px.** Correct behaviour
+  now the grid column is constrained (D-054), but `CONCORD LOCK - REVISITED` is
+  24 characters into a slot that holds about 14 at that width, and the marker is
+  the half that gets cut. The floor rail carries the same fact as a pip, so
+  nothing is lost, but a phone is an explicit target.
+
+Both want the same decision: whether a caption should shrink with the window, or
+whether a bank should thin out, or whether the rail should drop a part. Do not
+guess at it - the numbers above are cheap to re-measure.
 
 ### 2. Playtest with humans [needs people]
 
@@ -166,6 +199,12 @@ the vandalised Signal Room page actually fools anybody. The glyph vocabulary's
 as a building you are inside, or as a diorama you are outside? Does anybody find
 **M**? And does KEEPER's body land - do people notice the arms changing at a
 chamber boundary without being told to look?
+
+**Three more from the doors** (D-053 to D-055). Does anybody find **Q**, and do
+they think to go back at all? Does a door on a side wall read as a way out, given
+the camera always stands to the south and sees every one of them nearly edge-on -
+or is the hazard paint on the floor doing all of the work? And does a ladder up a
+wall actually make a room read as tall?
 
 ### 3. Run the spike in ChatGPT's in-app browser, and meet a real model [needs a human]
 
@@ -230,7 +269,9 @@ seconds with zero tokens. Budget the tokens before running, not after.
 - **The tour's wait must stay longer than `WALK_MS + SHOT_MS`** in `render/camera.ts`. A frame grabbed early is the previous room with the next room's name over it, or the whole building from four hundred metres up. Both have happened.
 - **Fog is squared in distance, so it is a wide-shot setting.** A density that is imperceptible in a room erases the building when the camera pulls back. If the wide shot looks broken, check the fog before the lights.
 - **Additive blending has no upper bound.** A translucent double-sided cone over a dark room accumulates front face over back face into a solid grey shape. "Subtle" is an opacity times the number of surfaces the ray crosses, not an opacity.
-- **A door may never be placed on a room's south wall.** Every room is open on that face so the camera can see in; a door there hangs in the opening rather than reading as a way out.
+- **A door may never be placed on a room's south wall.** Every room is open on that face so the camera can see in; a door there hangs in the opening rather than reading as a way out. Two corridors used to arrive at walls that could not carry a door, and the fix was to move the corridors (D-053): **the building's shape is the cheapest thing in the model to change and it is the last thing anybody thinks of changing.**
+- **A caption on a side wall can only be separated from another one vertically.** A wall running away from the camera barely moves across the frame, so three metres of separation in the room is a dozen pixels on screen. The anchor check in `chamber.test.ts` measures metres and cannot see this; the projection check beside it can, and only at 16:9 (item 2a).
+- **`length` is a run along x and `height` is a rise, and the two fields exist so nothing has to guess which.** A cable's drop was held in `length` for three renderers, so the check that keeps dressing inside its room was measuring every cable sideways through the wall and passed only because no cable had been hung near enough to one. Two separate checks were reading that field; moving one without the other would have silently weakened the other.
 - **Two positions measured from different origins will disagree the first time either moves.** The Archive's screen was hung from the room's back wall and its housing from its own centre, which put the picture inside the casing. Both come from `MONITOR_DEPTH` now.
 - **Every material comes from `kit.ts`.** A `new MeshStandardMaterial` anywhere else is a fifteenth colour arriving where nothing will notice, and it also leaks GPU memory across a session because nothing else disposes it.
 - **`scripts/check-palette.mjs` is the only thing that notices a colour changed in `style.css` and not in `palette.ts`.** The drift does not throw; the console just quietly stops matching the room.
@@ -239,6 +280,7 @@ seconds with zero tokens. Budget the tokens before running, not after.
 
 ### The console
 
+- **A CSS grid column defaults to `auto`, which floors at its content's min-content width.** The console is a grid and its rail is a flex row of nowrap parts, so with no `grid-template-columns` the rail sized itself to its contents and took the page with it - a horizontal scrollbar and the east tab rail off the edge of the window, the moment a room name grew by eight characters. `min-width: 0` on the shrinkable child cannot help: the column has already grown to give it room.
 - **A drawer overlays the deck and must never push it.** The camera frames against the viewport's measured shape, so a panel that squeezed it would re-frame the shot every time somebody opened one, and the room would jump.
 - **`display: flex` beats the user agent's `[hidden]`.** The first build of the drawers came up with both of them open and empty, because `drawer.hidden = true` did nothing against `display: flex`.
 - **The palette was not what made the page feel flat** (D-052). Depth, layering and motion were. Check that what is being fixed is actually a colour before touching a set that carries the design law and the colourblind guarantee.

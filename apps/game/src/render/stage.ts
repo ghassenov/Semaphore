@@ -68,10 +68,13 @@ import {
 import type { PilotView, SessionMode } from "@semaphore/protocol";
 import {
   ARCHIVE_SCREEN,
+  asCleared,
   clearOf,
+  doorPlacement,
   hasInterlude,
+  LEAN_REACH,
   interlude,
-  keeperAlcove,
+  alcoveOf,
   lampReveal,
   nearestFixture,
   roomPlan,
@@ -98,7 +101,8 @@ import {
   stationOwners,
   stationStrips,
 } from "./plan.js";
-import { activeFloor, stationFloors, type FloorId } from "./floors.js";
+import { activeFloor, previousFloor, stationFloors, type FloorId } from "./floors.js";
+import { doorLeadsTo, doorsOf, type Doorway } from "./doorways.js";
 import { isTypingTarget } from "./hud.js";
 import { ghostFrame } from "./ghost.js";
 import { FixtureView, buildDressing } from "./fixtures.js";
@@ -131,6 +135,9 @@ const LARGE_VIEWPORT = 1100;
 /** How many dust motes drift in the active room. */
 const DUST = 260;
 
+/** How far into a room PILOT stands after coming through its door, in metres. */
+const OVER_THRESHOLD = 1.8;
+
 /** What `station.ts` holds once the stage is up. */
 export interface StageHandle {
   /** Re-read the viewport's size. Called by a `ResizeObserver`. */
@@ -139,7 +146,11 @@ export interface StageHandle {
 }
 
 /** Bring the station up inside `parent`, reading `model` every frame. */
-export function createStage(parent: HTMLElement, model: StationModel): StageHandle {
+export function createStage(
+  parent: HTMLElement,
+  model: StationModel,
+  onStanding: () => void = () => {},
+): StageHandle {
   const reduceMotion = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 
   const renderer = new WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -527,6 +538,46 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
   /** Which way PILOT is facing, held between steps. */
   let facing = 0;
 
+  /*
+   * Where PILOT's *body* is, which is not always where the session is.
+   *
+   * The pair can walk back through a door they have already opened (D-054).
+   * That is a change to what the human is looking at and nothing else: the
+   * server is not told, the clock does not stop, KEEPER's tools still act on
+   * the chamber the session is in, and none of this leaves this file.
+   * `viewing` is the floor the body stands in; `here`, each frame, is the
+   * floor the session is in. They are equal except while somebody has
+   * wandered.
+   */
+  let viewing: FloorId | null = null;
+  /** The floor the session was in last frame, so the pair moving on wins. */
+  let wasHere: FloorId | null | undefined;
+  /**
+   * The last plan seen for each floor.
+   *
+   * `PilotView.facts` only ever carries the active chamber's facts, so a room
+   * the pair has left has no live state to be drawn from. This is what they
+   * saw while they were standing in it, held frame by frame, which is exactly
+   * the right thing to show and leaks nothing: it is the same projection that
+   * was already on screen. `asCleared` opens its doors on the way out.
+   */
+  const seen = new Map<FloorId, RoomPlan>();
+  /**
+   * The last ghost the Archive played.
+   *
+   * `view.ghost` is null outside the ARCHIVE phase, so walking back into the
+   * Archive later would find a monitor with nothing on it - in the one room
+   * whose entire content is that monitor.
+   */
+  let lastGhost: PilotView["ghost"] = null;
+  /**
+   * Whether `Q` was already down last frame.
+   *
+   * Going through a door is edge-triggered, so leaning on the key crosses one
+   * threshold rather than every threshold between here and the Airlock.
+   */
+  let wasGoing = false;
+
   const held = new Set<string>();
   // PILOT's body must not answer to a keystroke that was aimed at the shared
   // notepad. See `isTypingTarget`.
@@ -625,6 +676,43 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
   }
 
   /** Put the room's floor-wide effects where the room is. */
+  /**
+   * The room breathing.
+   *
+   * Dressing was built once per room and never touched again, on the stated
+   * grounds that it has no state and nothing to read. That is still true - and
+   * it was being used to argue something else, that nothing in it moves. A
+   * station a hundred metres down with a cable hanging dead still off every
+   * beam is a photograph of a room rather than a room.
+   *
+   * Driven off the piece's own position rather than a stored phase, so nothing
+   * has to be tracked between frames and no two pieces move together. It reads
+   * the group's name, which is set where the piece is built, so a kind that
+   * should not move simply is not named here.
+   *
+   * Under `prefers-reduced-motion` it is not called at all, and the room is the
+   * still one those players asked for.
+   */
+  function stepDressing(now: number): void {
+    for (const piece of dressing.children) {
+      // Two positions, two irrational-ish multipliers: enough that a row of
+      // identical cables does not sway as one object.
+      const phase = piece.position.x * 1.7 + piece.position.z * 0.9;
+      if (piece.name === "dress:cable" || piece.name === "dress:bulb") {
+        // Hung from the ceiling, so the anchor is the pivot and rotating the
+        // group is exactly the swing. Small: this is a draught, not a storm.
+        piece.rotation.z = Math.sin(now / 2600 + phase) * 0.045;
+        piece.rotation.x = Math.cos(now / 3100 + phase) * 0.032;
+      } else if (piece.name === "dress:vent") {
+        const fan = piece.getObjectByName("fan");
+        // Slow, and slower still in some rooms than others. An extractor at a
+        // convincing speed strobes against the frame rate and reads as a
+        // rendering fault, which is the one thing decoration may not do.
+        if (fan) fan.rotation.y = (now / 1000) * (0.7 + (Math.abs(phase) % 0.5));
+      }
+    }
+  }
+
   function dressRoom(plan: RoomPlan | null): void {
     if (plan === null) {
       water.visible = false;
@@ -654,8 +742,7 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
   }
 
   /** Draw the ghost onto the monitor's canvas. */
-  function paintScreen(view: PilotView, elapsedMs: number): void {
-    const track = view.ghost;
+  function paintScreen(track: PilotView["ghost"], elapsedMs: number): void {
     const context = screenCanvas.getContext("2d");
     if (!context) return;
     const { width, height } = screenCanvas;
@@ -778,6 +865,63 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
     camera.lookAt(lookAt);
   }
 
+  /**
+   * Stand PILOT just inside one of a room's doorways.
+   *
+   * Walking is held as a fraction of the walkable box on each axis, so arriving
+   * somewhere means solving for the fraction rather than writing a position.
+   * With no doorway - the very first room, which is entered from the sea - the
+   * middle of the room is kept, which is where the game has always opened.
+   */
+  function standAt(floor: FloorId, doorway: Doorway | undefined): void {
+    const size = footprintOf(floor);
+    if (doorway === undefined) {
+      walk = 0.5;
+      walkZ = 0.5;
+      return;
+    }
+    const { at, facing: yaw } = doorPlacement(size, doorway);
+    // Into the room is the direction the door faces, the same relation
+    // `doorDressing` uses to put the chevrons on the inside of the threshold.
+    const x = at.x + Math.sin(yaw) * OVER_THRESHOLD;
+    const z = at.z + Math.cos(yaw) * OVER_THRESHOLD;
+    const span = size.width * WALK_SPAN;
+    const depth = size.depth * WALK_SPAN_Z;
+    walk = span > 0 ? Math.max(0, Math.min(1, (x + span / 2) / span)) : 0.5;
+    walkZ = depth > 0 ? Math.max(0, Math.min(1, (z + depth / 2) / depth)) : 0.5;
+    facing = yaw;
+  }
+
+  /**
+   * The nearest open door in reach that leads somewhere PILOT may go.
+   *
+   * Reach rather than contact, and the same reach the lean-in uses, so "near
+   * enough to read where this goes" and "near enough to walk through it" are
+   * one distance. Every door in the room is considered rather than only the
+   * nearest fixture: a room has two doorways and a bank of levers, and the
+   * nearest *fixture* to somebody standing in a doorway is very often a lever.
+   */
+  function doorAhead(
+    mode: SessionMode,
+    from: FloorId,
+    here: FloorId | null,
+    plan: RoomPlan,
+    x: number,
+    z: number,
+  ): FloorId | null {
+    let best: FloorId | null = null;
+    let nearest = LEAN_REACH;
+    for (const fixture of plan.fixtures) {
+      const to = doorLeadsTo(mode, from, fixture, (dest) => dest === here || seen.has(dest));
+      if (to === null) continue;
+      const distance = Math.hypot(fixture.at.x - x, fixture.at.z - z);
+      if (distance > nearest) continue;
+      nearest = distance;
+      best = to;
+    }
+    return best;
+  }
+
   let last = performance.now();
   let running = true;
 
@@ -790,8 +934,47 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
     const mode: SessionMode = view?.mode ?? "full";
     buildStation(mode);
 
-    const floor = view === null ? null : activeFloor(view);
-    const plan = view === null ? null : roomPlan(view);
+    // Where the *session* is. The clock, the tool surface and KEEPER's body
+    // all answer to this and never to where the human has wandered off to.
+    const here = view === null ? null : activeFloor(view);
+    const livePlan = view === null ? null : roomPlan(view);
+    if (here !== null && livePlan !== null) seen.set(here, livePlan);
+    if (view?.ghost != null) lastGhost = view.ghost;
+
+    // The pair moving on ends any wander: the body goes where the session goes.
+    //
+    // **It does not stand PILOT in the doorway**, and the tour is why. Doing
+    // that reads well on its own and drags the camera with it, because the
+    // room shot follows the body: every chamber opened with a third of the
+    // frame taken up by the outside of the wall its door is in. The middle of
+    // the room is where the composition was tuned. Only walking through a door
+    // puts PILOT in one.
+    if (here !== wasHere) {
+      viewing = here;
+      wasHere = here;
+      if (here !== null) standAt(here, undefined);
+    }
+
+    // Where PILOT's *body* is. Identical to `here` unless somebody has walked
+    // back through a door, in which case the room is drawn from the last frame
+    // the server sent for it, with its doors open.
+    const floor = viewing;
+    // The console reads this to name the room the viewport is actually
+    // showing: one value, written where it is decided, and announced once when
+    // it changes. The console repaints on model events rather than per frame
+    // (`station.ts` says why), so a field written every frame and announced
+    // never is a field the console shows the previous value of forever.
+    if (model.standing !== floor) {
+      model.standing = floor;
+      onStanding();
+    }
+    const behind = floor === null || floor === here ? null : seen.get(floor);
+    const plan =
+      behind !== undefined && behind !== null
+        ? asCleared(behind)
+        : floor === here
+          ? livePlan
+          : null;
 
     // Changing room starts the walk: the camera holds the whole building for a
     // moment before settling into the next chamber.
@@ -861,6 +1044,41 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
       wantsLean && plan !== null && standing !== null
         ? nearestFixture(plan, pilotAt.x - standing.x, pilotAt.z - standing.z)
         : null;
+
+    /*
+     * Going through a door.
+     *
+     * `Q`, and deliberately **not** a long press of `E`. The first build laid
+     * it on top of the lean-in on the grounds that it is the same gesture, and
+     * the tour caught what that costs: `E` near a door stopped meaning "let me
+     * look at this" and started meaning "leave the room". Those are two
+     * intentions, and the one frame in the tour that exists to show a lean-in
+     * came back as the camera halfway out of the building. Two intentions, two
+     * keys.
+     *
+     * Edge-triggered, so leaning on the key crosses one threshold rather than
+     * every threshold between here and the Airlock.
+     */
+    const going = held.has("q");
+    const doorTo =
+      going && !wasGoing && plan !== null && standing !== null && floor !== null
+        ? doorAhead(mode, floor, here, plan, pilotAt.x - standing.x, pilotAt.z - standing.z)
+        : null;
+    wasGoing = going;
+    if (doorTo !== null && floor !== null) {
+      // Standing at the door on the far side that leads back to the room just
+      // left, so the two doorways are one doorway seen from either side.
+      const doors = doorsOf(mode, doorTo);
+      standAt(doorTo, doorTo === previousFloor(mode, floor) ? doors.out : doors.back);
+      viewing = doorTo;
+      leaning = null;
+      // The rest of this frame was measured against the room PILOT has just
+      // left, and a lamp, a shot and a set of fixtures resolved for a room
+      // nobody is standing in is one frame of the wrong building. The next
+      // tick has the right one.
+      requestAnimationFrame(tick);
+      return;
+    }
 
     let shot: Shot;
     if (leaning !== null && standing !== null) {
@@ -1048,15 +1266,30 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
                 ? "walking"
                 : "idle";
         pilot.step(now, reduceMotion ? 0 : stride, pose);
-        // KEEPER stands in the east wall of whichever room the pair is in. It
-        // is not *in* the room: it is behind the station's panels, reaching
-        // into every cavity at once. They can see each other and reach each
-        // other nowhere.
-        keeper.root.visible = true;
-        // The east wall, from the one constant the room plans are checked
-        // against, so a rack of shelves can never be written into the body.
-        const alcove = keeperAlcove(plan.size);
-        keeper.root.position.set(at.x + (alcove.x0 + alcove.x1) / 2, 0, at.z);
+        // KEEPER stands in the east wall of whichever room the *session* is
+        // in. It is not *in* the room: it is behind the station's panels,
+        // reaching into every cavity at once. They can see each other and
+        // reach each other nowhere.
+        //
+        // **Not in a room PILOT has walked back to.** KEEPER is a body at the
+        // chamber the pair is working on, and drawing it in a room the session
+        // left two chambers ago would be the animation claiming a presence the
+        // tool surface does not have. An empty alcove in the room behind you
+        // is the honest picture, and it is a good one: you went back and your
+        // partner is not there.
+        keeper.root.visible = floor === here;
+        // The east wall, from the one function the room plans are checked
+        // against, so a rack of shelves can never be written into the body -
+        // and neither can a doorway, which three of the five east walls now
+        // have (D-053). It answers with a z as well as an x, so the body is
+        // placed on both axes from it rather than defaulting to the room's
+        // own centre line.
+        const alcove = alcoveOf(mode, plan.id, plan.size);
+        keeper.root.position.set(
+          at.x + (alcove.x0 + alcove.x1) / 2,
+          0,
+          at.z + (alcove.z0 + alcove.z1) / 2,
+        );
         keeper.root.rotation.y = -Math.PI / 2;
       }
     } else {
@@ -1068,11 +1301,17 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
     keeper.setBusy(performance.now() < model.busyUntilMs);
     keeper.step(deltaMs, now);
 
-    if (view !== null && plan?.id === "archive") paintScreen(view, now);
+    // The last ghost seen rather than this phase's, so walking back into the
+    // Archive finds the recording it played rather than an empty monitor.
+    if (plan?.id === "archive") paintScreen(view?.ghost ?? lastGhost, now);
 
-    // The water, everywhere it appears. Suppressed under reduced motion along
-    // with everything else that moves on its own.
-    if (!reduceMotion) kit.tideStep(now);
+    // The water, everywhere it appears, and the room's own small movements.
+    // Both suppressed under reduced motion, along with everything else that
+    // moves on its own.
+    if (!reduceMotion) {
+      kit.tideStep(now);
+      stepDressing(now);
+    }
 
     if (!reduceMotion) {
       dust.rotation.y = now / 42000;
