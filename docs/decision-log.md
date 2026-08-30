@@ -1203,3 +1203,81 @@ inline SVG, the ablation and both browsers' setup routes.
 header is extended rather than re-reasoned, and the one new element it covers is
 the caption band over the viewport: phase copy, derived from `view.phase`, which
 the rail already prints.
+
+### D-046 A room shot stands one room, and hidden masonry sinks
+
+**2026-08-30.** The first playthrough of the 3D client on a real machine
+produced one complaint five times over, in five different words: things
+overflowing into other things.
+
+Every instance was the same class of fault and none of them was visible to the
+six hundred unit tests, because all six hundred check what a room *contains*
+and none of them check what a frame *shows*.
+
+**The station is a cutaway, and a cutaway leaks.** Every room is open at the top
+and on its south face so the camera can look in. That also means a camera
+standing in one chamber looks straight over its east wall into whatever is
+beyond it, and what is beyond it is unlit. The neighbours arrived in frame as
+flat black slabs crowding the room the player was actually in. `stationOwners`
+now maps every floor cell to the room that owns it, corridors deliberately
+excluded, and a room shot stands only that room's masonry and floor. `M` still
+steps back and shows the whole building, which is the same rule the model was
+already built on, applied one level further in.
+
+**Hidden means gone, not flat.** The first attempt hid an instance by scaling it
+to 0.0001 in y. That is not hidden: the box keeps a full-size top face, fully
+lit, and a grid of them reads as pale plates lying in the void. The corridor
+walls either side of the Signal Room's south doorway became two such plates
+sitting between the camera and the room. Hidden blocks now sink below the world.
+
+**KEEPER's alcove is reserved.** KEEPER is drawn in the east wall of whatever
+room the pair is in, and that placement was made once, in the renderer. No room
+plan knew about it, so the Archive stood a 4.6m rack of tape reels exactly where
+the body is and the two largest objects in the room drew through each other.
+`KEEPER_ALCOVE` and `keeperAlcove` name the reservation once; the renderer
+places the body from it and the tests check every room against it.
+
+**Low is not zero.** Room ambient was 0.42 so that the practical and the
+emissive facts would do the work. Anything the practical did not reach came back
+as flat black, and a rack of shelves in a dark corner was reported as a
+rendering bug rather than as a dark corner - which is the correct reading. 0.62,
+still well under a third of the wide shot's fill.
+
+*What this cost, and the lesson.* Four of these five were found by looking at
+frames; the fifth was found by measuring the geometry by hand. None was found by
+a test, and two of them were introduced by the fix for another. **A renderer's
+defects are in the frame, and the only instrument that sees them is a frame.**
+The overlap test that existed did not catch the Archive because it compared
+centre points and skipped any fixture above 1.4m - which is to say it was
+written around the shape of the bug it had already found. It now measures real
+extents against every fixture.
+
+### D-047 A caption is sized to the frame, and there is only ever one
+
+**2026-08-30.** Two faults in the same object, both of which had been visible in
+every screenshot since the 3D client landed and neither of which was named
+correctly by anybody looking at them, including me.
+
+**Every fixture was carrying two captions.** The constructor built one inline
+and left the field that tracks it null, so the first state update saw no caption
+and wrote a second. The first was never removed. On screen this is a caption
+that looks washed out and very slightly doubled, and where a fixture's label
+changes it is two different strings stacked - `DIAL 1` printed over `0/7`. It
+was reported as text superposing, which is exactly what it was, and I twice
+looked for the cause in layout. The caption now has one path in.
+
+**A caption was a fixed height in metres.** So how large it is on screen was
+whatever the camera happened to be doing: sized to read at the twenty-five
+metres a room shot stands at, the same caption at the six metres the lean-in
+stands at was four times too big and washed across the door it labelled.
+`captionHeight` solves the perspective relation for a constant fraction of the
+viewport, clamped so the wide shot cannot lay a billboard across the station.
+This is also the answer to captions being hard to read in the first place:
+legibility stops being a function of where the camera is.
+
+**The lean-in now has a frame in the tour.** `E` is the one camera move the
+human drives and the tour never pressed it, so it was being verified by
+arithmetic - the exact kind of proof the tour exists to replace. It is held
+through a real CDP `rawKeyDown`, because the stage listens on `globalThis` and a
+synthetic `KeyboardEvent` would not prove the browser path works. The frame it
+produced is the best in the game and it is the one nobody had ever looked at.
