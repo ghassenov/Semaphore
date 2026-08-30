@@ -69,6 +69,7 @@ import type { PilotView, SessionMode } from "@semaphore/protocol";
 import {
   ARCHIVE_SCREEN,
   clearOf,
+  hasInterlude,
   interlude,
   keeperAlcove,
   lampReveal,
@@ -916,14 +917,41 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
       fixtureView.sizeCaption(camera.position, camera.fov);
     }
 
-    // The grate's light, where there is a grate to stand behind.
+    /*
+     * The light from beyond the room, which is a grate in one chamber and the
+     * open outer door at the end.
+     *
+     * One light for both, because they are the same thing: something on the
+     * far side of an opening, throwing the opening's shape across the floor
+     * the pair is standing on. Sharing it also keeps the light budget at the
+     * five the art direction allows rather than growing a sixth for one beat.
+     *
+     * The finale had no light of its own at all, which is part of why the last
+     * two frames of the game were a grey box: the room was lit by a single
+     * ceiling practical and there was nothing in it to catch the light.
+     */
     {
-      const grate = plan?.fixtures.find((fixture) => fixture.kind === "grate");
       const at = floor === null ? null : placementOf(mode, floor);
-      if (grate !== undefined && at !== null && plan !== null) {
-        behindGrate.intensity = 55;
-        behindGrate.position.set(at.x + grate.at.x, grate.at.y + 0.45, at.z + grate.at.z - 1.1);
-        behindGrate.target.position.set(at.x + grate.at.x, 0.3, at.z + grate.at.z + 4);
+      const grate = plan?.fixtures.find((fixture) => fixture.kind === "grate");
+      const doorway =
+        plan?.solved === true
+          ? plan.fixtures.find((fixture) => fixture.kind === "door" && fixture.on)
+          : undefined;
+      const opening = grate ?? doorway;
+      if (opening !== undefined && at !== null && plan !== null) {
+        // Cold and much stronger through a door than through a grate: a grate
+        // is a hatch and the outer door is the sea.
+        const throughDoor = grate === undefined;
+        behindGrate.color.setHex(throughDoor ? PALETTE.tideBright : PALETTE.tide);
+        behindGrate.intensity = throughDoor ? 260 : 55;
+        behindGrate.distance = throughDoor ? 42 : 18;
+        behindGrate.angle = throughDoor ? 0.62 : 0.95;
+        behindGrate.position.set(
+          at.x + opening.at.x,
+          opening.at.y + (throughDoor ? 2.2 : 0.45),
+          at.z + opening.at.z - (throughDoor ? 2.6 : 1.1),
+        );
+        behindGrate.target.position.set(at.x + opening.at.x, 0.3, at.z + opening.at.z + 6);
       } else {
         behindGrate.intensity = 0;
       }
@@ -1019,7 +1047,7 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
     }
 
     // The caption band. Public copy only.
-    if (view !== null && plan === null) {
+    if (view !== null && hasInterlude(view)) {
       const [headline, instruction] = interlude(view);
       caption.innerHTML = "";
       const head = document.createElement("p");
