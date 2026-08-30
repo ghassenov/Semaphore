@@ -49,6 +49,7 @@ import {
   MANIFEST_LINES,
   TIMER_URGENT_FRACTION,
   formatTimer,
+  isTypingTarget,
   meterFill,
 } from "./render/hud.js";
 import { roomPlan, roomTitle } from "./render/chamber.js";
@@ -506,9 +507,10 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   // from the thing being looked at.
   const onKey = (event: KeyboardEvent): void => {
     if (event.key.toLowerCase() !== "f") return;
-    const target = event.target;
-    // Never while typing on the shared notepad.
-    if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) return;
+    // Never while typing on the shared notepad. Same predicate the stage uses
+    // for PILOT's body, from the same module, so the two cannot drift apart
+    // again.
+    if (isTypingTarget(event.target)) return;
     toggleFullscreen();
   };
   globalThis.addEventListener("keydown", onKey);
