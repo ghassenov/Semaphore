@@ -58,6 +58,7 @@ import {
   PlaneGeometry,
   PointLight,
   Points,
+  SpotLight,
   PointsMaterial,
   Scene,
   SRGBColorSpace,
@@ -210,6 +211,27 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
 
   const practical = new PointLight(PALETTE.pearl, 0, 26, 1.5);
   scene.add(practical);
+
+  /**
+   * The light behind the grate, in KEEPER's own colour.
+   *
+   * This is the fiction made visible and it costs one light. KEEPER is behind
+   * the station's panels; the Blind Panel is the one room where PILOT can see
+   * the boundary between them, and it is a grate at floor level. So the room's
+   * cold light comes *through* it, and the bars throw a countable pattern of
+   * shadow across the floor the pair is standing on.
+   *
+   * It is placed from the grate fixture rather than per room, so any room that
+   * grows a grate gets it and no room that does not is paying for it.
+   */
+  const behindGrate = new SpotLight(PALETTE.tide, 0, 18, 0.95, 0.45, 1.4);
+  behindGrate.castShadow = true;
+  behindGrate.shadow.mapSize.set(1024, 1024);
+  behindGrate.shadow.camera.near = 0.4;
+  behindGrate.shadow.camera.far = 22;
+  behindGrate.shadow.bias = -0.002;
+  scene.add(behindGrate);
+  scene.add(behindGrate.target);
 
   // ---- The building, built once per mode. --------------------------------
   const building = new Group();
@@ -782,6 +804,19 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
       for (const fixtureView of fixtures.values()) fixtureView.reveal(1);
     }
     for (const fixtureView of fixtures.values()) fixtureView.step(deltaMs, now);
+
+    // The grate's light, where there is a grate to stand behind.
+    {
+      const grate = plan?.fixtures.find((fixture) => fixture.kind === "grate");
+      const at = floor === null ? null : placementOf(mode, floor);
+      if (grate !== undefined && at !== null && plan !== null) {
+        behindGrate.intensity = 55;
+        behindGrate.position.set(at.x + grate.at.x, grate.at.y + 0.45, at.z + grate.at.z - 1.1);
+        behindGrate.target.position.set(at.x + grate.at.x, 0.3, at.z + grate.at.z + 4);
+      } else {
+        behindGrate.intensity = 0;
+      }
+    }
 
     // The room's own practical, and the moon's shadow frustum, follow the pair.
     if (floor !== null && plan !== null) {

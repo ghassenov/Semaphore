@@ -382,11 +382,21 @@ function buildDial(kit: Kit, fixture: Fixture, root: Group): Animator {
 
 /** A grate: horizontal bars KEEPER reaches through and PILOT hears through. */
 function buildGrate(kit: Kit, _fixture: Fixture, root: Group): Animator {
-  for (let bar = 0; bar < 5; bar += 1) {
-    solid(root, new Mesh(new BoxGeometry(6.4, 0.07, 0.07), kit.iron)).position.y = bar * 0.17;
+  // Wide, and made of few enough bars that the light behind it throws a
+  // countable pattern rather than a haze. The bars are what the room's only
+  // warm-side light has to pass through, so their spacing is a lighting
+  // decision as much as a modelling one.
+  const width = 9.5;
+  const frame = solid(root, new Mesh(new BoxGeometry(width + 0.3, 0.12, 0.22), kit.brass));
+  frame.position.y = 0.92;
+  solid(root, new Mesh(new BoxGeometry(width + 0.3, 0.12, 0.22), kit.brass)).position.y = -0.06;
+  for (let bar = 0; bar < 4; bar += 1) {
+    solid(root, new Mesh(new BoxGeometry(width, 0.06, 0.09), kit.iron)).position.y =
+      0.06 + bar * 0.26;
   }
-  for (const x of [-3.2, -1.6, 0, 1.6, 3.2]) {
-    solid(root, new Mesh(new BoxGeometry(0.08, 0.85, 0.08), kit.iron)).position.set(x, 0.34, 0);
+  for (let post = 0; post < 13; post += 1) {
+    const x = -width / 2 + (width / 12) * post;
+    solid(root, new Mesh(new BoxGeometry(0.07, 0.98, 0.09), kit.iron)).position.set(x, 0.43, 0);
   }
   return () => {
     /* A grate is the one fixture in the station that never changes state. */
@@ -494,10 +504,15 @@ function buildDoor(kit: Kit, fixture: Fixture, root: Group): Animator {
     leaf.position.set((side * width) / 4, height / 2, 0);
     return leaf;
   });
-  // A seam of the room's own light down the join, so a shut door still says
-  // there is somewhere on the other side of it.
-  const seam = solid(root, new Mesh(new BoxGeometry(0.08, height, 0.06), material));
-  seam.position.set(0, height / 2, 0.12);
+  // A seam of light down the join.
+  //
+  // Barely there when the door is shut: it should say "there is somewhere on
+  // the other side of this" and nothing more. The first pass lit it at a third
+  // of full brightness against dark copper, which put a hard white stripe down
+  // the middle of every closed door in the station and read as a crack in the
+  // model rather than as light.
+  const seam = solid(root, new Mesh(new BoxGeometry(0.05, height * 0.92, 0.05), material));
+  seam.position.set(0, height / 2, 0.115);
   const halo = kit.halo(fixture.channel, 2.4, 0);
   halo.position.set(0, height / 2, 0.3);
   root.add(halo);
@@ -507,8 +522,8 @@ function buildDoor(kit: Kit, fixture: Fixture, root: Group): Animator {
       const side = index === 0 ? -1 : 1;
       leaf.position.x = (side * width) / 4 - (side * progress * width) / 2.1;
     });
-    material.emissiveIntensity = 0.35 + progress * 2.4;
-    seam.scale.x = 1 + progress * 6;
+    material.emissiveIntensity = 0.05 + progress * 2.6;
+    seam.scale.x = 1 + progress * 8;
     halo.material.opacity = progress * 0.5;
   };
 }
@@ -858,6 +873,48 @@ export function buildDressing(kit: Kit, item: Dressing): Group {
         bar.rotation.y = 0.5;
         bar.receiveShadow = true;
         root.add(bar);
+      }
+      break;
+    }
+    case "console": {
+      // A sloped instrument desk. The slope is the whole of it: a flat box is a
+      // counter and a raked one is something built to be read from standing.
+      const desk = solid(root, new Mesh(new BoxGeometry(length, 0.14, 0.85), kit.iron));
+      desk.position.set(0, 1.02, 0.1);
+      desk.rotation.x = -0.42;
+      // The plinth under it, set back so the desk overhangs and casts a line of
+      // shadow down the front of the housing.
+      solid(root, new Mesh(new BoxGeometry(length - 0.5, 0.95, 0.5), kit.stone)).position.set(
+        0,
+        0.48,
+        -0.12,
+      );
+      // A brass lip along the near edge, which is what a hand rests on.
+      const lip = solid(root, new Mesh(new CylinderGeometry(0.045, 0.045, length, 8), kit.brass));
+      lip.rotation.z = Math.PI / 2;
+      lip.position.set(0, 1.22, 0.38);
+      // Bays: the housing each gauge column stands in, so the bank reads as one
+      // instrument divided up rather than four things on a wall.
+      const bays = 5;
+      for (let bay = 0; bay < bays; bay += 1) {
+        const post = solid(root, new Mesh(new BoxGeometry(0.12, 1.5, 0.3), kit.iron));
+        post.position.set(-length / 2 + (length / (bays - 1)) * bay, 1.9, -0.15);
+      }
+      break;
+    }
+    case "chart": {
+      // A framed schedule screwed to a wall. Unreadable and meant to be: it is
+      // texture, not information, and anything on it that could be read would
+      // be one more thing competing with the facts.
+      solid(root, new Mesh(new BoxGeometry(0.06, 1.05, 0.8), kit.brass));
+      const face = solid(root, new Mesh(new BoxGeometry(0.03, 0.9, 0.66), kit.stone));
+      face.position.x = 0.03;
+      for (let line = 0; line < 6; line += 1) {
+        solid(root, new Mesh(new BoxGeometry(0.02, 0.035, 0.44), kit.iron)).position.set(
+          0.05,
+          0.3 - line * 0.12,
+          -0.05,
+        );
       }
       break;
     }

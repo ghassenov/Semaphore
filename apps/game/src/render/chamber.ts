@@ -128,6 +128,10 @@ export interface Fixture {
  * and nothing here needs to survive a repaint.
  */
 export type DressingKind =
+  /** A sloped instrument desk, the housing a bank of gauges is set into. */
+  | "console"
+  /** A framed chart or schedule screwed to a wall. */
+  | "chart"
   | "pipe"
   | "valve"
   | "cable"
@@ -669,6 +673,8 @@ const DRESSING_RADIUS: Readonly<Record<DressingKind, number>> = {
   shelf: 0.4,
   column: 0.55,
   locker: 0.45,
+  console: 0.55,
+  chart: 0,
   // A porthole is in a wall, a chevron is paint on the floor, and a bulkhead
   // frame surrounds an opening you are meant to walk through.
   porthole: 0,
@@ -803,6 +809,13 @@ function blindPanel(facts: Readonly<Record<string, unknown>>): RoomPlan {
       target: target / GAUGE_MAX,
       steps: GAUGE_MAX,
       label: `${String(value)}/${String(target)}`,
+      // At the top of its own column, beside the cells it is counting.
+      //
+      // Both this and the dial beneath it used to fall back to the same
+      // floor-clamped height at the same `x`, so a gauge's reading was printed
+      // on top of its dial's name. They are three metres apart now, and the
+      // reading is where you are already looking when you count the cells.
+      captionAt: 3.55,
     });
 
     // KEEPER's dial, under the gauge it does not necessarily drive.
@@ -821,7 +834,7 @@ function blindPanel(facts: Readonly<Record<string, unknown>>): RoomPlan {
   fixtures.push({
     id: "grate",
     kind: "grate",
-    at: { x: 0, y: 0.5, z: -size.depth / 2 + 0.18 },
+    at: { x: 0, y: 0.42, z: -size.depth / 2 + 0.2 },
     channel: "shared",
     on: true,
   });
@@ -850,12 +863,26 @@ function blindPanel(facts: Readonly<Record<string, unknown>>): RoomPlan {
     // between the columns, and a vent at each end. This is the room doc 06
     // section 6 calls wide, shallow and industrial, and the pipes are what make
     // the gauge wall read as plumbing rather than as a scoreboard.
+    // An instrument hall.
+    //
+    // The room was four columns of light on a bare wall, and what it was
+    // missing is that nothing said the gauges are *equipment*. They stand in a
+    // console now: a sloped desk running the width of the bank, with the dials
+    // set into its foot behind the grate, feed pipes dropping into each column
+    // from a header overhead, and a chart on each side wall. The columns did
+    // not move - the room grew round them.
     dressing: [
-      ...pipeRun(3.5, -size.depth / 2 + 0.4, size.width - 1, [-3.4, 0, 3.4]),
-      ...pipeRun(0.15, -size.depth / 2 + 0.9, size.width - 2),
-      { kind: "vent", at: { x: -size.width / 2 + 0.4, y: 2.4, z: 1 }, facing: Math.PI / 2 },
-      { kind: "vent", at: { x: size.width / 2 - 0.4, y: 2.4, z: 1 }, facing: -Math.PI / 2 },
-      { kind: "puddle", at: { x: 4.2, y: 0, z: 1.4 }, length: 2.6 },
+      { kind: "console", at: { x: 0, y: 0, z: -size.depth / 2 + 0.75 }, length: size.width - 2.4 },
+      // The header the gauges feed from, with a drop into each column.
+      ...pipeRun(4.05, -size.depth / 2 + 0.5, size.width - 1, [-5.5, -1.8, 1.8, 5.5]),
+      { kind: "chart", at: { x: -size.width / 2 + 0.35, y: 2.2, z: -0.6 }, facing: Math.PI / 2 },
+      { kind: "chart", at: { x: size.width / 2 - 0.35, y: 2.2, z: -0.6 }, facing: -Math.PI / 2 },
+      { kind: "vent", at: { x: -size.width / 2 + 0.4, y: 2.5, z: 1.8 }, facing: Math.PI / 2 },
+      { kind: "vent", at: { x: size.width / 2 - 0.4, y: 2.5, z: 1.8 }, facing: -Math.PI / 2 },
+      { kind: "cable", at: { x: -4.6, y: size.height, z: -0.4 }, length: 1.5 },
+      { kind: "cable", at: { x: 5.1, y: size.height, z: -0.2 }, length: 1.2 },
+      { kind: "puddle", at: { x: 4.2, y: 0, z: 1.6 }, length: 2.8 },
+      { kind: "puddle", at: { x: -4.8, y: 0, z: 2.1 }, length: 2.2 },
       ...beams(size, 3),
     ],
     accent: CHAMBER_ACCENT.blind_panel,
