@@ -102,6 +102,102 @@ describe("the channel law", () => {
     expect(between).toBeGreaterThan(warmth(CHANNEL.keeper.key));
   });
 
+  /**
+   * Dichromat simulation, Vienot, Brettel and Mollon (1999).
+   *
+   * sRGB into the LMS cone space, collapse the missing cone onto the other
+   * two, and back. The classic formulation of this operates on the
+   * gamma-encoded values, which is what the published matrices below are for.
+   */
+  const RGB_TO_LMS = [
+    [17.8824, 43.5161, 4.11935],
+    [3.45565, 27.1554, 3.86714],
+    [0.0299566, 0.184309, 1.46709],
+  ];
+  const LMS_TO_RGB = [
+    [0.080944, -0.130504, 0.116721],
+    [-0.0102485, 0.0540194, -0.113615],
+    [-0.000365294, -0.00412163, 0.693513],
+  ];
+  const DICHROMAT = {
+    // No long-wavelength cone: the red end collapses.
+    protanopia: [
+      [0, 2.02344, -2.52581],
+      [0, 1, 0],
+      [0, 0, 1],
+    ],
+    // No medium-wavelength cone. The most common deficiency.
+    deuteranopia: [
+      [1, 0, 0],
+      [0.494207, 0, 1.24827],
+      [0, 0, 1],
+    ],
+    // No short-wavelength cone, which is the one that costs blue-yellow - the
+    // exact axis this palette's two channels are separated on, and the reason
+    // doc 08 phase 6 names it specifically rather than stopping at the two
+    // common ones.
+    tritanopia: [
+      [1, 0, 0],
+      [0, 1, 0],
+      [-0.395913, 0.801109, 0],
+    ],
+  };
+
+  function apply(matrix: number[][], v: number[]): number[] {
+    return matrix.map((row) => row[0]! * v[0]! + row[1]! * v[1]! + row[2]! * v[2]!);
+  }
+  function channels(colour: number): number[] {
+    return [(colour >> 16) & 255, (colour >> 8) & 255, colour & 255];
+  }
+  function simulate(colour: number, kind: keyof typeof DICHROMAT): number[] {
+    const lms = apply(RGB_TO_LMS, channels(colour));
+    return apply(LMS_TO_RGB, apply(DICHROMAT[kind], lms)).map((v) => Math.max(0, Math.min(255, v)));
+  }
+  const apart = (a: number[], b: number[]): number =>
+    Math.hypot(a[0]! - b[0]!, a[1]! - b[1]!, a[2]! - b[2]!);
+
+  it("keeps the two channels apart under all three dichromacies", () => {
+    // Measured, not assumed. The tightest pair is the two bright tones under
+    // protanopia at 59.3; tritanopia, which destroys the blue-yellow axis the
+    // channels were chosen for, in fact separates them further (265.0 for the
+    // key tones) because the collapse sends them in opposite directions.
+    //
+    // The floor sits well under every measured value and far above
+    // indistinguishable, so this catches a palette change that quietly makes
+    // one channel unreadable without failing on a small retune. Raising a
+    // channel's contrast is allowed; converging the two is not.
+    const FLOOR = 40;
+    const pairs: readonly (readonly [string, number, number])[] = [
+      ["key", PALETTE.lamp, PALETTE.tide],
+      ["deep", PALETTE.lampDeep, PALETTE.tideDeep],
+      ["bright", PALETTE.lampBright, PALETTE.tideBright],
+    ];
+    for (const kind of Object.keys(DICHROMAT) as (keyof typeof DICHROMAT)[]) {
+      for (const [tone, warm, cool] of pairs) {
+        const gap = apart(simulate(warm, kind), simulate(cool, kind));
+        expect(gap, `${kind}: the ${tone} tones collapsed to ${gap.toFixed(1)}`).toBeGreaterThan(
+          FLOOR,
+        );
+      }
+    }
+  });
+
+  it("keeps each channel apart from the shared tone under all three", () => {
+    // `shared` is pearl, and a fact both parties perceive must not be mistaken
+    // for one only PILOT does. This is the pair a red-green test would never
+    // have thought to check.
+    for (const kind of Object.keys(DICHROMAT) as (keyof typeof DICHROMAT)[]) {
+      expect(
+        apart(simulate(PALETTE.lamp, kind), simulate(PALETTE.pearl, kind)),
+        kind,
+      ).toBeGreaterThan(40);
+      expect(
+        apart(simulate(PALETTE.tide, kind), simulate(PALETTE.pearl, kind)),
+        kind,
+      ).toBeGreaterThan(40);
+    }
+  });
+
   it("gives every channel a shape marker, because colour alone must not carry it", () => {
     const markers = Object.values(CHANNEL_MARKER);
     expect(markers).toHaveLength(3);

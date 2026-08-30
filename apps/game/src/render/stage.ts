@@ -151,7 +151,18 @@ export function createStage(
   model: StationModel,
   onStanding: () => void = () => {},
 ): StageHandle {
-  const reduceMotion = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+  /**
+   * Whether the station holds still: the camera's drift, and PILOT's stride.
+   *
+   * Read every frame rather than once at boot, because the console's Access
+   * panel can turn it on mid-session (doc 08 phase 6) and a value captured at
+   * construction could not hear it. `prefers-reduced-motion` still counts, and
+   * the attribute is the manual switch beside it: a system preference is not
+   * something somebody should have to change desktop-wide to still one game.
+   */
+  const stillness = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)");
+  const holdStill = (): boolean =>
+    stillness?.matches === true || document.documentElement.hasAttribute("data-still");
 
   const renderer = new WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
   renderer.outputColorSpace = SRGBColorSpace;
@@ -494,7 +505,6 @@ export function createStage(
 
   // ---- Dust. ---------------------------------------------------------------
   const dust = buildDust(kit);
-  dust.visible = !reduceMotion;
   scene.add(dust);
 
   // ---- Camera state. -------------------------------------------------------
@@ -793,7 +803,7 @@ export function createStage(
     // A still camera in a still room reads as a paused game, so it breathes.
     // Suppressed under reduced motion, where a camera that moves on its own is
     // not atmosphere but a problem.
-    if (!reduceMotion) {
+    if (!holdStill()) {
       const phase = (now / DRIFT_PERIOD_MS) * Math.PI * 2;
       camera.position.x += Math.sin(phase) * DRIFT_METRES;
       camera.position.y += Math.cos(phase * 0.7) * DRIFT_METRES * 0.5;
@@ -1204,7 +1214,7 @@ export function createStage(
               : stride > 0.05
                 ? "walking"
                 : "idle";
-        pilot.step(now, reduceMotion ? 0 : stride, pose);
+        pilot.step(now, holdStill() ? 0 : stride, pose);
         // KEEPER stands in the east wall of whichever room the *session* is
         // in. It is not *in* the room: it is behind the station's panels,
         // reaching into every cavity at once. They can see each other and
@@ -1247,12 +1257,12 @@ export function createStage(
     // The water, everywhere it appears, and the room's own small movements.
     // Both suppressed under reduced motion, along with everything else that
     // moves on its own.
-    if (!reduceMotion) {
+    if (!holdStill()) {
       kit.tideStep(now);
       stepDressing(now);
     }
 
-    if (!reduceMotion) {
+    if (!holdStill()) {
       dust.rotation.y = now / 42000;
       const flicker = 1 + Math.sin(now / 260) * 0.03 + Math.sin(now / 91) * 0.015;
       practical.intensity *= flicker;
@@ -1276,6 +1286,10 @@ export function createStage(
     } else {
       caption.dataset.shown = "false";
     }
+
+    // Set here rather than at construction so the console's Access switch
+    // can still the room mid-session.
+    dust.visible = !holdStill();
 
     frame(shot, now);
 
