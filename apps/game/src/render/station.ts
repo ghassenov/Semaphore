@@ -22,6 +22,7 @@
  */
 
 import type { PilotView } from "@semaphore/protocol";
+import type { Focus } from "../tutorial/plan.js";
 import type { FloorId } from "./floors.js";
 import type { ConcordReport, SessionClient, StateSummary } from "../net/sessionClient.js";
 import type { CallRecord } from "../webmcp/director.js";
@@ -79,6 +80,17 @@ export interface StationModel {
    * in the station since the first minute.
    */
   standing: FloorId | null;
+  /**
+   * Where the guided shift wants the camera, or null for the camera's own mind.
+   *
+   * Written by `tutorial/tour.ts` and read by the stage, which is the only
+   * thing that can turn "the lever called lever_b" into a position: the tour is
+   * pure and deliberately knows nothing about where a room is standing. It is
+   * on the model rather than passed as an argument because every other thing
+   * the stage reads per frame is on the model, and a second channel into the
+   * frame loop is a second thing that can disagree with the first.
+   */
+  focus: Focus;
 }
 
 /** What `main.ts` holds once the station is up. */
@@ -136,6 +148,7 @@ export async function startStation(
     busyUntilMs: 0,
     chamberTimerMs: 0,
     standing: null,
+    focus: null,
   };
 
   // The engine and the scene together, in one chunk, off the critical path.
