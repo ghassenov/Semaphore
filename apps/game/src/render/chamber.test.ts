@@ -331,6 +331,59 @@ describe("PILOT's lamp", () => {
   });
 });
 
+describe("captions that change", () => {
+  /*
+   * The renderer bakes a caption into a texture, so a label that changes has to
+   * *be* a different string for anything downstream to notice. These assert the
+   * half of that which can be checked without a renderer: that the plan really
+   * does emit new words when the world moves.
+   *
+   * The other half - that the renderer rebuilds the texture rather than keeping
+   * the first one - was broken for the whole of this rework and was found by
+   * somebody playing, not by a test. A gauge read 0/7 after it had moved to 1/7
+   * and a reload "fixed" it.
+   */
+  const gaugeLabels = (values: Record<string, number>): readonly (string | undefined)[] => {
+    const plan = roomPlan(
+      viewOf({
+        chamber: "blind_panel",
+        facts: { gaugeValues: values, targets: { 1: 7, 2: 3, 3: 5, 4: 5 }, solved: false },
+      }),
+    );
+    return (plan?.fixtures ?? []).filter((f) => f.kind === "gauge").map((f) => f.label);
+  };
+
+  it("says a different thing when a gauge moves", () => {
+    const before = gaugeLabels({ 1: 0, 2: 0, 3: 0, 4: 0 });
+    const after = gaugeLabels({ 1: 1, 2: 0, 3: 0, 4: 0 });
+    expect(before[0]).toBe("0/7");
+    expect(after[0]).toBe("1/7");
+    // And only the one that moved.
+    expect(after.slice(1)).toEqual(before.slice(1));
+  });
+
+  it("says a different thing when a door opens", () => {
+    const shut = roomPlan(viewOf({ chamber: "airlock", facts: { pulled: [], doorOpen: false } }));
+    const open = roomPlan(viewOf({ chamber: "airlock", facts: { pulled: [], doorOpen: true } }));
+    const labelOf = (plan: RoomPlan | null) => plan?.fixtures.find((f) => f.id === "door")?.label;
+    expect(labelOf(shut)).not.toBe(labelOf(open));
+  });
+
+  it("says a different thing when the manual page is forged", () => {
+    // The one caption whose staleness would be a puzzle bug rather than a
+    // cosmetic one: PILOT reads this to answer KEEPER's trust question.
+    const clean = roomPlan(
+      viewOf({ chamber: "signal_room", facts: { glyphByKey: {}, manualPageState: "clean" } }),
+    );
+    const marked = roomPlan(
+      viewOf({ chamber: "signal_room", facts: { glyphByKey: {}, manualPageState: "vandalised" } }),
+    );
+    const labelOf = (plan: RoomPlan | null) => plan?.fixtures.find((f) => f.id === "page")?.label;
+    expect(labelOf(clean)).toBeDefined();
+    expect(labelOf(clean)).not.toBe(labelOf(marked));
+  });
+});
+
 describe("walking into things", () => {
   it("pushes a body out of a fixture it is standing in", () => {
     const plan = roomPlan(CHAMBERS[0]?.view ?? viewOf({}));
