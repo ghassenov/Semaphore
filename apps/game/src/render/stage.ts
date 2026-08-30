@@ -1029,8 +1029,45 @@ export function createStage(
       return;
     }
 
+    /*
+     * The guided shift's camera, which outranks everything except a lean.
+     *
+     * The tour is pure and names a fixture; only the stage can turn that into a
+     * position, because only the stage knows where the room is standing. A
+     * `focus` naming a fixture the current room does not contain resolves to
+     * nothing and the camera carries on as it was - which is what should happen
+     * when the tour is talking about the Airlock and the pair have walked out
+     * of it.
+     */
+    const guided = model.focus;
+    let guidedAt: { x: number; y: number; z: number } | null = null;
+    let guidedWide = false;
+    if (guided !== null && standing !== null) {
+      if (guided.kind === "wide") {
+        guidedWide = true;
+      } else if (guided.kind === "pilot") {
+        guidedAt = { x: pilotAt.x, y: 1.2, z: pilotAt.z };
+      } else {
+        const target = plan?.fixtures.find((fixture) => fixture.id === guided.id);
+        if (target) {
+          guidedAt = {
+            x: standing.x + target.at.x,
+            y: target.at.y,
+            z: standing.z + target.at.z,
+          };
+        }
+      }
+    }
+
     let shot: Shot;
-    if (leaning !== null && standing !== null) {
+    if (guidedAt !== null && standing !== null) {
+      shot = inspectShot(guidedAt, aspect(), {
+        centre: standing,
+        size: plan?.size ?? footprintOf(floor ?? "airlock"),
+      });
+    } else if (guidedWide) {
+      shot = shotFor(mode, view?.phase ?? "ENTRY", floor, true, aspect(), pilotAt);
+    } else if (leaning !== null && standing !== null) {
       shot = inspectShot(
         {
           x: standing.x + leaning.at.x,
@@ -1043,7 +1080,7 @@ export function createStage(
     } else {
       shot = shotFor(mode, view?.phase ?? "ENTRY", floor, asked, aspect(), pilotAt);
     }
-    const wide = shot.floor === null && leaning === null;
+    const wide = shot.floor === null && leaning === null && guidedAt === null;
 
     // Keyed on the shot, not the request: the walk between rooms is a wide
     // shot, and standing only one room's walls up during it would show the

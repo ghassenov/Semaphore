@@ -60,6 +60,7 @@ import { describeRoom } from "./render/mirror.js";
 import { TAIL_MS } from "./render/ghost.js";
 import { GLYPHS, glyphCanvas } from "./render/glyphs.js";
 import { paintMonitor } from "./render/monitor.js";
+import { createTour, type TourHandle } from "./tutorial/tour.js";
 import type { GhostTrack } from "@semaphore/protocol";
 
 const STARTER_PROMPT =
@@ -889,6 +890,13 @@ function edge(side: "left" | "right"): {
       body.append(section);
 
       const button = el("button", { type: "button", class: "tab" }, label);
+      // A stable handle for anything that needs to point at this tab from
+      // outside the console. The guided shift spotlights two of them, and a
+      // class name would be a promise that a styling change is free to break.
+      button.dataset.tab = label
+        .toLowerCase()
+        .replace(/[^a-z]+/g, "-")
+        .replace(/^your-/, "");
       button.setAttribute("aria-expanded", "false");
       button.addEventListener("click", () => {
         // Clicking the open tab closes it, so the room can always be got back
@@ -994,6 +1002,11 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   viewport.append(fullscreen);
 
   // The start card, over the room, until there is a session.
+  // Bound below, once the tour is mounted. The landing card is built before
+  // the tour is, and a button that does nothing for one frame is better than
+  // reordering the shell around a tutorial.
+  let teach: (() => void) | null = null;
+
   const launch = el("div", { class: "launch" });
   const sheet = el("div", { class: "launch-card" });
   launch.append(sheet);
@@ -1053,7 +1066,12 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
     });
     modes.append(button);
   }
+  const showMe = el("button", { type: "button", class: "launch-teach" }, "Show me how it works");
+  showMe.addEventListener("click", () => {
+    teach?.();
+  });
   sheet.append(
+    showMe,
     el("p", { class: "launch-go" }, "START THE SHIFT"),
     modes,
     el(
@@ -1404,12 +1422,40 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   /** The manifest as it was last painted, so a surviving tool does not re-animate. */
   let shownTools: readonly string[] = [];
 
+  /*
+   * The guided shift, mounted over the deck.
+   *
+   * It is created eagerly and drawn lazily: nothing is on screen until it
+   * starts, so a session that never asks for it pays one detached element. The
+   * model is handed over rather than a callback, because the one thing it needs
+   * to do to the world outside itself is move the camera, and the camera is
+   * read off the model every frame like everything else.
+   */
+  let tour: TourHandle | null = null;
+  let offered = false;
+  // The landing card's own way in, bound once the tour exists.
+  teach = () => tour?.start();
+
   return {
     stage: viewport,
     notepadHost,
     archiveHost,
 
     update(model: StationModel) {
+      tour ??= createTour(deck, model);
+      /*
+       * Offer it once, when the pair first reach a room.
+       *
+       * Not on the landing screen: the tour's third beat is about a mark above
+       * one of the Airlock's levers, and a tour that describes a room nobody is
+       * standing in is a slideshow. Not on every visit either - autoplaying
+       * anything is a cost imposed on somebody who did not ask for it, so it
+       * runs on a first visit and then only when asked.
+       */
+      if (!offered && model.view?.phase === "IN_CHAMBER") {
+        offered = true;
+        if (!tour.seen()) tour.start();
+      }
       const view = model.view;
       const remaining = view?.remainingMs ?? model.state?.remainingMs ?? null;
       const phase = view?.phase ?? model.state?.phase ?? null;

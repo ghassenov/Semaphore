@@ -2408,3 +2408,162 @@ button[hidden] {
   border-color: color-mix(in srgb, var(--lamp) 70%, transparent);
   background: color-mix(in srgb, var(--lamp) 14%, transparent);
 }
+
+/* --------------------------------------------------------------- the tour -- */
+
+/*
+ * The guided shift.
+ *
+ * A dimming layer over the deck with a lit box on whichever console element the
+ * step names, and the copy in a card at the foot. It sits above the drawers so
+ * it can point at them, and below nothing.
+ */
+.tour {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  /*
+   * Barely there over the middle of the frame.
+   *
+   * The first setting took the room down to almost nothing, which is absurd
+   * for an overlay whose entire job is to talk about the room: the wide shot
+   * is already the dimmest thing this renderer draws, and dimming it again
+   * left the first beat describing a black rectangle. It only has to hold the
+   * card's contrast at the foot, so that is where the weight is.
+   */
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    color-mix(in srgb, var(--abyss) 18%, transparent) 55%,
+    color-mix(in srgb, var(--abyss) 72%, transparent) 100%
+  );
+  animation: veil 500ms ease both;
+}
+
+.tour[hidden] {
+  display: none;
+}
+
+/*
+ * The spotlight: a box that travels rather than a hole that appears.
+ *
+ * Moving light is what makes an eye follow instead of search, so it slides
+ * between the two elements the tour points at rather than cutting out and
+ * cutting in somewhere else.
+ */
+.tour-spot {
+  position: absolute;
+  border: 1px solid color-mix(in srgb, var(--lamp) 75%, transparent);
+  border-radius: var(--radius);
+  box-shadow:
+    0 0 0 9999px color-mix(in srgb, var(--abyss) 62%, transparent),
+    0 0 28px color-mix(in srgb, var(--lamp) 45%, transparent);
+  pointer-events: none;
+  transition:
+    left 420ms cubic-bezier(0.22, 0.8, 0.3, 1),
+    top 420ms cubic-bezier(0.22, 0.8, 0.3, 1),
+    width 420ms cubic-bezier(0.22, 0.8, 0.3, 1),
+    height 420ms cubic-bezier(0.22, 0.8, 0.3, 1);
+}
+
+.tour-spot[hidden] {
+  display: none;
+}
+
+/* The copy, at the foot, so it never stands on the thing it is about. */
+.tour-card {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: min(38rem, calc(100% - 4rem));
+  margin: 0 auto 1.6rem;
+  padding: 1.1rem 1.3rem;
+  border: var(--edge);
+  border-left: 2px solid var(--lamp);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, var(--stone), var(--ink));
+  box-shadow: var(--sheen), var(--lift-3);
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    opacity 380ms ease,
+    transform 380ms cubic-bezier(0.22, 0.8, 0.3, 1);
+}
+
+.tour-card.shown {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.tour-beat {
+  margin: 0 0 0.3rem;
+  color: var(--lamp);
+  font-family: var(--mono);
+  font-size: 0.67rem;
+  letter-spacing: 0.22em;
+}
+
+.tour-card h2 {
+  margin: 0 0 0.35rem;
+  color: var(--pearl);
+  font-size: 1.12rem;
+  font-weight: 500;
+}
+
+.tour-say {
+  margin: 0;
+  color: var(--mist);
+  font-size: 0.94rem;
+  line-height: 1.55;
+}
+
+.tour-controls {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  margin-top: 1rem;
+}
+
+.tour-dots {
+  display: flex;
+  flex: 1;
+  gap: 0.34rem;
+}
+
+.tour-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--iron);
+  transition: background 200ms ease;
+}
+
+.tour-dot.on {
+  background: var(--lamp);
+}
+
+/* Skip is a way out, not an invitation: it says so by being quiet. */
+.tour-skip {
+  border-color: transparent;
+  background: none;
+  box-shadow: none;
+  color: var(--mist);
+}
+
+.tour-skip:hover {
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--pearl);
+}
+
+.launch-teach {
+  border-color: color-mix(in srgb, var(--iron) 70%, transparent);
+  background: none;
+  color: var(--mist);
+}
+
+.launch-teach:hover {
+  border-color: var(--lamp);
+  color: var(--lamp);
+}
