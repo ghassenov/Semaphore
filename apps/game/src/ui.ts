@@ -527,7 +527,20 @@ export function renderGate(root: HTMLElement): void {
   mark.append(words);
   hero.append(
     mark,
-    el("h1", {}, "This browser cannot reach the station."),
+    /*
+     * The pitch first, the problem second.
+     *
+     * This screen used to open with "This browser cannot reach the station",
+     * which is the most important sentence on it for somebody who came here to
+     * play and the least important for somebody who came here to judge. Doc 07
+     * section 6 is explicit that for some judges this screen *is* the
+     * submission, and a submission should not lead with an error.
+     *
+     * The split graphic below makes the same argument the landing screen makes,
+     * from the same code, so the two screens agree about what the game is
+     * without either of them describing it twice.
+     */
+    el("h1", {}, "An escape room for a human and an agent who cannot see the same room."),
     el(
       "p",
       { class: "lede" },
@@ -543,7 +556,21 @@ export function renderGate(root: HTMLElement): void {
         "the draft. Two do.",
     ),
   );
+  hero.append(heroSplit());
   main.append(hero);
+
+  // Then the problem, marked as the aside it is rather than as the headline.
+  const blocked = el("section", { class: "blocked" });
+  blocked.append(
+    el("h2", {}, "This browser cannot reach the station"),
+    el(
+      "p",
+      {},
+      "The agent plays through tools this page registers, and that needs a browser " +
+        "implementing the WebMCP draft. Two do, and either takes a minute.",
+    ),
+  );
+  main.append(blocked);
 
   const routes = el("div", { class: "routes" });
 
