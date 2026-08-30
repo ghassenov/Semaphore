@@ -13,7 +13,7 @@ It answers three questions and only three: where the repo is right now, what to 
 | **Last updated** | 2026-08-30, Ahmed Saad |
 | **Branch** | `feat/audible-channel`, off `main` at `94cbcca` |
 | **Pipeline** | Green: 677 tests, typecheck, lint, format, both `vite build`s plus the bundle budget and the palette check, real `wrangler deploy --dry-run` |
-| **Sound** | **Built** (D-050, D-051). Plan phase 5.2 in full: eight mechanism cues, the ambience bed, four timer-keyed tension layers, a behind-the-wall thump per KEEPER tool call, and a mix with a mute. Plus **a warm unresolved theme** on top, always on, which is a deliberate departure from doc 06's chiptune direction (D-051). All synthesised in `apps/game/src/audio/`; still no asset file of any kind. `PilotView` gained `seq`, without which the detents cannot repeat. |
+| **Sound** | **Built and heard** (D-050, D-051). Listened to on a real machine on 2026-08-30 and signed off. Plan phase 5.2 in full: eight mechanism cues, the ambience bed, four timer-keyed tension layers, a behind-the-wall thump per KEEPER tool call, and a mix with a mute. Plus **a warm unresolved theme** on top, always on, which is a deliberate departure from doc 06's chiptune direction (D-051). All synthesised in `apps/game/src/audio/`; still no asset file of any kind. `PilotView` gained `seq`, without which the detents cannot repeat. |
 | **Interface** | **Rebuilt in real-time 3D** (D-042 to D-045). Phaser and the tile renderer are gone. The station is a lit cutaway model: rooms open at the top and on their south face, camera always to the south, four lights and no post-processing. New colour language (D-043), procedural assets and **no asset files at all** (D-044), and a console laid out as two surfaces with the room between them (D-045). |
 | **Licence** | **MIT throughout again.** The vendored art pack went with the tile renderer, so `LICENSE` has no carve-out (D-044). |
 | **Played** | A full session end to end in Chrome 152 against a live `wrangler dev`: all four chambers, the Archive, the finale, the ending. 17/17 browser checks green on the single-origin path. **A second pass on a real machine found five more defects, all of them things a frame shows and no test does** (D-046, D-047): neighbouring rooms crowding a room shot, hidden masonry left as lit plates, the Archive's beams across its own monitor, KEEPER's body sharing a wall with a shelf rack, and every fixture carrying two stacked captions. All fixed. **A third pass then found six more in the two beats nobody had inspected** (D-048): the finale drew an empty room for its last two phases, an open door showed a crack instead of its opening, the bolt ring floated over the lintel, its count printed on top of the door sign, the room lit itself flat with the door open, and a pendant hung between the camera and the Archive monitor. All fixed. The tour now also presses `E`. **A fourth pass was *played* rather than looked at** - one person as PILOT in the browser, one driving KEEPER over the worker's HTTP tool surface - and found a twelfth that no frame could show (D-049): the Blind Panel drew `DIAL n` directly beneath `GAUGE n`, asserting the one thing that chamber exists to withhold. Fixed. |
@@ -145,14 +145,12 @@ pass. And every tuned renderer constant - ambient at 0.62, the doorway spotlight
 at 110, the caption's 0.032 of viewport height - was set by looking at a
 1400x900 desktop window and has been checked at no other size.
 
-**One thing nobody has heard.** The audio layer (D-050, D-051) has been driven
-in a headless browser, which has no audio device: it was verified not to throw
-and not one note has actually been listened to. Everything about how it *sounds*
-is unverified - whether eight detents at 180ms are countable by ear, whether the
-klaxon is unpleasant enough, whether the theme is too present under a room the
-player is trying to describe out loud, and whether the arpeggio fights it at a
-quarter of the clock. Put headphones on and play a session. That is the whole
-test, and `MECH` on the mixer is the fader to reach for.
+**The audio has been heard and signed off** (2026-08-30), so this is no longer
+the open risk it was for the length of one session. What is *not* yet separately
+confirmed is the narrow thing Chamber II depends on: whether eight detents at
+180ms are countable **by ear** by somebody who does not already know the answer.
+That one is a playtest question rather than a listening one - see item 2 - and
+`MECH` on the mixer is the fader to reach for if they are hard to pick out.
 
 ### 2. Playtest with humans [needs people]
 
@@ -180,23 +178,23 @@ Two spike rows still decide things: `crossorigin.delegation`, which flips
 `ARCHIVE_ORIGIN`, and `declarative.agentinvoked`, which the notepad's per-line
 authorship depends on.
 
-### 4. Listen to it, then settle the two things only an ear can settle
+### 4. Bring doc 06 section 11 in line with what the client actually plays
 
-Sound is **built** (D-050, D-051) and phase 5.2 is closed, so this is no longer
-a hole: it is a judgement that needs one person and a pair of headphones. See
-the last paragraph of item 1 for the full list of what is unverified.
+Sound is **built, heard and signed off** (D-050, D-051), so phase 5.2 is closed
+and this is the paperwork it leaves behind.
 
-**The balance between the theme and the tension layers.** The theme is warm and
-unresolved and always on; the arpeggio that arrives at a quarter of the clock is
-a square wave and is meant to be alarming. Nobody has heard them together. If
-they fight, **cut the arpeggio first and the pulse second** - the cues, the bed
-and the ducking carry the `AUDIBLE` channel and none of that may be cut, and the
-theme is the station's character.
+**Doc 06 section 11 and the code now disagree, deliberately.** The doc asks for
+a chiptune score. The client plays a warm, unresolved instrumental as its
+resting state with the chiptune tension layers arriving on top of it as the
+clock drains. The code is the newer decision and the one that was listened to,
+so the doc is the half that should move. Rewriting that section is maybe an
+hour, and doc 09's shot list and doc 10's submission copy should be checked for
+anything that describes the score while somebody is in there.
 
-**And whether doc 06 section 11 should be rewritten to match.** It still asks
-for a chiptune score; the client now plays a warm instrumental with chiptune
-tension on top of it (D-051). The code is deliberately the newer decision, but
-the doc is the source of truth for design and one of the two has to move.
+If a later ear does find the arpeggio fighting the theme, **cut the arpeggio
+first and the pulse second** - the cues, the bed and the ducking carry the
+`AUDIBLE` channel and none of that may be cut, and the theme is the station's
+character.
 
 ### 5. Decide what to do about the two things the ablation found
 
@@ -281,7 +279,7 @@ seconds with zero tokens. Budget the tokens before running, not after.
 | Playtesters | Human | Doc 08 section 0.1 wants six. The one task that does not parallelise, and the interface is now the one worth testing. |
 | Spike in ChatGPT's in-app browser | Human | Still the only thing keeping `ARCHIVE_ORIGIN` at `same`. Now also the only way to know whether the 3D renderer performs there. |
 | A real agent session | Human | Doc 11 sections 6 and 7 stay empty until a model meets the page. |
-| Somebody to actually hear it | Human | Sound is built (D-050) and has only ever run in a headless browser with no audio device. Nothing in the pipeline can hear; one person with headphones closes it. |
+| Doc 06 section 11 rewritten | Whoever holds the design | It still describes a chiptune score. The client plays a warm instrumental with chiptune tension over it (D-051), heard and signed off. The doc is the half that has to move. |
 | A second Pages project for `apps/archive` | Human | Needs a Cloudflare project and preview-deploy wiring. |
 | Socket behaviour through Cloudflare's edge | Human | Verified against local `workerd` only. |
 | Chamber II's drift rate | Whoever holds the design | Blocked on doc 11 sections 6 and 7. Re-run `ablation` and `benchmark` after any change. |
