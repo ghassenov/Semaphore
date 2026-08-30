@@ -61,6 +61,7 @@ import { TAIL_MS } from "./render/ghost.js";
 import { GLYPHS, glyphCanvas } from "./render/glyphs.js";
 import { paintMonitor } from "./render/monitor.js";
 import { createTour, type TourHandle } from "./tutorial/tour.js";
+import { ENDING, OPENING, playStory, type StoryHandle } from "./story.js";
 import type { GhostTrack } from "@semaphore/protocol";
 
 const STARTER_PROMPT =
@@ -1433,6 +1434,15 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
    */
   let tour: TourHandle | null = null;
   let offered = false;
+  /*
+   * The two sequences that bracket a shift, each played once.
+   *
+   * Keyed on the phase arriving rather than on a timer, so the opening lands
+   * when the pair actually reach a room and the ending lands when the door is
+   * actually open. `told` is what keeps a re-render from replaying either.
+   */
+  let story: StoryHandle | null = null;
+  const told = new Set<string>();
   // The landing card's own way in, bound once the tour exists.
   teach = () => tour?.start();
 
@@ -1452,9 +1462,25 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
        * anything is a cost imposed on somebody who did not ask for it, so it
        * runs on a first visit and then only when asked.
        */
-      if (!offered && model.view?.phase === "IN_CHAMBER") {
+      const nowPhase = model.view?.phase ?? null;
+      if (nowPhase === "IN_CHAMBER" && !told.has("opening")) {
+        told.add("opening");
+        story = playStory(deck, OPENING);
+      }
+      if (nowPhase === "ESCAPED" && !told.has("ending")) {
+        told.add("ending");
+        story = playStory(deck, ENDING);
+      }
+      // The tour waits for the opening to have had its say, so the two are
+      // never on screen together telling the player two different things.
+      if (!offered && nowPhase === "IN_CHAMBER") {
         offered = true;
-        if (!tour.seen()) tour.start();
+        if (!tour.seen()) {
+          globalThis.setTimeout(() => {
+            story?.stop();
+            tour?.start();
+          }, 8600);
+        }
       }
       const view = model.view;
       const remaining = view?.remainingMs ?? model.state?.remainingMs ?? null;
