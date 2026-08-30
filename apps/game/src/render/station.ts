@@ -22,6 +22,7 @@
  */
 
 import type { PilotView } from "@semaphore/protocol";
+import type { FloorId } from "./floors.js";
 import type { ConcordReport, SessionClient, StateSummary } from "../net/sessionClient.js";
 import type { CallRecord } from "../webmcp/director.js";
 import { listToolNames, onToolChange } from "../webmcp/adapter.js";
@@ -63,6 +64,21 @@ export interface StationModel {
    * a wire whose whole point is that it carries as little as possible.
    */
   chamberTimerMs: number;
+  /**
+   * The floor PILOT's body is standing in, which is not always the floor the
+   * session is in.
+   *
+   * Written by the stage and read by the console. PILOT can walk back through
+   * a door they have already opened (D-054), and without this the header would
+   * go on naming the chamber the pair is working on while the viewport shows
+   * a room two chambers back - which reads as a rendering fault rather than as
+   * the thing the player just did on purpose.
+   *
+   * It carries no channel and leaks nothing: it names a room the pair has
+   * already stood in, and the console's own floor rail has listed every room
+   * in the station since the first minute.
+   */
+  standing: FloorId | null;
 }
 
 /** What `main.ts` holds once the station is up. */
@@ -119,6 +135,7 @@ export async function startStation(
     tools: [],
     busyUntilMs: 0,
     chamberTimerMs: 0,
+    standing: null,
   };
 
   // The engine and the scene together, in one chunk, off the critical path.

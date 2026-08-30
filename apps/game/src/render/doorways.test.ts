@@ -15,7 +15,15 @@
 
 import { describe, expect, it } from "vitest";
 import { MODE_CHAMBERS, type SessionMode } from "@semaphore/protocol";
-import { DOORWAYS, DOORWAY_WIDTH, doorsOf, type Doorway, type Wall } from "./doorways.js";
+import {
+  BACK_DOOR_ID,
+  DOORWAYS,
+  DOORWAY_WIDTH,
+  doorLeadsTo,
+  doorsOf,
+  type Doorway,
+  type Wall,
+} from "./doorways.js";
 import { cellKey, floorsOf, roomStrip, stationCells } from "./plan.js";
 import { floorsFor, type FloorId } from "./floors.js";
 
@@ -100,4 +108,53 @@ describe("the table describes the station this mode actually plays", () => {
       expect(doorsOf(mode, floors[0] ?? "airlock").back).toBeUndefined();
     });
   }
+});
+
+describe("where a door leads", () => {
+  const openBack = { id: BACK_DOOR_ID, kind: "door", on: true };
+  const openOut = { id: "door", kind: "door", on: true };
+  const everywhere = (): boolean => true;
+
+  it("takes the back door to the room before this one", () => {
+    expect(doorLeadsTo("full", "signal_room", openBack, everywhere)).toBe("airlock");
+    expect(doorLeadsTo("full", "concord_lock", openBack, everywhere)).toBe("archive");
+    // BRIEF has no Blind Panel and so no Archive, so the same door in the same
+    // room leads somewhere else entirely.
+    expect(doorLeadsTo("brief", "concord_lock", openBack, everywhere)).toBe("signal_room");
+  });
+
+  it("takes any other door to the room after this one", () => {
+    expect(doorLeadsTo("full", "airlock", openOut, everywhere)).toBe("signal_room");
+    expect(doorLeadsTo("full", "blind_panel", openOut, everywhere)).toBe("archive");
+  });
+
+  it("leads nowhere out of the ends of the building", () => {
+    expect(doorLeadsTo("full", "airlock", openBack, everywhere)).toBeNull();
+    expect(doorLeadsTo("full", "concord_lock", openOut, everywhere)).toBeNull();
+  });
+
+  it("refuses a shut door", () => {
+    // "After it's opened" is the mechanic. A sealed exit is a sealed exit
+    // however long anybody leans on it.
+    expect(doorLeadsTo("full", "airlock", { ...openOut, on: false }, everywhere)).toBeNull();
+  });
+
+  it("refuses anything that is not a door", () => {
+    const lever = { id: "lever_a", kind: "lever", on: true };
+    expect(doorLeadsTo("full", "airlock", lever, everywhere)).toBeNull();
+  });
+
+  it("refuses a room the pair has never stood in", () => {
+    /*
+     * The design-law gate, and the only one that matters. Walking back may
+     * only ever reach a projection the server has already pushed: the client
+     * holds the last frame of every room the pair has been in and nothing at
+     * all for a room ahead of them. A door onto one has to answer null, or
+     * this stops being a camera feature.
+     */
+    const beenIn = new Set<string>(["airlock", "signal_room"]);
+    const reachable = (floor: string): boolean => beenIn.has(floor);
+    expect(doorLeadsTo("full", "signal_room", openBack, reachable)).toBe("airlock");
+    expect(doorLeadsTo("full", "signal_room", openOut, reachable)).toBeNull();
+  });
 });
