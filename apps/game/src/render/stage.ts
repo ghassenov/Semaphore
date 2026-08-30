@@ -676,6 +676,43 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
   }
 
   /** Put the room's floor-wide effects where the room is. */
+  /**
+   * The room breathing.
+   *
+   * Dressing was built once per room and never touched again, on the stated
+   * grounds that it has no state and nothing to read. That is still true - and
+   * it was being used to argue something else, that nothing in it moves. A
+   * station a hundred metres down with a cable hanging dead still off every
+   * beam is a photograph of a room rather than a room.
+   *
+   * Driven off the piece's own position rather than a stored phase, so nothing
+   * has to be tracked between frames and no two pieces move together. It reads
+   * the group's name, which is set where the piece is built, so a kind that
+   * should not move simply is not named here.
+   *
+   * Under `prefers-reduced-motion` it is not called at all, and the room is the
+   * still one those players asked for.
+   */
+  function stepDressing(now: number): void {
+    for (const piece of dressing.children) {
+      // Two positions, two irrational-ish multipliers: enough that a row of
+      // identical cables does not sway as one object.
+      const phase = piece.position.x * 1.7 + piece.position.z * 0.9;
+      if (piece.name === "dress:cable" || piece.name === "dress:bulb") {
+        // Hung from the ceiling, so the anchor is the pivot and rotating the
+        // group is exactly the swing. Small: this is a draught, not a storm.
+        piece.rotation.z = Math.sin(now / 2600 + phase) * 0.045;
+        piece.rotation.x = Math.cos(now / 3100 + phase) * 0.032;
+      } else if (piece.name === "dress:vent") {
+        const fan = piece.getObjectByName("fan");
+        // Slow, and slower still in some rooms than others. An extractor at a
+        // convincing speed strobes against the frame rate and reads as a
+        // rendering fault, which is the one thing decoration may not do.
+        if (fan) fan.rotation.y = (now / 1000) * (0.7 + (Math.abs(phase) % 0.5));
+      }
+    }
+  }
+
   function dressRoom(plan: RoomPlan | null): void {
     if (plan === null) {
       water.visible = false;
@@ -1226,9 +1263,13 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
     // Archive finds the recording it played rather than an empty monitor.
     if (plan?.id === "archive") paintScreen(view?.ghost ?? lastGhost, now);
 
-    // The water, everywhere it appears. Suppressed under reduced motion along
-    // with everything else that moves on its own.
-    if (!reduceMotion) kit.tideStep(now);
+    // The water, everywhere it appears, and the room's own small movements.
+    // Both suppressed under reduced motion, along with everything else that
+    // moves on its own.
+    if (!reduceMotion) {
+      kit.tideStep(now);
+      stepDressing(now);
+    }
 
     if (!reduceMotion) {
       dust.rotation.y = now / 42000;

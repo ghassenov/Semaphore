@@ -238,14 +238,24 @@ describe("what a room contains", () => {
      */
     const FIXTURE_WIDTH: Readonly<Record<string, number>> = {
       monitor: 4,
-      door: 3.2,
+      // The doorway, not the door: `buildDoor` puts a head across `width + 0.6`
+      // and a post either side of that. Measuring the leaves alone left three
+      // hundred millimetres of bulkhead that nothing was checked against, and
+      // the first pass of the Blind Panel's new shelf ended fifty millimetres
+      // inside a doorpost because of it.
+      door: 3.8,
       crate: 0.9,
       console: 1,
       beacon: 1.2,
     };
     for (const plan of allPlans()) {
       for (const item of plan.dressing) {
-        if (item.kind !== "cabinet" && item.kind !== "shelf") continue;
+        // Everything with bulk that stands on a floor. Lockers and ladders
+        // were outside this until rooms started being dressed around their
+        // doorways, and both of them are things you put against exactly the
+        // wall a door is in.
+        const BULKY = ["cabinet", "shelf", "locker", "ladder"];
+        if (!BULKY.includes(item.kind)) continue;
         const yaw = item.facing ?? 0;
         const run = (item.length ?? 0) / 2;
         // No comfort margin: this asks whether two things are *inside* each

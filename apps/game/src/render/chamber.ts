@@ -162,6 +162,16 @@ export type DressingKind =
   | "bulkhead"
   /** A card index: drawers, brass pulls, and a few left open. */
   | "cabinet"
+  /**
+   * A fixed ladder up a wall, to a hatch nobody is going to open.
+   *
+   * The two tall rooms are the two doc 06 section 6 asks for height in, and
+   * height that nothing is measured against is not height: a nine-metre
+   * cathedral and a four-metre room look the same from a camera that frames
+   * both to fill the viewport. A ladder is a human-sized rule laid up the
+   * wall, which is what makes the wall read as tall.
+   */
+  | "ladder"
   /** One bare bulb on a flex. */
   | "bulb";
 
@@ -576,9 +586,22 @@ function airlock(mode: SessionMode, facts: Readonly<Record<string, unknown>>): R
       ...pipeRun(3.0, -size.depth / 2 + 0.3, size.width - 1.2),
       // South end of the east wall, clear of both the doorway and the alcove.
       { kind: "vent", at: { x: size.width / 2 - 0.35, y: 2.3, z: 2.9 }, facing: -Math.PI / 2 },
-      { kind: "cable", at: { x: -2.6, y: size.height, z: -1.2 }, length: 1.1 },
+      { kind: "cable", at: { x: -2.6, y: size.height, z: -1.2 }, height: 1.1 },
+      { kind: "cable", at: { x: 3.1, y: size.height, z: 1.4 }, height: 1.3 },
+      // A hand valve on the upper run, at head height beside the door. It is
+      // the thing in the room that says the pipes carry something.
+      { kind: "valve", at: { x: 1.8, y: 3.0, z: -size.depth / 2 + 0.3 } },
+      // A tide chart and a shelf of gear on the west wall, under the porthole.
+      { kind: "chart", at: { x: -size.width / 2 + 0.35, y: 2.2, z: 3.0 }, facing: Math.PI / 2 },
+      {
+        kind: "shelf",
+        at: { x: -size.width / 2 + 0.35, y: 0, z: -1.0 },
+        facing: Math.PI / 2,
+        length: 1.6,
+      },
       { kind: "puddle", at: { x: -3.4, y: 0, z: 1.9 }, length: 2.6 },
       { kind: "puddle", at: { x: 2.9, y: 0, z: 2.4 }, length: 2 },
+      { kind: "puddle", at: { x: 4.6, y: 0, z: -1.4 }, length: 1.6 },
       ...beams(size, 3),
     ],
     accent: CHAMBER_ACCENT.airlock,
@@ -707,10 +730,30 @@ function signalRoom(mode: SessionMode, facts: Readonly<Record<string, unknown>>)
       ...(doors.back === undefined ? [] : doorDressing(size, doors.back)),
       ...(doors.out === undefined ? [] : doorDressing(size, doors.out)),
       { kind: "rail", at: { x: 0, y: 1.05, z: 2.1 }, length: 6.5 },
-      { kind: "cable", at: { x: -1.5, y: size.height, z: -1 }, length: 3.4 },
-      { kind: "cable", at: { x: 2.1, y: size.height, z: 0.4 }, length: 4.2 },
+      { kind: "cable", at: { x: -1.5, y: size.height, z: -1 }, height: 3.4 },
+      { kind: "cable", at: { x: 2.1, y: size.height, z: 0.4 }, height: 4.2 },
+      // Long drops down the side walls, well clear of the key ring, because
+      // the room is seven and a half metres tall and nothing in it said so.
+      { kind: "cable", at: { x: -5.4, y: size.height, z: -1.2 }, height: 5.0 },
+      { kind: "cable", at: { x: 5.4, y: size.height, z: -3.0 }, height: 4.4 },
       ...pipeRun(5.4, -size.depth / 2 + 0.35, size.width - 2, [-3.5, 3.5]),
+      // A second run under the ceiling. Two runs at different heights is what
+      // turns a wall into a wall with a gallery above it.
+      ...pipeRun(6.6, -size.depth / 2 + 0.35, size.width - 4, [-2.2, 2.2]),
+      // The ladder to the hatch nobody is going to open. A rung every third of
+      // a metre is a human dimension laid up the wall, and it is the only
+      // thing in the station that makes a tall room measurably tall.
+      {
+        kind: "ladder",
+        at: { x: -size.width / 2 + 0.3, y: 0, z: -5.4 },
+        facing: Math.PI / 2,
+        height: 6.4,
+      },
+      { kind: "vent", at: { x: size.width / 2 - 0.35, y: 3.4, z: 3.4 }, facing: -Math.PI / 2 },
+      { kind: "chart", at: { x: -size.width / 2 + 0.35, y: 2.2, z: 3.6 }, facing: Math.PI / 2 },
       { kind: "puddle", at: { x: -4.4, y: 0, z: 3.4 }, length: 2.2 },
+      { kind: "puddle", at: { x: 3.8, y: 0, z: -4.4 }, length: 2.4 },
+      { kind: "puddle", at: { x: -2.2, y: 0, z: 5.2 }, length: 3.0 },
       ...beams(size, 4),
     ],
     accent: CHAMBER_ACCENT.signal_room,
@@ -927,6 +970,7 @@ const DRESSING_RADIUS: Readonly<Record<DressingKind, number>> = {
   // A rail is a barrier at waist height, and being able to stroll through one
   // is the single clearest way a room stops reading as a place.
   rail: 0.3,
+  ladder: 0.24,
 };
 
 /** The closest point to `(x, z)` on a horizontal segment, as a distance. */
@@ -1187,8 +1231,23 @@ function blindPanel(mode: SessionMode, facts: Readonly<Record<string, unknown>>)
       // another two, so a chart hung there is a chart drawn over one of them.
       { kind: "chart", at: { x: -size.width / 2 + 0.35, y: 2.2, z: -2.6 }, facing: Math.PI / 2 },
       { kind: "vent", at: { x: -size.width / 2 + 0.4, y: 2.5, z: 2.9 }, facing: Math.PI / 2 },
-      { kind: "cable", at: { x: -4.6, y: size.height, z: -0.4 }, length: 1.5 },
-      { kind: "cable", at: { x: 5.1, y: size.height, z: -0.2 }, length: 1.2 },
+      { kind: "cable", at: { x: -4.6, y: size.height, z: -0.4 }, height: 1.5 },
+      { kind: "cable", at: { x: 5.1, y: size.height, z: -0.2 }, height: 1.2 },
+      { kind: "cable", at: { x: 1.4, y: size.height, z: 1.1 }, height: 1.4 },
+      // Spares and paperwork, both on the west wall either side of the way
+      // out. An instrument hall is a place somebody works in, and until this
+      // there was nothing in it that anybody could have put down.
+      {
+        kind: "locker",
+        at: { x: -size.width / 2 + 0.45, y: 0, z: 3.0 },
+        facing: Math.PI / 2,
+      },
+      {
+        kind: "shelf",
+        at: { x: -size.width / 2 + 0.35, y: 0, z: -2.4 },
+        facing: Math.PI / 2,
+        length: 1.4,
+      },
       { kind: "puddle", at: { x: 4.2, y: 0, z: 1.6 }, length: 2.8 },
       { kind: "puddle", at: { x: -4.8, y: 0, z: 2.1 }, length: 2.2 },
       ...beams(size, 3),
@@ -1287,14 +1346,56 @@ function concordDressing(size: RoomSize): readonly Dressing[] {
     {
       kind: "cable" as const,
       at: { x: -2.4, y: size.height, z: -size.depth / 2 + 1.4 },
-      length: 4.6,
+      height: 4.6,
     },
     {
       kind: "cable" as const,
       at: { x: 2.9, y: size.height, z: -size.depth / 2 + 1.1 },
-      length: 3.8,
+      height: 3.8,
     },
     { kind: "puddle" as const, at: { x: 0, y: 0, z: 2.4 }, length: 4.5 },
+    { kind: "puddle" as const, at: { x: 4.0, y: 0, z: -2.2 }, length: 3.2 },
+    // Lockers flanking the great door, hard against the north wall and well
+    // outside the bolt ring. **Nothing goes on the floor down the middle**:
+    // the room's whole job is to make the last twelve metres feel like a walk,
+    // so what it gets is a wider frame around the thing it walks toward.
+    ...[-1, 1].map((side) => ({
+      kind: "locker" as const,
+      at: { x: side * 4.6, y: 0, z: -size.depth / 2 + 0.5 },
+    })),
+    // The ladder up the west wall, for the reason the Signal Room has one: a
+    // nine-metre room and a four-metre room are the same picture from a camera
+    // that frames both to fill the viewport, unless something in them is a
+    // known size.
+    {
+      kind: "ladder" as const,
+      at: { x: -size.width / 2 + 0.3, y: 0, z: 4.4 },
+      facing: Math.PI / 2,
+      height: 7.8,
+    },
+    // Two charts on the west wall. The east wall is spoken for twice over -
+    // the cipher wheel is on it and so is the way back, on opposite halves of
+    // it in the two modes - so nothing else may be hung there.
+    // At z plus and minus 1.65, which is the midpoint between the columns.
+    // The first pass put one at -3.4 and a column stands at -3.3, so a chart
+    // 350mm off the wall was hung inside a 550mm column.
+    ...[-1, 1].map((side) => ({
+      kind: "chart" as const,
+      at: { x: -size.width / 2 + 0.35, y: 2.6, z: side * 1.65 },
+      facing: Math.PI / 2,
+    })),
+    // A service run high above the door, above the bolt ring and well above
+    // the doorway, which is what stops the top eight metres of the room being
+    // an empty grey field.
+    ...pipeRun(7.4, -size.depth / 2 + 0.45, size.width - 3, [-3.2, 3.2]),
+    // A pair, off the centre line, for the reason the Archive's are: a pendant
+    // at x 0 in a room whose whole content is at the far end is a lamp
+    // swinging between the camera and the thing you are walking toward.
+    ...[-1, 1].map((side) => ({
+      kind: "bulb" as const,
+      at: { x: side * 5.0, y: size.height, z: 1.0 },
+      height: 1.2,
+    })),
     ...beams(size, 4),
   ];
 }
@@ -1561,7 +1662,7 @@ export const ARCHIVE_PLAN: RoomPlan = {
     // both sides, which a records room wants more than a bulb in the middle.
     { kind: "bulb", at: { x: -2.6, y: ROOM_SIZES.archive.height, z: 0.6 }, height: 0.7 },
     { kind: "bulb", at: { x: 2.6, y: ROOM_SIZES.archive.height, z: 0.6 }, height: 0.7 },
-    { kind: "cable", at: { x: 2.1, y: ROOM_SIZES.archive.height, z: 1.6 }, length: 1.1 },
+    { kind: "cable", at: { x: 2.1, y: ROOM_SIZES.archive.height, z: 1.6 }, height: 1.1 },
     { kind: "puddle", at: { x: -0.5, y: 0, z: 1.9 }, length: 2.4 },
     ...archiveDoorDressing(),
     // **No beams.** The room is 3.2m tall and the monitor is 2.9m of that, so
