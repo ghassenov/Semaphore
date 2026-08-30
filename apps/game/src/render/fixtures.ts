@@ -828,9 +828,16 @@ export function buildDressing(kit: Kit, item: Dressing): Group {
       // A hanging run with a slight sag, drawn as three shortening segments
       // rather than a curve: at this distance a catenary and a kinked line are
       // the same picture, and one of them needs no curve sampling.
+      //
+      // Measured by `height`, not `length`. A cable drops, and the two fields
+      // exist precisely so that nothing reading a piece has to guess which of
+      // those a number is - but the cable was built against `length` anyway,
+      // so the check that keeps dressing inside its room was measuring every
+      // cable's *drop* out sideways through the wall. It passed only because
+      // no cable had ever been hung near enough to one.
       let y = 0;
       for (let piece = 0; piece < 3; piece += 1) {
-        const drop = length / 3;
+        const drop = height / 3;
         const segment = solid(
           root,
           new Mesh(new CylinderGeometry(0.035, 0.035, drop, 5), kit.iron),
@@ -964,10 +971,46 @@ export function buildDressing(kit: Kit, item: Dressing): Group {
     }
     case "vent": {
       solid(root, new Mesh(new BoxGeometry(0.12, 1, 1), kit.iron));
+      // An extractor turning behind the louvres. Named, because `stage.ts`
+      // finds it by name to spin it: the alternative is a per-piece animator
+      // list for the one thing in the dressing that has a moving part, and a
+      // name costs nothing and keeps the scene graph diagnosable either way.
+      const fan = new Group();
+      fan.name = "fan";
+      fan.position.x = -0.12;
+      fan.rotation.z = Math.PI / 2;
+      for (let blade = 0; blade < 4; blade += 1) {
+        const vane = solid(fan, new Mesh(new BoxGeometry(0.34, 0.02, 0.1), kit.iron));
+        vane.rotation.y = (blade / 4) * Math.PI * 2;
+        vane.position.set(Math.cos(vane.rotation.y) * 0.17, 0, Math.sin(vane.rotation.y) * 0.17);
+      }
+      root.add(fan);
       for (let slat = 0; slat < 5; slat += 1) {
         const bar = solid(root, new Mesh(new BoxGeometry(0.16, 0.1, 0.86), kit.copper));
         bar.position.set(0.02, 0.36 - slat * 0.18, 0);
         bar.rotation.z = 0.22;
+      }
+      break;
+    }
+    case "ladder": {
+      // Two stiles and a rung every third of a metre, bolted flat to a wall.
+      // The rung spacing is the whole point of the piece: it is a repeating
+      // human dimension, so a wall with one on it has a scale a bare wall
+      // does not.
+      for (const side of [-1, 1]) {
+        const stile = solid(root, new Mesh(new BoxGeometry(0.05, height, 0.05), kit.iron));
+        stile.position.set(side * 0.22, height / 2, 0);
+      }
+      const rungs = Math.max(2, Math.round(height / 0.34));
+      for (let rung = 1; rung < rungs; rung += 1) {
+        const bar = solid(root, new Mesh(new CylinderGeometry(0.022, 0.022, 0.44, 6), kit.copper));
+        bar.rotation.z = Math.PI / 2;
+        bar.position.y = (rung / rungs) * height;
+      }
+      // The standoffs that hold it off the wall, top and bottom.
+      for (const at of [0.3, height - 0.3]) {
+        const arm = solid(root, new Mesh(new BoxGeometry(0.06, 0.06, 0.16), kit.iron));
+        arm.position.set(0, at, -0.1);
       }
       break;
     }
