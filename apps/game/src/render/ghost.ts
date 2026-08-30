@@ -23,7 +23,7 @@
  */
 
 import type { ChamberId, GhostTrack } from "@semaphore/protocol";
-import { shapeOf } from "./plan.js";
+import { footprintOf } from "./plan.js";
 
 /**
  * How long the monitor holds the last frame before looping.
@@ -62,9 +62,14 @@ const UNKNOWN_TARGET = 0.5;
 export interface GhostFrame {
   /** The room the ghost is standing in, or null before the first one. */
   readonly chamber: ChamberId | null;
-  /** That room's interior in tiles, so the monitor can draw its outline. */
-  readonly cols: number;
-  readonly rows: number;
+  /**
+   * That room's footprint in metres, so the monitor can draw its outline at the
+   * right proportion. The monitor draws a plan of the room the ghost was in,
+   * and a plan whose aspect does not match the room is a plan of somewhere
+   * else.
+   */
+  readonly width: number;
+  readonly depth: number;
   /** Where the ghost stands, as a fraction across the room. */
   readonly walk: number;
   /** Holding the release bar. The one posture worth drawing differently. */
@@ -163,12 +168,12 @@ export function ghostFrame(track: GhostTrack, elapsedMs: number): GhostFrame {
   const span = toT - fromT;
   const walk = span <= 0 ? to : from + (to - from) * Math.min(1, (now - fromT) / span);
 
-  const shape = chamber === null ? shapeOf("archive") : shapeOf(chamber);
+  const footprint = footprintOf(chamber ?? "archive");
   const ended = now >= track.durationMs;
   return {
     chamber,
-    cols: shape.cols,
-    rows: shape.rows,
+    width: footprint.width,
+    depth: footprint.depth,
     walk,
     gripping,
     // The log stops mid-attempt (doc 02 section 4). Saying so is what turns

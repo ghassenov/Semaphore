@@ -214,17 +214,22 @@ async function evaluate<T>(expression: string): Promise<T> {
  * A screenshot of the page as it is, named for the beat it was taken at.
  *
  * A no-op unless `SHOTS` names a directory, so the assertion run is unchanged
- * and costs nothing, the wait included. The default wait is the camera's, and
- * it is the sum of two of them: the scene holds the whole building for 1600ms
- * on the walk between rooms and then pans and zooms into the next one over
- * 700ms. A frame grabbed before both have finished is a picture of the
- * previous room with the next room's name over it, which is exactly what the
- * first run of this tour produced. A longer one is
- * how the Archive gets looked at, because that room's contents change on their
- * own clock and there is nothing to wait for but time.
+ * and costs nothing, the wait included.
+ *
+ * **The default wait is the camera's, and it has to stay larger than it.** It
+ * is the sum of two: the scene holds the whole building for `WALK_MS` on the
+ * walk between rooms and then pans and zooms into the next one over `SHOT_MS`
+ * (`apps/game/src/render/camera.ts`, 1600 and 800 at the time of writing). A
+ * frame grabbed before both have finished is not a picture of the next room; it
+ * is the previous room with the next room's name over it, or the whole building
+ * seen from four hundred metres up. Both have been produced by this tour, once
+ * per renderer. If a frame comes back looking oddly distant, check this number
+ * against those two before looking at the scene. A longer wait is how the
+ * Archive gets looked at, because that room's contents change on their own
+ * clock and there is nothing to wait for but time.
  */
 let shotIndex = 0;
-async function shot(name: string, waitMs = 2600): Promise<void> {
+async function shot(name: string, waitMs = 2800): Promise<void> {
   if (SHOTS.length === 0) return;
   await sleep(waitMs);
   const res = await send("Page.captureScreenshot", { format: "png" });
@@ -233,6 +238,35 @@ async function shot(name: string, waitMs = 2600): Promise<void> {
   mkdirSync(SHOTS, { recursive: true });
   writeFileSync(file, data, "base64");
   console.log(`[shot] ${file}`);
+}
+
+/**
+ * Hold a key down, take a frame, let it go.
+ *
+ * The lean-in (`E`) is the one camera move the human drives, and it had no
+ * frame in this tour at all: it was verified by arithmetic, which is exactly
+ * the kind of proof this file exists to replace. Held through a real
+ * `rawKeyDown` rather than a synthetic event, because the stage listens on
+ * `globalThis` and a dispatched `KeyboardEvent` would not prove the browser
+ * path works.
+ */
+async function shotHolding(key: string, name: string, waitMs = 1400): Promise<void> {
+  if (SHOTS.length === 0) return;
+  const code = `Key${key.toUpperCase()}`;
+  await send("Input.dispatchKeyEvent", {
+    type: "rawKeyDown",
+    key,
+    code,
+    windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0),
+  });
+  await shot(name, waitMs);
+  await send("Input.dispatchKeyEvent", {
+    type: "keyUp",
+    key,
+    code,
+    windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0),
+  });
+  await sleep(600);
 }
 
 await send("Page.enable");
@@ -358,6 +392,7 @@ const spiralLever = Object.keys(glyphByLever).find((lever) => glyphByLever[lever
 await post("pull_lever", { lever_id: spiralLever });
 await until((v) => v.chamber === "signal_room", "the signal room");
 await shot("signal-room");
+await shotHolding("e", "signal-room-leaning");
 await sleep(400);
 
 // ---- Chamber I: ascending stroke count, primes omitted.

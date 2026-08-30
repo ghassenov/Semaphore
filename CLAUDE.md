@@ -15,7 +15,7 @@ Repo-wide law. Everything on this page applies in every directory. A subdirector
 | Submission deadline | 2026-09-03, 13:00 PDT (hard) |
 | Judging period ends | 2026-09-21 (the live URL must stay up until then) |
 | Live URL must work in | ChatGPT in-app browser (GPT-5.6 Sol or Terra) and Chrome 149+ with `chrome://flags/#enable-webmcp-testing` |
-| License | MIT for the code. `apps/game/public/art/` is third-party and separately licensed (D-034). |
+| License | MIT, for the whole repository. The third-party art carve-out went with the pixel renderer (D-044). |
 
 The thesis every decision is checked against:
 
@@ -38,12 +38,11 @@ Judging is four equally weighted criteria: **WebMCP Leverage**, **Execution**, *
 | [packages/](packages/) | Code shared by client, worker, archive and bench. Pure, no I/O. | `seed`, `protocol` built |
 | `packages/seed/` | Deterministic xorshift128+ PRNG. Same seed, same puzzle, always. | Built |
 | `packages/protocol/` | Channel tags, error codes, wire types, and the two document-tool specs the game and the archive origin share. One definition each. | Built |
-| `apps/game/public/art/` | The vendored art pack, one directory per channel. **Not covered by this repository's MIT licence** (D-034); terms and provenance in its `CREDITS.md`. | Vendored |
-| [apps/game/](apps/game/) | Phaser client. Renders PILOT's view, hosts the WebMCP tool director. | Complete through plan 1.4, plus the Archive's monitor (D-039). Interface rebuilt on the vendored art pack: one top-down room on the canvas, a three-bay DOM console around it (D-034 to D-036). All four chambers and the Archive looked at in Chrome against a live worker. |
+| [apps/game/](apps/game/) | Three.js client. Renders PILOT's view, hosts the WebMCP tool director. | Complete through plan 1.4, plus the Archive's monitor (D-039). **Interface rebuilt in real-time 3D** (D-042 to D-045): the station as a lit cutaway model, a new colour language, procedural assets and no asset files at all, and a console laid out as two surfaces with the room between them. Three playthroughs on a real machine (D-046 to D-048) found eleven defects that 650 passing tests could not, all of them already sitting in captured frames. |
 | [apps/worker/](apps/worker/) | Cloudflare Worker plus the Session Durable Object. Authoritative state. | Complete: four chambers, the reducer, the Archive beat, the timer, the read-only tool surface, the manual, PILOT's view socket, the CONCORD route and the shared notepad |
 | [apps/archive/](apps/archive/) | Cross-origin tool provider: `read_manual` and `read_station_log`, registered on a second origin and exposed back to the game. | Built (D-033). Holds no content: both tools fetch the worker. |
 | [fixtures/ghosts/](fixtures/ghosts/) | Authored ghost session logs, generated from real play. | One ghost built |
-| [tests/](tests/) | Cross-cutting proofs: possible-worlds, asymmetry smoke, solvability, and the browser proof of cross-origin delegation. | Possible-worlds proof covers all four chambers; delegation proved on Chrome 151. The browser proof doubles as the screenshot tour (`SHOTS`, D-039). |
+| [tests/](tests/) | Cross-cutting proofs: possible-worlds, asymmetry smoke, solvability, and the browser proof of cross-origin delegation. | Possible-worlds proof covers all four chambers; delegation proved on Chrome 151 and re-run on 152. The browser proof doubles as the screenshot tour (`SHOTS`, D-039), which is how a rendering change gets looked at, and it now presses `E` so the lean-in has a frame. |
 | [bench/](bench/) | Ablation harness, scripted partners, the Cooperative Benchmark. | Both built and run. The ablation is three conditions over twenty seeds (D-040); the Cooperative Benchmark is four scripted partners over the same seeds (D-041). Raw logs, chart, tables and CSV in `bench/results/`. No model in either yet. |
 
 Root tooling: pnpm workspaces, strict TypeScript, ESLint, Prettier, Vitest, GitHub Actions.
@@ -81,6 +80,7 @@ Rules that follow from this:
 - **Be concise.** Optimise token and context usage: read only the files the task needs, do not restate what the user already knows, keep docs short.
 - Before using any CLI tool, **verify it is installed** (`command -v <tool>`). This is a Linux machine. If a tool is missing, say so and propose the install command. Do not assume and do not auto-install.
 - Record every significant decision in [docs/decision-log.md](docs/decision-log.md): date, decision, options considered, why, result. If in doubt whether it is significant, log it.
+- **A user reporting what they see is giving you an observation, not a hypothesis.** "The text is superposing" meant two sprites on one anchor; "the ceiling lamp is covering the screen" was true in metres. Both were mis-diagnosed twice by looking for a more sophisticated cause. Reproduce the report literally before reinterpreting it.
 - **Update [NEXT-STEPS.md](NEXT-STEPS.md) at the end of every work session, and after any step that changes what a teammate should pick up.** It is the handoff: where the repo is, what to do next, what will bite you. Whoever starts work reads it first. A stale handoff is worse than none, because it is trusted.
 - Several people work on this repo. **Never put personal or machine-specific values** (absolute paths, tokens, usernames, editor config) in tracked files. Personal settings belong in `.env` and `.claude/settings.local.json`, both git-ignored.
 
@@ -154,3 +154,5 @@ Rules that follow from this:
 | 2026-08-29 | Ahmed Saad | Repository map: the Archive beat gained PILOT's half (D-039), and the browser proof doubles as the screenshot tour. |
 | 2026-08-29 | Ahmed Saad | Repository map: `bench/` holds the ablation (D-040), which is the third consumer of `worlds.ts`. |
 | 2026-08-29 | Ahmed Saad | Repository map: `bench/` also holds the Cooperative Benchmark (D-041), and the README now carries the ablation chart. |
+| 2026-08-29 | Ahmed Saad | The interface was rebuilt in real-time 3D on Three.js (D-042 to D-045). The licence row loses its art carve-out: `apps/game/public/art/` is gone and the repository is MIT throughout. |
+| 2026-08-30 | Ahmed Saad | Workflow rule added: a user's report of what they see is an observation, not a hypothesis. Repository map updated for the eleven defects three playthroughs found (D-046 to D-048). |

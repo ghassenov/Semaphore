@@ -183,6 +183,16 @@ export class ToolDirector {
   #delegatedSession: readonly string[] = [];
   #delegatedChamber: readonly string[] = [];
 
+  /**
+   * The last tier the *server* asked for, or null before any state has arrived.
+   *
+   * Distinct from `#tier`, which is what is currently mounted. This one exists
+   * so `mountEntry` can tell "nobody has told me anything yet" from "the server
+   * has told me this session is over", which are the same state as far as the
+   * mounted registry is concerned and mean opposite things.
+   */
+  #asked: Tier["kind"] | null = null;
+
   constructor(
     private readonly client: SessionClient,
     private readonly hooks: DirectorHooks = {},
@@ -205,9 +215,23 @@ export class ToolDirector {
   /**
    * Register the front door. Safe to call on a browser with no WebMCP: the
    * adapter resolves false and the page carries on to the gate screen.
+   *
+   * **It refuses once the server has said the session is past the front door**,
+   * and that guard is D-021 applied to the one place the client speaks first.
+   * `mountEntry` is the client's *guess* that a fresh page is a fresh session,
+   * and a guess must lose to an observation.
+   *
+   * The race is real and it is the page's normal startup order. `main.ts` opens
+   * the view socket, then awaits the renderer, which fetches an engine over the
+   * network; a frame for an already-finished session arrives during that await,
+   * drains the registry to empty as the ending requires, and then `mountEntry`
+   * runs and hands the agent its front door back. Reloading a finished session
+   * showed `begin_shift` on a shift that had ended - the ending un-happening,
+   * on the one beat doc 08 says may never be cut.
    */
   async mountEntry(): Promise<void> {
     if (this.#tier?.kind === "entry") return;
+    if (this.#asked !== null && this.#asked !== "entry") return;
     this.#entryCtl = new AbortController();
     await this.#register([beginShiftTool(this.client)], this.#entryCtl.signal);
     this.#tier = { kind: "entry" };
@@ -229,6 +253,9 @@ export class ToolDirector {
   async #applyState(state: StateSummary): Promise<void> {
     this.hooks.onState?.(state);
     const next = tierFor(state);
+    // Recorded before the early return, so a session that only ever reports a
+    // held phase still counts as having been heard from.
+    if (next.kind !== "hold") this.#asked = next.kind;
     if (next.kind === "hold" || sameTier(this.#tier, next)) return;
 
     switch (next.kind) {

@@ -254,6 +254,104 @@ Two things worth carrying:
 1. **A renderer's unit tests prove the decisions, never the drawing.** Everything here that could be decided without a canvas was pure and tested, and all of it was correct. Every one of these four bugs lived in the half that only exists once Phaser is running. The stills were not enough either: they were composited from real `roomPlan` output by a script that had no pool in it, so they were structurally incapable of showing three of the four.
 2. **Play the whole thing, not the first room.** Three of these needed *two chambers of history* to appear - the amber beam requires having drawn a glyph in the Signal Room, then reaching the Concord Lock. A single-screen smoke test cannot reach them by construction. The full playthrough is scripted now (`tests/cross-origin-delegation.ts` already had the solvers; it took about forty lines to turn it into a camera) and it should run before any renderer change is called done.
 
+### 2026-08-29 - A renderer rewrite kept every rule and broke every number
+
+Replacing the tile renderer with a 3D one (D-042) was the largest single change
+this client has had, and the split of what survived is the finding.
+
+**Every design rule transferred without argument.** Devices step toward the
+server rather than playing a sequence; walls resolve from the floor in one pass
+so a junction is an opening; a glyph's name never reaches PILOT's side; the
+registry drives KEEPER's body from a real `getTools()`; the wide shot is a
+parameter and not a phase. Not one of them needed rethinking, and two of them
+(the stepper, the one-pass autotile) turned out to be *more* obviously right in
+three dimensions than they had been in two. That is what a rule about the game
+rather than about the medium looks like from the far side of a medium change,
+and it is the argument for writing them down in the form "why" rather than
+"what".
+
+**Every tuned number was wrong, and none of them failed a test.** Exposure, fog
+density, light intensity, camera distance, gauge size, the practical's reach,
+the screenshot tour's own wait. Six hundred and twenty-three tests passed
+throughout. The first tour came back with the whole station rendered from four
+hundred metres up in every frame, three of four gauges apparently missing, and
+three enormous grey triangles floating over the building.
+
+The habit that follows: **after a medium change, treat every constant as
+unverified, including the ones in the instruments.** The rules are portable and
+the numbers are not, and the numbers are exactly the half no test is watching.
+
+### 2026-08-29 - Four things the frames found that the tests could not, again
+
+The 3D rework shipped green - typecheck, lint, 623 tests, both builds, the
+bundle budget, the palette check - and then the screenshot tour found four
+defects in twenty minutes. This is the third renderer in a row where that
+sentence is true, so it is worth recording as a pattern rather than as an
+incident.
+
+**A guard that had stopped guarding.** The camera holds the whole building for a
+moment when the pair changes room, and skips that on the first room because
+there is nowhere to have walked from. The guard was `wasOn !== undefined`. But
+the lobby frame arrives before the first chamber does and sets `wasOn` to
+`null`, so by the time a floor appeared the guard was satisfied and every room
+shot in the tour was the wide shot. The code was correct on the day it was
+written and a state that did not exist yet walked past it. **A sentinel guard is
+only as good as the number of ways a value can arrive.**
+
+**A fake that accumulated.** Light shafts were translucent cones with additive
+blending and `DoubleSide`. Over a near-black room the front face adds to the
+back face and both add to whatever is behind, so three of them became solid grey
+triangles floating over the station. Additive blending has no upper bound;
+"subtle" is not a property of an opacity value, it is a property of an opacity
+value times the number of surfaces the ray crosses. Removed rather than tuned,
+because a shaft that reads needs a gradient along its length and that needs a
+texture: the halo the beacon drags round the ring says the same thing for
+nothing.
+
+**A plane inside the box it was drawn on.** The Archive's monitor housing is
+1.1m deep and centred on its own origin, and the screen was hung at +0.8 from
+the *room's* back wall, which put it exactly on the casing's front face. What
+reached the camera was the bezel behind it. The fix was not to nudge the number
+but to derive both from `MONITOR_DEPTH`, so a housing that grows deeper cannot
+swallow the picture in silence. **Two positions measured from different origins
+are two positions that will disagree the first time either moves.**
+
+**Fog is squared, so it is a wide-shot setting.** A density chosen to give a
+room some atmosphere did nothing at all at the twenty-five metres a room shot
+stands at and erased sixty per cent of the building at the hundred and ten a
+wide shot stands at. The wide shot read as broken. Anything with a squared or
+exponential falloff has to be tuned against the *largest* distance it will be
+seen at, not the most common one.
+
+The fifth was the instrument again, exactly as last time: the tour's wait was
+still the old camera's, so it captured mid-pan. `tests/CLAUDE.md` now states it
+as a constraint against `WALK_MS + SHOT_MS` rather than as two numbers, because
+copying a constant into the thing that measures it is how this recurs.
+
+### 2026-08-29 - A metric that does not separate is not evidence, and I nearly shipped one
+
+`glyphs.test.ts` was written to assert that `wave` and `knot` are the most
+confusable pair in the set, using the Jaccard overlap of their set pixels. It
+failed: `spiral` and `arch` score higher, and they look nothing like each other.
+
+Pixel overlap measures how much two drawings occupy the same cells, which for
+two large shapes is mostly a fact about how large they are. It is not a
+perceptual measure and it never was; it just looked like one because it produced
+a number between zero and one with the right shape.
+
+The tempting fix was to tune the threshold until the designed pair came out on
+top. That would have produced a passing test asserting something false, which is
+strictly worse than no test, and it is the same failure `bench/` already learned
+once: grounding latency was built, came back at exactly 1.0 for every partner,
+and was deleted rather than reported.
+
+So the claim was removed and the reason written into the file. What is asserted
+now is what the pixels can honestly support - the two shapes are similar in
+weight and are not the same drawing - and the file says plainly that the thing
+that actually settles confusability is the glyph-description corpus doc 07
+section 7.2 wants, which is still outstanding. **A test is allowed to say "this
+is not the question I can answer".**
+
 ### 2026-08-29 - The tour paid for itself on the first run, and one of its findings was the tour
 
 The Archive's monitor (D-039) shipped green the same way the floor plan had: typecheck, lint, 621 unit tests including a proof that no tool call can reach PILOT's half of the ghost, both builds, the bundle budget. Then the screenshot tour was run - the same scripted session, now writing a frame at every beat - and three of the frames were wrong.
@@ -265,3 +363,19 @@ The Archive's monitor (D-039) shipped green the same way the floor plan had: typ
 **And the tour itself was wrong in the same way the code under it had been.** The first three frames were captured 1.2 seconds after each beat, and the camera holds the whole building for 1.6 seconds on the walk between rooms before panning for another 0.7. So the Blind Panel's frame is a picture of the Signal Room with `BLIND PANEL` written above it. An instrument built to catch a timing artefact had a timing artefact in it, and only reading its own output found that.
 
 The thing to carry: **when you build the instrument, look at what the instrument produced before you trust it.** The previous entry ends by recommending exactly this tour, and the first output of it needed the same correction the renderer did. A tool that has never been checked against a case whose answer you already know is a tool that is only asserted to work.
+
+### 2026-08-30 - Eleven defects in two sittings, and every one was already in a screenshot
+
+The 3D client shipped green and was played end to end. Then it was played again, on a real machine, by somebody who had not built it. Eleven defects came out of two sittings (D-046, D-047, D-048). **Not one of them was found by a test, and not one of them was invisible: every single one was present in a PNG that had already been captured and saved.**
+
+That is the finding, and it is not the same as "look at the frames". The previous entry ends by recommending exactly this tour, the tour was built, the tour was run, and the frames were *generated and not read*. Generating them produced the feeling of having checked, which is strictly worse than not generating them, because it retires the worry. Three of the last six were found by cropping one PNG and looking at a corner of it that the eye had skipped past twice.
+
+**The user's words named the cause more accurately than my diagnosis did, twice.** "DIAL 1 superposing on 0/7" was reported as superposition and I twice went looking in layout code for a clipping fault. It was superposition: every fixture in the game was carrying *two* caption sprites on the same anchor, because the constructor built one and left the field that tracks it null, so the first state update wrote a second and never removed the first. "The lights in the ceiling are not letting me see the screen" was likewise exactly true, in metres. **A player describing what they see is reporting an observation; treat it as data, not as a hypothesis to be improved on.**
+
+**Two of the eleven were introduced by the fix for another.** Hiding masonry by scaling an instance to 0.0001 in y leaves a full-size, fully-lit top face, so a grid of "hidden" wall blocks became pale plates lying in the void. The class of change with this risk is narrow and identifiable: anything that makes geometry *conditionally* absent. Absent has to mean gone, not small.
+
+**A test written around the bug you already found will not find its sibling.** The dressing-overlap check compared centre points and skipped any fixture above 1.4m - which is precisely why it missed a four-metre monitor with two cabinets buried 0.4m inside it on each side. It had been written to reproduce the one case that was known. Widening it to real extents against every fixture caught the monitor immediately.
+
+**And the tests that did hold were the ones that projected rather than described.** The rule "nothing hangs between the camera and the Archive's screen" cannot be written as a coordinate range without re-deriving it every time either end is retuned. Written as an actual ray from `roomShot`'s eye through each hanging piece to the plane of the screen, at three window shapes, it is true by construction - and it immediately caught that the check itself was reading a cable's `length` as a horizontal run when a cable's length is how far it hangs. **Where the pure layer already knows both ends of a relation, assert the relation, not a number that happens to satisfy it today.**
+
+The worst of the eleven is worth naming on its own. The finale and the ending - the last two beats, the payoff of the whole game - had been rendering **an empty grey room** since the 3D client landed. The machine clears `chamber` on the way into those phases and the worker sends no facts for a phase with no puzzle in it, so the client asked the chamber, got null, and drew nothing: a bare shell with THE DOOR IS OPEN written over it and no door in the frame. A unit test asserted that behaviour and passed. The test encoded the bug, because it had been written from the code rather than from the intent.
