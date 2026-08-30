@@ -99,6 +99,7 @@ import {
   stationStrips,
 } from "./plan.js";
 import { activeFloor, stationFloors, type FloorId } from "./floors.js";
+import { isTypingTarget } from "./hud.js";
 import { ghostFrame } from "./ghost.js";
 import { FixtureView, buildDressing } from "./fixtures.js";
 import { KeeperBody, buildPilot } from "./keeper.js";
@@ -527,7 +528,10 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
   let facing = 0;
 
   const held = new Set<string>();
+  // PILOT's body must not answer to a keystroke that was aimed at the shared
+  // notepad. See `isTypingTarget`.
   const onKeyDown = (event: KeyboardEvent): void => {
+    if (isTypingTarget(event.target)) return;
     held.add(event.key.toLowerCase());
   };
   const onKeyUp = (event: KeyboardEvent): void => {
