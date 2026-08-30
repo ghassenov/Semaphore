@@ -43,7 +43,7 @@ import {
   type Vec3,
   boltRing,
 } from "./chamber.js";
-import { roomShot } from "./camera.js";
+import { CAPTION_SCREEN, roomShot } from "./camera.js";
 import { GLYPH_IDS } from "./glyphs.js";
 import { DOORWAY_WIDTH } from "./doorways.js";
 import { floorsFor } from "./floors.js";
@@ -836,7 +836,11 @@ describe("the Archive's sightline to its monitor", () => {
         const run = hangs ? 0 : (item.length ?? 0) / 2;
         const halfX = Math.abs(Math.cos(yaw)) * run;
         const halfZ = Math.abs(Math.sin(yaw)) * run;
-        const drop = item.kind === "cable" ? (item.length ?? 0) : (item.height ?? 0.3);
+        // Both hang, and both are measured by `height`. This read a cable's
+        // drop off `length` until cables were moved onto the field the type
+        // reserves for a rise - which quietly made the check see every cable
+        // in the Archive as a point with no drop at all.
+        const drop = hangs ? (item.height ?? 0) : (item.height ?? 0.3);
         for (const dx of [-halfX, 0, halfX]) {
           for (const dz of [-halfZ, 0, halfZ]) {
             for (const dy of [0, -drop]) {
@@ -940,6 +944,108 @@ describe("where captions land", () => {
             Math.abs(one.y - two.y) > 0.5 ||
             Math.abs(one.z - two.z) > 0.5;
           expect(apart, `${plan.id}: ${one.id} and ${two.id} caption the same spot`).toBe(true);
+        }
+      }
+    }
+  });
+});
+
+describe("no caption is printed over another one on screen", () => {
+  /*
+   * The screen-space half of the caption rule, and the tour is why it exists.
+   *
+   * `puts no two captions in the same place` above measures anchors in metres,
+   * on the stated grounds that how wide a caption is depends on measured text
+   * and on how far away the camera is. That is true, and it let a defect
+   * straight through: the Signal Room's page and its way back are on the same
+   * wall almost four metres apart, and a wall running away from a camera
+   * foreshortens, so BACK TO AIRLOCK printed across PAGE MARKED. Three metres
+   * of separation in the room was a dozen pixels on screen.
+   *
+   * So this one projects. The camera is the real one from `camera.ts` and the
+   * caption's height on screen is the real constant `captionHeight` solves
+   * for, which is a fixed fraction of the viewport by construction. Only the
+   * *width* is modelled, at six tenths of the cap height per character, which
+   * is a monospace advance and is the one number here that is not read off the
+   * client. It is used to decide overlap, never to lay anything out.
+   */
+  const ADVANCE = 0.6;
+
+  /**
+   * A caption's centre, in fractions of the viewport height from the middle.
+   *
+   * Height on both axes, and no aspect ratio: `fov` is vertical, so measuring
+   * across in the same unit makes a caption's modelled width and its known
+   * height directly comparable. The window's shape is already in the shot.
+   */
+  function project(
+    shot: { eye: Vec3; target: Vec3; fov: number },
+    at: Vec3,
+  ): { x: number; y: number } | null {
+    const sub = (a: Vec3, b: Vec3): Vec3 => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
+    const dot = (a: Vec3, b: Vec3): number => a.x * b.x + a.y * b.y + a.z * b.z;
+    const norm = (v: Vec3): Vec3 => {
+      const length = Math.hypot(v.x, v.y, v.z) || 1;
+      return { x: v.x / length, y: v.y / length, z: v.z / length };
+    };
+    const cross = (a: Vec3, b: Vec3): Vec3 => ({
+      x: a.y * b.z - a.z * b.y,
+      y: a.z * b.x - a.x * b.z,
+      z: a.x * b.y - a.y * b.x,
+    });
+    const forward = norm(sub(shot.target, shot.eye));
+    const right = norm(cross(forward, { x: 0, y: 1, z: 0 }));
+    const up = cross(right, forward);
+    const v = sub(at, shot.eye);
+    const depth = dot(v, forward);
+    if (depth <= 0.01) return null;
+    const half = Math.tan((shot.fov * Math.PI) / 360);
+    // Both axes in the same unit - fractions of the viewport's *height* - so a
+    // caption's modelled width and its known height are comparable.
+    return { x: dot(v, right) / depth / half / 2, y: dot(v, up) / depth / half / 2 };
+  }
+
+  it("separates every pair of captions in every room", () => {
+    for (const mode of MODES) {
+      for (const plan of allPlans(mode)) {
+        if (!floorsFor(mode).includes(plan.id)) continue;
+        // **Sixteen by nine only**, and that is a stated limit rather than an
+        // oversight. Run at 4:3 and 1:1 this finds the Blind Panel's own gauge
+        // and dial banks touching - four captions across an eleven-metre wall,
+        // in a window whose horizontal field is narrower, with a caption size
+        // that is a constant fraction of the *viewport* by construction. That
+        // is real, it is nobody's authoring mistake, and it predates every
+        // door in this file: it is the "tuned at 1400x900 and checked at no
+        // other size" risk the handoff names, and it wants a decision about
+        // caption size in narrow windows rather than a room being rearranged.
+        // Widening this to those aspects is the check for that fix.
+        for (const aspect of [16 / 9]) {
+          const shot = roomShot({ x: 0, z: 0 }, plan.id, aspect);
+          const boxes: { id: string; x: number; y: number; halfWidth: number }[] = [];
+          for (const fixture of plan.fixtures) {
+            if (fixture.label === undefined) continue;
+            const drop = fixture.captionAt ?? Math.max(-0.34, 0.24 - fixture.at.y);
+            const at = { x: fixture.at.x, y: fixture.at.y + drop, z: fixture.at.z };
+            const seen = project(shot, at);
+            if (seen === null) continue;
+            boxes.push({
+              id: fixture.id,
+              x: seen.x,
+              y: seen.y,
+              halfWidth: (CAPTION_SCREEN * ADVANCE * fixture.label.length) / 2,
+            });
+          }
+          for (const [index, one] of boxes.entries()) {
+            for (const two of boxes.slice(index + 1)) {
+              const apart =
+                Math.abs(one.y - two.y) >= CAPTION_SCREEN ||
+                Math.abs(one.x - two.x) >= one.halfWidth + two.halfWidth;
+              expect(
+                apart,
+                `${mode}/${plan.id}: ${one.id} and ${two.id} overlap at aspect ${aspect.toFixed(2)}`,
+              ).toBe(true);
+            }
+          }
         }
       }
     }

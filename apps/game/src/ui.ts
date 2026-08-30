@@ -402,7 +402,7 @@ const PILOT_ACTIONS: readonly {
 const PILOT_KEYS: readonly (readonly [string, string])[] = [
   ["W A S D", "walk the room, in any direction"],
   ["E", "lean in and study what you are standing at"],
-  ["E at a door", "hold it, and go through to the room beyond"],
+  ["Q", "at an open door, go through it"],
   ["M", "step back and see the whole station"],
   ["F", "fullscreen"],
 ] as const;

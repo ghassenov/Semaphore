@@ -250,23 +250,43 @@ async function shot(name: string, waitMs = 2800): Promise<void> {
  * `globalThis` and a dispatched `KeyboardEvent` would not prove the browser
  * path works.
  */
+async function keyEvent(type: "rawKeyDown" | "keyUp", key: string): Promise<void> {
+  await send("Input.dispatchKeyEvent", {
+    type,
+    key,
+    code: `Key${key.toUpperCase()}`,
+    windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0),
+  });
+}
+
 async function shotHolding(key: string, name: string, waitMs = 1400): Promise<void> {
   if (SHOTS.length === 0) return;
-  const code = `Key${key.toUpperCase()}`;
-  await send("Input.dispatchKeyEvent", {
-    type: "rawKeyDown",
-    key,
-    code,
-    windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0),
-  });
+  await keyEvent("rawKeyDown", key);
   await shot(name, waitMs);
-  await send("Input.dispatchKeyEvent", {
-    type: "keyUp",
-    key,
-    code,
-    windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0),
-  });
+  await keyEvent("keyUp", key);
   await sleep(600);
+}
+
+/** Hold a key for a while and let it go. Walking, rather than looking. */
+async function hold(key: string, ms: number): Promise<void> {
+  await keyEvent("rawKeyDown", key);
+  await sleep(ms);
+  await keyEvent("keyUp", key);
+  await sleep(200);
+}
+
+/** One press and release, for the keys that are edge-triggered. */
+async function tap(key: string): Promise<void> {
+  await keyEvent("rawKeyDown", key);
+  await sleep(80);
+  await keyEvent("keyUp", key);
+}
+
+/** What the console's header calls the room the viewport is showing. */
+async function headerRoom(): Promise<string> {
+  return await evaluate<string>(
+    `document.querySelector(".room")?.textContent?.trim() ?? "(no header)"`,
+  );
 }
 
 await send("Page.enable");
@@ -394,6 +414,47 @@ await until((v) => v.chamber === "signal_room", "the signal room");
 await shot("signal-room");
 await shotHolding("e", "signal-room-leaning");
 await sleep(400);
+
+/*
+ * ---- Walking back through a door already opened (D-054).
+ *
+ * The one beat in this file that is purely PILOT's, and it is here rather than
+ * in a unit test because every part of it that can be wrong is wiring: a key
+ * the browser has to deliver, a floor the stage decides on its own, a cached
+ * plan for a room the server is no longer sending facts for, and a console
+ * that repaints on model events rather than per frame. `doorways.test.ts`
+ * proves which door leads where. Only this proves that pressing the key in a
+ * browser puts the room on screen.
+ *
+ * The session stays in the Signal Room throughout, and that is the assertion
+ * as much as the room name is: walking back is a camera move, so the chamber,
+ * the clock and the tool surface may not notice it happened.
+ */
+{
+  const before = view.chamber;
+  // West, to the doorway the pair came in through.
+  await hold("a", 2200);
+  await tap("q");
+  await sleep(1200);
+  const back = await headerRoom();
+  await shot("airlock-revisited", 1200);
+  check("Q at an open door walks back to the room behind", back.includes("AIRLOCK"), back);
+  check("and the console says it is a room being revisited", back.includes("REVISITED"), back);
+  check(
+    "while the session stays in the chamber it was in",
+    view.chamber === before && (await all()).includes("inspect"),
+    `${String(view.chamber)} / ${(await all()).join(",")}`,
+  );
+  // And forward again, through the door the pair originally left by.
+  await tap("q");
+  await sleep(1400);
+  const forward = await headerRoom();
+  check(
+    "and Q at the door on the far side comes forward again",
+    forward.includes("SIGNAL ROOM") && !forward.includes("REVISITED"),
+    forward,
+  );
+}
 
 // ---- Chamber I: ascending stroke count, primes omitted.
 const glyphByKey = view.facts.glyphByKey as Record<string, GlyphId>;

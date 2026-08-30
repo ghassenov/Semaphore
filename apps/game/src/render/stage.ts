@@ -72,6 +72,7 @@ import {
   clearOf,
   doorPlacement,
   hasInterlude,
+  LEAN_REACH,
   interlude,
   alcoveOf,
   lampReveal,
@@ -134,16 +135,6 @@ const LARGE_VIEWPORT = 1100;
 /** How many dust motes drift in the active room. */
 const DUST = 260;
 
-/**
- * How long `E` has to be held on a door before PILOT walks through it.
- *
- * Long enough that leaning in to *read* a door is not also a way of leaving
- * the room by accident, short enough that it never becomes a puzzle of its
- * own. The lean-in settles at `SHOT_MS`, so this is a beat past the camera
- * arriving: you see the door you are about to go through before you go.
- */
-const THROUGH_MS = 900;
-
 /** How far into a room PILOT stands after coming through its door, in metres. */
 const OVER_THRESHOLD = 1.8;
 
@@ -155,7 +146,11 @@ export interface StageHandle {
 }
 
 /** Bring the station up inside `parent`, reading `model` every frame. */
-export function createStage(parent: HTMLElement, model: StationModel): StageHandle {
+export function createStage(
+  parent: HTMLElement,
+  model: StationModel,
+  onStanding: () => void = () => {},
+): StageHandle {
   const reduceMotion = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 
   const renderer = new WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -575,8 +570,13 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
    * whose entire content is that monitor.
    */
   let lastGhost: PilotView["ghost"] = null;
-  /** When `E` first landed on the door PILOT is currently holding. */
-  let holdingDoorSince = 0;
+  /**
+   * Whether `Q` was already down last frame.
+   *
+   * Going through a door is edge-triggered, so leaning on the key crosses one
+   * threshold rather than every threshold between here and the Airlock.
+   */
+  let wasGoing = false;
 
   const held = new Set<string>();
   // PILOT's body must not answer to a keystroke that was aimed at the shared
@@ -892,6 +892,36 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
     facing = yaw;
   }
 
+  /**
+   * The nearest open door in reach that leads somewhere PILOT may go.
+   *
+   * Reach rather than contact, and the same reach the lean-in uses, so "near
+   * enough to read where this goes" and "near enough to walk through it" are
+   * one distance. Every door in the room is considered rather than only the
+   * nearest fixture: a room has two doorways and a bank of levers, and the
+   * nearest *fixture* to somebody standing in a doorway is very often a lever.
+   */
+  function doorAhead(
+    mode: SessionMode,
+    from: FloorId,
+    here: FloorId | null,
+    plan: RoomPlan,
+    x: number,
+    z: number,
+  ): FloorId | null {
+    let best: FloorId | null = null;
+    let nearest = LEAN_REACH;
+    for (const fixture of plan.fixtures) {
+      const to = doorLeadsTo(mode, from, fixture, (dest) => dest === here || seen.has(dest));
+      if (to === null) continue;
+      const distance = Math.hypot(fixture.at.x - x, fixture.at.z - z);
+      if (distance > nearest) continue;
+      nearest = distance;
+      best = to;
+    }
+    return best;
+  }
+
   let last = performance.now();
   let running = true;
 
@@ -911,13 +941,18 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
     if (here !== null && livePlan !== null) seen.set(here, livePlan);
     if (view?.ghost != null) lastGhost = view.ghost;
 
-    // The pair moving on ends any wander: the body goes where the session
-    // goes, and it arrives standing in the doorway it came in through rather
-    // than materialising in the middle of the floor.
+    // The pair moving on ends any wander: the body goes where the session goes.
+    //
+    // **It does not stand PILOT in the doorway**, and the tour is why. Doing
+    // that reads well on its own and drags the camera with it, because the
+    // room shot follows the body: every chamber opened with a third of the
+    // frame taken up by the outside of the wall its door is in. The middle of
+    // the room is where the composition was tuned. Only walking through a door
+    // puts PILOT in one.
     if (here !== wasHere) {
       viewing = here;
       wasHere = here;
-      if (here !== null) standAt(here, doorsOf(mode, here).back);
+      if (here !== null) standAt(here, undefined);
     }
 
     // Where PILOT's *body* is. Identical to `here` unless somebody has walked
@@ -925,8 +960,14 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
     // the server sent for it, with its doors open.
     const floor = viewing;
     // The console reads this to name the room the viewport is actually
-    // showing. One value, written where it is decided.
-    model.standing = floor;
+    // showing: one value, written where it is decided, and announced once when
+    // it changes. The console repaints on model events rather than per frame
+    // (`station.ts` says why), so a field written every frame and announced
+    // never is a field the console shows the previous value of forever.
+    if (model.standing !== floor) {
+      model.standing = floor;
+      onStanding();
+    }
     const behind = floor === null || floor === here ? null : seen.get(floor);
     const plan =
       behind !== undefined && behind !== null
@@ -1007,33 +1048,34 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
     /*
      * Going through a door.
      *
-     * Layered on the lean-in rather than given a key of its own, because it is
-     * the same gesture: you walk up to the door, `E` takes you to it, and if
-     * you keep holding, you go through. A player who leans in on a door to
-     * read where it goes gets `THROUGH_MS` to let go, and the camera has
-     * settled on the door before then, so what they are about to do is on
-     * screen while they are deciding.
+     * `Q`, and deliberately **not** a long press of `E`. The first build laid
+     * it on top of the lean-in on the grounds that it is the same gesture, and
+     * the tour caught what that costs: `E` near a door stopped meaning "let me
+     * look at this" and started meaning "leave the room". Those are two
+     * intentions, and the one frame in the tour that exists to show a lean-in
+     * came back as the camera halfway out of the building. Two intentions, two
+     * keys.
+     *
+     * Edge-triggered, so leaning on the key crosses one threshold rather than
+     * every threshold between here and the Airlock.
      */
-    const leftBehind = floor;
+    const going = held.has("q");
     const doorTo =
-      leaning === null || leftBehind === null
-        ? null
-        : doorLeadsTo(mode, leftBehind, leaning, (to) => to === here || seen.has(to));
-    if (doorTo === null || leftBehind === null) {
-      holdingDoorSince = 0;
-    } else if (holdingDoorSince === 0) {
-      holdingDoorSince = now;
-    } else if (now - holdingDoorSince >= THROUGH_MS) {
-      holdingDoorSince = 0;
+      going && !wasGoing && plan !== null && standing !== null && floor !== null
+        ? doorAhead(mode, floor, here, plan, pilotAt.x - standing.x, pilotAt.z - standing.z)
+        : null;
+    wasGoing = going;
+    if (doorTo !== null && floor !== null) {
       // Standing at the door on the far side that leads back to the room just
-      // left, so the two doorways are the same doorway from either side.
+      // left, so the two doorways are one doorway seen from either side.
       const doors = doorsOf(mode, doorTo);
-      standAt(doorTo, doorTo === previousFloor(mode, leftBehind) ? doors.out : doors.back);
+      standAt(doorTo, doorTo === previousFloor(mode, floor) ? doors.out : doors.back);
       viewing = doorTo;
       leaning = null;
-      // The rest of this frame was measured against the old room, and a lamp,
-      // a shot and a set of fixtures resolved for a room PILOT is no longer in
-      // is one frame of the wrong building. The next tick has the new one.
+      // The rest of this frame was measured against the room PILOT has just
+      // left, and a lamp, a shot and a set of fixtures resolved for a room
+      // nobody is standing in is one frame of the wrong building. The next
+      // tick has the right one.
       requestAnimationFrame(tick);
       return;
     }

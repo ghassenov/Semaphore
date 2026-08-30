@@ -438,7 +438,14 @@ function backDoor(mode: SessionMode, floor: FloorId, size: RoomSize): readonly F
       channel: "shared",
       on: true,
       label: behind === null ? "THE WAY BACK" : `BACK TO ${FLOOR_NAMES[behind]}`,
-      captionAt: 3.25,
+      // Higher in a taller room, and that is a legibility fix rather than a
+      // flourish. A caption on a side wall cannot be separated from another
+      // one *horizontally*, because a wall running away from the camera barely
+      // moves across the frame - so height is the only axis there is, and a
+      // fixed 3.25m put this sign a dozen pixels off the Concord Lock's cipher
+      // wheel at every window shape. Half the room's height also happens to be
+      // where a sign in a nine-metre room belongs.
+      captionAt: Math.max(3.25, size.height * 0.5),
       study: true,
     },
   ];
@@ -706,9 +713,16 @@ function signalRoom(mode: SessionMode, facts: Readonly<Record<string, unknown>>)
     fixtures.push({
       id: "page",
       kind: "page",
-      // North end of the west wall. It hung at z 1.4, which the way back is
-      // cut through now, so the page was screwed across a doorway (D-053).
-      at: { x: -size.width / 2 + 0.4, y: 1.9, z: -3.2 },
+      // The **south** end of the west wall, nearest the camera.
+      //
+      // It hung at z 1.4, which the way back is cut through now, so the page
+      // was screwed across a doorway. Moving it to the other end of the same
+      // wall put it three metres from the door and the tour showed BACK TO
+      // AIRLOCK printed straight across PAGE MARKED: a wall running away from
+      // the camera foreshortens, so two captions metres apart on it land on
+      // the same row of pixels. Down at the near end they separate, and the
+      // page ends up where a page nobody is meant to miss should be.
+      at: { x: -size.width / 2 + 0.4, y: 1.9, z: 4.2 },
       channel: "pilot",
       on: marked,
       facing: Math.PI / 2,
@@ -750,7 +764,8 @@ function signalRoom(mode: SessionMode, facts: Readonly<Record<string, unknown>>)
         height: 6.4,
       },
       { kind: "vent", at: { x: size.width / 2 - 0.35, y: 3.4, z: 3.4 }, facing: -Math.PI / 2 },
-      { kind: "chart", at: { x: -size.width / 2 + 0.35, y: 2.2, z: 3.6 }, facing: Math.PI / 2 },
+      // North end, now the page has the south end of this wall.
+      { kind: "chart", at: { x: -size.width / 2 + 0.35, y: 2.2, z: -4.4 }, facing: Math.PI / 2 },
       { kind: "puddle", at: { x: -4.4, y: 0, z: 3.4 }, length: 2.2 },
       { kind: "puddle", at: { x: 3.8, y: 0, z: -4.4 }, length: 2.4 },
       { kind: "puddle", at: { x: -2.2, y: 0, z: 5.2 }, length: 3.0 },
