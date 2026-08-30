@@ -618,18 +618,24 @@ export function buildPilot(kit: Kit): {
   // ---- Head. Small, which is what makes the body read as tall.
   const neck = add(root, new Mesh(new CylinderGeometry(0.055, 0.06, 0.08, 8), kit.skin));
   neck.position.y = SHOULDER_Y + 0.09;
-  const head = add(root, new Mesh(new SphereGeometry(HEAD, 14, 12), kit.skin));
+  /*
+   * The head, hooded.
+   *
+   * **One dark shape, not two.** Two passes tried a pale head with a separate
+   * hood beside or behind it, and both read as an object stuck to the side of
+   * the skull: at this size any second sphere near the head is a lump, not a
+   * garment. So the head *is* the hood - one dark sphere, in the coat's own
+   * material - and the face is a small pale patch set into the front of it,
+   * which is occluded from behind and is exactly what you would see of someone
+   * in a hood anyway.
+   *
+   * The camera is behind and above PILOT almost always, so what this buys is a
+   * clean silhouette from the only angle that matters.
+   */
+  const head = add(root, new Mesh(new SphereGeometry(HEAD * 1.28, 14, 12), kit.coat));
   head.position.y = SHOULDER_Y + 0.2;
-  // The hood, cupping the back of the head.
-  //
-  // **It has to be concentric with the head, not beside it.** The first pass
-  // put it lower and further back as a half-shell, which from any angle read as
-  // a separate object floating near the ear rather than as something worn. A
-  // sphere slightly larger than the head, offset back by less than the
-  // difference in radius, leaves the face protruding through the front - which
-  // is what a hood is.
-  const hood = add(root, new Mesh(new SphereGeometry(0.152, 14, 12), kit.coat));
-  hood.position.set(0, SHOULDER_Y + 0.2, -0.09);
+  const face = add(root, new Mesh(new SphereGeometry(HEAD * 0.78, 12, 10), kit.skin));
+  face.position.set(0, SHOULDER_Y + 0.19, 0.055);
 
   // ---- Arms. One hanging and swinging, one raised holding the lamp. The
   // raised arm is the whole read of the character: this is someone whose job

@@ -98,6 +98,20 @@ export interface Fixture {
   readonly steps?: number;
   /** Present but inert. Drawn without its emission rather than removed. */
   readonly dim?: boolean;
+  /**
+   * Where the caption hangs, in metres above the fixture's anchor.
+   *
+   * Captions are drawn over geometry (see `kit.label`), which is what stops a
+   * caption near a wall being sliced in half by it - and which means two
+   * captions at the same height and the same `x` will overlap whatever their
+   * depth. The Airlock had exactly that: the door's sign and the middle lever
+   * stand on the same centre line, so DOOR SEALED was printed across the
+   * lever's glyph plate.
+   *
+   * A door's sign belongs above the door, where a sign on a bulkhead actually
+   * is. This is how a fixture says so.
+   */
+  readonly captionAt?: number;
 }
 
 /**
@@ -114,7 +128,23 @@ export interface Fixture {
  * and nothing here needs to survive a repaint.
  */
 export type DressingKind =
-  "pipe" | "valve" | "cable" | "puddle" | "shelf" | "beam" | "column" | "rail" | "vent";
+  | "pipe"
+  | "valve"
+  | "cable"
+  | "puddle"
+  | "shelf"
+  | "beam"
+  | "column"
+  | "rail"
+  | "vent"
+  /** A round window onto the sea. The only view out of the station. */
+  | "porthole"
+  /** A tall equipment cabinet against a wall. */
+  | "locker"
+  /** Hazard chevrons painted on the floor, at a threshold. */
+  | "chevron"
+  /** A heavy frame around a doorway, which is what makes a door a bulkhead. */
+  | "bulkhead";
 
 /** One piece of dressing, in room-local metres. */
 export interface Dressing {
@@ -355,6 +385,8 @@ function airlock(facts: Readonly<Record<string, unknown>>): RoomPlan {
       channel: "shared",
       on: doorOpen,
       label: doorOpen ? "DOOR OPEN" : "DOOR SEALED",
+      // Above the doorway, clear of the lever standing in front of it.
+      captionAt: 3.25,
     },
   ];
 
@@ -385,12 +417,28 @@ function airlock(facts: Readonly<Record<string, unknown>>): RoomPlan {
     // a vent, and standing water in the corners even before anything goes
     // wrong. Doc 06 section 6 calls this room cramped and low, and pipes at
     // shoulder height in a 3.6m room are what make it feel it.
+    // An airlock, rather than a room with levers in it.
+    //
+    // The first pass was a grey box with pipes on the back wall, and the
+    // honest complaint about it was that it is not beautiful. What was missing
+    // is that nothing said what the room is *for*. So: a heavy bulkhead frame
+    // around the door, hazard chevrons painted on the threshold, a porthole
+    // onto the sea on one wall and an equipment locker on the other, and a hose
+    // reel's worth of pipework overhead. Every one of them is a thing a real
+    // airlock has and none of them is channel-coloured, so the room gets busier
+    // without a single new thing for the eye to mistake for a fact.
     dressing: [
-      ...pipeRun(2.5, -size.depth / 2 + 0.35, size.width - 1.2, [-4.2, 1.4]),
-      ...pipeRun(2.9, -size.depth / 2 + 0.35, size.width - 1.2),
-      { kind: "vent", at: { x: size.width / 2 - 0.4, y: 2.2, z: 0 }, facing: -Math.PI / 2 },
-      { kind: "puddle", at: { x: -3.6, y: 0, z: 1.6 }, length: 2.4 },
-      { kind: "puddle", at: { x: 2.8, y: 0, z: 2.2 }, length: 1.8 },
+      { kind: "bulkhead", at: { x: 0, y: 0, z: -size.depth / 2 + 0.08 }, length: 3.4 },
+      { kind: "chevron", at: { x: 0, y: 0, z: -size.depth / 2 + 1.9 }, length: 3.6 },
+      // The one view out of the station, and the reason the room is cold.
+      { kind: "porthole", at: { x: size.width / 2 - 0.2, y: 2.05, z: 1.4 }, facing: -Math.PI / 2 },
+      { kind: "locker", at: { x: -size.width / 2 + 0.45, y: 0, z: 1.1 }, facing: Math.PI / 2 },
+      ...pipeRun(2.62, -size.depth / 2 + 0.3, size.width - 1.2, [-4.4, 1.6]),
+      ...pipeRun(3.0, -size.depth / 2 + 0.3, size.width - 1.2),
+      { kind: "vent", at: { x: size.width / 2 - 0.35, y: 2.3, z: -1.6 }, facing: -Math.PI / 2 },
+      { kind: "cable", at: { x: -2.6, y: size.height, z: -1.2 }, length: 1.1 },
+      { kind: "puddle", at: { x: -3.4, y: 0, z: 1.9 }, length: 2.6 },
+      { kind: "puddle", at: { x: 2.9, y: 0, z: 2.4 }, length: 2 },
       ...beams(size, 3),
     ],
     accent: CHAMBER_ACCENT.airlock,
@@ -620,6 +668,12 @@ const DRESSING_RADIUS: Readonly<Record<DressingKind, number>> = {
   beam: 0,
   shelf: 0.4,
   column: 0.55,
+  locker: 0.45,
+  // A porthole is in a wall, a chevron is paint on the floor, and a bulkhead
+  // frame surrounds an opening you are meant to walk through.
+  porthole: 0,
+  chevron: 0,
+  bulkhead: 0,
   // A rail is a barrier at waist height, and being able to stroll through one
   // is the single clearest way a room stops reading as a place.
   rail: 0.3,
@@ -784,6 +838,7 @@ function blindPanel(facts: Readonly<Record<string, unknown>>): RoomPlan {
     on: solved,
     facing: Math.PI / 2,
     label: solved ? "DOOR OPEN" : "DOOR SEALED",
+    captionAt: 3.25,
   });
 
   const clicks = facts.lastClicks;
