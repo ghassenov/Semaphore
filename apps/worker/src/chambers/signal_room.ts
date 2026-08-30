@@ -26,7 +26,15 @@
  * render as forged.
  */
 
-import { audible, hidden, shared, tactile, visual, type Tagged } from "@semaphore/protocol";
+import {
+  audible,
+  hidden,
+  shared,
+  tactile,
+  visual,
+  type Cue,
+  type Tagged,
+} from "@semaphore/protocol";
 import type { Rng } from "@semaphore/seed";
 import { GLYPHS, GLYPH_IDS, PRIME_STROKE_GLYPHS, type GlyphId } from "./glyphs.js";
 
@@ -214,10 +222,12 @@ export function isWasted(before: SignalRoomState, key: KeyId): boolean {
 }
 
 /** The sound this chamber makes: a klaxon on a wrong press, a chime on a right one. */
-function lastSound(state: SignalRoomState): string | null {
+function lastSound(state: SignalRoomState): { readonly cue: Cue; readonly text: string } | null {
   if (state.lastAttempt === null) return null;
-  if (isSolved(state)) return "a deep resonant chime as the ring settles";
-  return state.lastWasCorrect ? "a bright brass chime" : "a klaxon and the ring flashing alarm-red";
+  if (isSolved(state)) return { cue: "resolve", text: "a deep resonant chime as the ring settles" };
+  return state.lastWasCorrect
+    ? { cue: "chime", text: "a bright brass chime" }
+    : { cue: "klaxon", text: "a klaxon and the ring flashing alarm-red" };
 }
 
 /**
@@ -239,7 +249,9 @@ export function facts(state: SignalRoomState) {
     /** Both know the current strike count. */
     strikes: shared(state.strikes),
     /** Both hear the last press: a chime, or the klaxon. */
-    lastSound: audible(lastSound(state)),
+    lastSound: audible(lastSound(state)?.text ?? null),
+    /** The same event, as the cue the client synthesises. */
+    lastCue: audible(lastSound(state)?.cue ?? null),
     /** The answer, perceivable by neither. */
     correctSequence: hidden(correctSequence(state.params)),
   } satisfies Record<string, Tagged<unknown>>;

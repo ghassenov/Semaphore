@@ -41,6 +41,7 @@
  */
 
 import type { PilotView } from "@semaphore/protocol";
+import type { Fader, StationAudio } from "./audio/index.js";
 import type { SessionClient } from "./net/sessionClient.js";
 import type { StationModel } from "./render/station.js";
 import {
@@ -48,6 +49,7 @@ import {
   MANIFEST_LINES,
   TIMER_URGENT_FRACTION,
   formatTimer,
+  isTypingTarget,
   meterFill,
 } from "./render/hud.js";
 import { roomPlan, roomTitle } from "./render/chamber.js";
@@ -308,6 +310,16 @@ export function renderGate(root: HTMLElement): void {
 /** Everything the console needs to drive PILOT's half of the session. */
 export interface ShellDeps {
   readonly client: SessionClient;
+  /**
+   * The station's sound.
+   *
+   * Driven from here rather than from `main.ts` because the console is where
+   * the launch click lands (an `AudioContext` needs a gesture) and where the
+   * subtitle is written. Firing the cue on the same line that writes the text
+   * is what keeps doc 06 section 11's promise that every cue has a text
+   * equivalent: they cannot drift if they are one statement apart.
+   */
+  readonly audio: StationAudio;
   /** Called after PILOT acts, so the caller can put the answer in the log. */
   readonly onNote: (line: string) => void;
 }
@@ -394,12 +406,146 @@ const PILOT_KEYS: readonly (readonly [string, string])[] = [
   ["F", "fullscreen"],
 ] as const;
 
+/**
+ * The three faders, and the split doc 06 section 11 asks for.
+ *
+ * Mechanisms are separate from music for a reason that is not preference: the
+ * `AUDIBLE` channel carries puzzle information, so a player has to be able to
+ * turn the score down without turning the answer down with it.
+ */
+const MIX_SLIDERS: readonly (readonly [Fader, string, string])[] = [
+  ["master", "ALL", "Master volume"],
+  ["music", "SCORE", "Music volume"],
+  ["sfx", "MECH", "Mechanism volume"],
+] as const;
+
 /** The session lengths, and what each one is, for the button's tooltip. */
 const BEGIN_MODES: readonly (readonly [string, string])[] = [
   ["full", "Four chambers and the Archive. The whole shift."],
   ["brief", "Three chambers. Chamber II is skipped."],
   ["practice", "The full station, untimed."],
 ] as const;
+
+/** How narrow and how wide a drawer may be dragged, in pixels. */
+const DRAWER_MIN = 220;
+const DRAWER_MAX = 560;
+
+/** How much one arrow key moves a drawer's edge, in pixels. */
+const DRAWER_STEP = 24;
+
+/**
+ * One edge of the deck: a rail of tabs, and a drawer that slides over the room.
+ *
+ * **The drawer overlays the viewport rather than pushing it, and that is a
+ * constraint rather than a preference.** The camera frames against the
+ * viewport's measured shape (`render/camera.ts`), so a panel that squeezed the
+ * viewport would re-frame the shot every time somebody opened one, and the
+ * room would jump. Overlaying costs a little of the room and re-frames nothing.
+ *
+ * One panel open per edge at a time. The old console showed six at once around
+ * a small room, which is the thing being fixed: a player who has to find the
+ * spiral is looking at a room, and everything else is a thing they ask for.
+ */
+function edge(side: "left" | "right"): {
+  readonly tabs: HTMLElement;
+  readonly drawer: HTMLElement;
+  add(label: string, section: HTMLElement): void;
+  close(): void;
+} {
+  const tabs = el("nav", { class: `tabs tabs-${side}` });
+  const drawer = el("aside", { class: `drawer drawer-${side}` });
+  drawer.hidden = true;
+  const body = el("div", { class: "drawer-body" });
+
+  /**
+   * The resize handle, as a `separator` rather than a decorative div.
+   *
+   * It carries arrow keys as well as a pointer because a control that only
+   * answers to dragging is a control a keyboard cannot reach, and this repo
+   * treats that as a defect rather than a nicety.
+   */
+  const grip = el("div", {
+    class: "grip",
+    role: "separator",
+    tabindex: "0",
+    "aria-orientation": "vertical",
+    "aria-label": "Resize panel",
+    title: "Drag, or use the arrow keys",
+  });
+  drawer.append(body, grip);
+
+  const panels = new Map<string, HTMLElement>();
+  const buttons = new Map<string, HTMLButtonElement>();
+  let open: string | null = null;
+
+  /** How wide the drawer is allowed to get on this window. */
+  const ceiling = (): number => Math.min(DRAWER_MAX, globalThis.innerWidth * 0.62);
+
+  function resize(to: number): void {
+    drawer.style.width = `${String(Math.max(DRAWER_MIN, Math.min(ceiling(), to)))}px`;
+  }
+
+  function show(name: string | null): void {
+    open = name;
+    for (const [id, section] of panels) section.hidden = id !== name;
+    for (const [id, button] of buttons) {
+      const on = id === name;
+      button.classList.toggle("on", on);
+      button.setAttribute("aria-expanded", String(on));
+    }
+    drawer.hidden = name === null;
+  }
+
+  grip.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    grip.setPointerCapture(event.pointerId);
+    const from = event.clientX;
+    const was = drawer.getBoundingClientRect().width;
+    const move = (moved: PointerEvent): void => {
+      // A left drawer grows as the pointer moves right and a right drawer
+      // grows as it moves left, because both are measured from their own edge.
+      resize(was + (side === "left" ? moved.clientX - from : from - moved.clientX));
+    };
+    const done = (): void => {
+      grip.removeEventListener("pointermove", move);
+      grip.removeEventListener("pointerup", done);
+      grip.removeEventListener("pointercancel", done);
+    };
+    grip.addEventListener("pointermove", move);
+    grip.addEventListener("pointerup", done);
+    grip.addEventListener("pointercancel", done);
+  });
+
+  grip.addEventListener("keydown", (event) => {
+    const nudge = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+    if (nudge === 0) return;
+    event.preventDefault();
+    resize(drawer.getBoundingClientRect().width + nudge * DRAWER_STEP * (side === "left" ? 1 : -1));
+  });
+
+  return {
+    tabs,
+    drawer,
+    close: () => {
+      show(null);
+    },
+    add(label, section) {
+      section.hidden = true;
+      panels.set(label, section);
+      body.append(section);
+
+      const button = el("button", { type: "button", class: "tab" }, label);
+      button.setAttribute("aria-expanded", "false");
+      button.addEventListener("click", () => {
+        // Clicking the open tab closes it, so the room can always be got back
+        // to with the same control that covered it.
+        show(open === label ? null : label);
+      });
+      buttons.set(label, button);
+      tabs.append(button);
+    },
+  };
+}
 
 /**
  * The console: the room, and every readout around it.
@@ -432,8 +578,10 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   const clock = el("span", { class: "clock" }, "--:--");
   rail.append(mark, room, resets, gauge, clock);
 
-  // ---- Left: the room, what it sounds like, the station, and PILOT's hands.
-  const left = el("main", { class: "bay bay-stage" });
+  // ---- The deck: the room, with everything else folded into its two edges. -
+  const deck = el("main", { class: "deck" });
+  const west = edge("left");
+  const east = edge("right");
 
   // The renderer appends its canvas and its caption layer straight into this
   // element, so the mount point *is* the viewport rather than a wrapper inside
@@ -482,9 +630,10 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   // from the thing being looked at.
   const onKey = (event: KeyboardEvent): void => {
     if (event.key.toLowerCase() !== "f") return;
-    const target = event.target;
-    // Never while typing on the shared notepad.
-    if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) return;
+    // Never while typing on the shared notepad. Same predicate the stage uses
+    // for PILOT's body, from the same module, so the two cannot drift apart
+    // again.
+    if (isTypingTarget(event.target)) return;
     toggleFullscreen();
   };
   globalThis.addEventListener("keydown", onKey);
@@ -498,6 +647,11 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
     const button = el("button", { type: "button" }, mode);
     button.title = blurb;
     button.addEventListener("click", () => {
+      // The gesture. Every browser refuses an AudioContext that was not opened
+      // by a click, and refuses it silently, so this is where the station's
+      // sound comes up: the one click that is guaranteed to happen before
+      // there is anything to hear.
+      deps.audio.start();
       // Practice is a difficulty, not a mode: doc 02 section 7 makes it the
       // untimed preset of a full session rather than a shorter one.
       const body =
@@ -522,7 +676,47 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
 
   const audible = el("p", { class: "audible", "aria-live": "polite" });
 
-  const underdeck = el("div", { class: "underdeck" });
+  /**
+   * The mix: mute, master, music and mechanisms.
+   *
+   * Beside the audible strip rather than in a settings menu, because this is
+   * the one strip on the page that is already about sound, and because the
+   * detents in Chamber II are a puzzle mechanism rather than a flourish: a
+   * player who cannot hear them needs the mechanisms louder, and needs to find
+   * that control without leaving the room they are counting in.
+   */
+  const mixer = el("div", { class: "mixer" });
+  const mute = el("button", { type: "button", class: "mute" }, "Mute");
+  mute.setAttribute("aria-pressed", "false");
+  mute.addEventListener("click", () => {
+    const muted = !deps.audio.mix.muted;
+    deps.audio.setMix({ muted });
+    mute.textContent = muted ? "Unmute" : "Mute";
+    mute.setAttribute("aria-pressed", String(muted));
+  });
+  mixer.append(mute);
+  for (const [key, short, label] of MIX_SLIDERS) {
+    const slider = el("input", {
+      type: "range",
+      min: "0",
+      max: "100",
+      value: String(Math.round(deps.audio.mix[key] * 100)),
+      class: `mix mix-${key}`,
+      "aria-label": label,
+      title: label,
+    });
+    slider.addEventListener("input", () => {
+      deps.audio.setMix({ [key]: Number(slider.value) / 100 });
+    });
+    // Named in the frame, not only in the tooltip. Three identical sliders is
+    // one control repeated three times as far as anybody looking at it is
+    // concerned, and the one that has to be findable is MECH: the detents in
+    // Chamber II are a puzzle mechanism, so a player who cannot hear them
+    // needs to turn the score down off the answer without hunting.
+    const named = el("label", { class: "fader" });
+    named.append(el("span", { class: "fader-name" }, short), slider);
+    mixer.append(named);
+  }
 
   const station = panel("The station");
   const floorList = el("ol", { class: "floors", "data-empty": "OUTSIDE THE STATION" });
@@ -562,11 +756,7 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
     ),
   );
 
-  underdeck.append(station.section, controls.section);
-  left.append(viewport, audible, underdeck);
-
-  // ---- Right: KEEPER's surface, and the one surface they share. -----------
-  const right = el("aside", { class: "bay bay-right" });
+  // ---- KEEPER's surface, and the one surface they share. ------------------
 
   const card = panel("Your agent");
   const prompt = el("blockquote", { class: "prompt" }, STARTER_PROMPT);
@@ -604,14 +794,44 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
     ),
   );
 
-  right.append(card.section, manifestPanel.section, logPanel.section, padPanel.section);
+  /*
+   * Which panel sits on which edge, and the order they are stacked in.
+   *
+   * PILOT's own two on the west edge and KEEPER's four on the east, which is
+   * the same thesis the old three-bay layout stated and the same one the room
+   * itself states: what the human perceives on one side, what the agent can do
+   * on the other. The difference is that now neither side is in the way until
+   * it is asked for.
+   */
+  west.add("Station", station.section);
+  west.add("Your hands", controls.section);
+  east.add("Your agent", card.section);
+  east.add("Faculties", manifestPanel.section);
+  east.add("Activity", logPanel.section);
+  east.add("Notepad", padPanel.section);
+
+  deck.append(west.tabs, viewport, east.tabs, west.drawer, east.drawer);
+
+  // The audible strip and the mix, under the room. Both are about sound and
+  // neither belongs behind a tab: the strip is the deaf-accessible half of the
+  // `AUDIBLE` channel and has to be visible while a chamber is being played.
+  const foot = el("div", { class: "foot" });
+  foot.append(audible, mixer);
 
   // Out of the flow entirely: an empty container for the archive frame, which
   // is hidden and zero-sized when it exists at all.
   const archiveHost = el("div", { class: "archive-host", "aria-hidden": "true" });
 
-  console_.append(rail, left, right, archiveHost);
+  console_.append(rail, deck, foot, archiveHost);
   root.append(console_);
+
+  // Escape closes whatever is covering the room. The room is the thing the
+  // player is trying to look at, so getting back to it should not need aim.
+  globalThis.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || isTypingTarget(event.target)) return;
+    west.close();
+    east.close();
+  });
 
   /**
    * The most ambiguity seen in the current room, for the gauge's scale.
@@ -653,7 +873,11 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
 
       paintFloors(floorList, view);
       paintGauge();
+      // The subtitle and the sound, one line apart, from one frame. Doc 06
+      // section 11 requires every cue to have a text equivalent; keeping them
+      // adjacent is what stops that being a promise somebody has to remember.
       audible.textContent = view ? (roomPlan(view)?.sound ?? "") : "";
+      deps.audio.update(view, model.chamberTimerMs);
 
       for (const { entry, button } of actionButtons) button.hidden = !entry.when(view ?? null);
 

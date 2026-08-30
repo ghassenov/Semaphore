@@ -54,15 +54,43 @@ The client. It renders PILOT's world in real-time 3D and hosts the WebMCP tool d
 
 - **There are no asset files** (D-044). Geometry is built in code and every texture is drawn into a canvas at boot, so there is no loader, no atlas, no request, and **no third-party licence: the repository is MIT throughout.** Re-introducing a vendored pack means re-introducing a carve-out in `LICENSE`, which is a decision-log entry.
 - **The twelve glyphs stay authored as pixel maps in `render/glyphs.ts`.** They carry meaning no pack could know: they are the shapes PILOT has to describe and `wave` and `knot` are deliberately confusable. They are drawn nearest-filtered and **unlit**, which is a puzzle decision rather than a style one - a glyph in shadow is a glyph nobody can describe, so the room may not decide whether the puzzle is legible.
+- **PILOT's poses come from what the stage already knows** (D-052): the stride, the fixture `E` is holding, the room's own solved flag. A pose the renderer has to be *notified* of is a pose that can disagree with the room. They ease rather than snap, like every other device (D-037).
+- **A body at rest must not be a body at zero.** Every walk term multiplies by speed, so a standing figure was perfectly still, which at forty pixels tall reads as a rendering fault rather than as a person waiting. The breath cycle is worth more than the other three poses combined.
 - **PILOT is not lamplight-coloured and KEEPER has no eyes.** Warm means "only PILOT perceives this", and the human is not a fact only the human can perceive; a visor band rather than eyes is the silhouette saying *this thing cannot see*.
 - **KEEPER is drawn in the wall, never on the floor.** It is not in the room: it is behind the station's panels, reaching into every cavity at once. They can see each other and reach each other nowhere.
 - **KEEPER's body is the registry, and the mapping is authored but total** (doc 06 section 5). Persistent tools are rods on the spine; chamber tools are articulated arms with heads shaped like what they do. A tool with no shape entry gets a rod rather than vanishing, because a body that under-reports the registry is the animation telling the lie the manifest exists to catch. Fallen limbs stay on the floor for the rest of the session.
 - **A caption has one path in, is sized to the frame, and never shares an anchor.** All three are scars. The constructor once built a caption inline and left the tracking field null, so the first state update wrote a second and every fixture carried two stacked sprites all session. A caption fixed in metres is whatever size the camera happens to make it: `captionHeight` solves the perspective relation for a constant fraction of the viewport instead. And two captions at one point is two strings printed over each other, which this client has produced in three separate ways, so `chamber.test.ts` now refuses it (D-047, D-048).
 - **A caption is measured, never estimated.** Captions being wider than the thing they label has been the most repeated layout bug in this client across three renderers, and every fix that held asked the browser how wide the text actually was.
 
+### The console
+
+- **The room is the page, and a drawer never pushes it** (D-052). The camera frames against the viewport's measured shape, so a panel that squeezed the viewport would re-frame the shot every time somebody opened one. Panels overlay the deck from the two edges: PILOT's west, KEEPER's east, one open per edge, Escape closes them. The viewport carries no aspect of its own and does not need one - `camera.ts` fits the room against whatever it is handed.
+- **`display: flex` beats the user agent's `[hidden]`.** Anything here that sets its own display needs an explicit `[hidden] { display: none }`, or a panel hidden in script stays on screen. The first build of the drawers came up with both of them open and empty.
+- **The palette was never what made the page feel flat** (D-052). Depth, layering, falloff and motion were. Before proposing a colour change, check that the thing being fixed is actually a colour: the twenty-colour set is carefully argued (D-043) and the channel hues carry the design law and the colourblind guarantee.
+- **Every animation sits behind `prefers-reduced-motion`**, and the reduced path must still be a working interface rather than a frozen one. PILOT's body is called under it with the stride zeroed rather than not called at all, because a body that breathes is not vestibular motion and freezing it left those players a mannequin.
+
+### Sound
+
+- **`src/audio/` has its own [CLAUDE.md](src/audio/CLAUDE.md).** The rules that
+  matter outside it are these three.
+- **A cue fires on `PilotView.seq`, never on a diff of the facts.** Two
+  rotations that each register three clicks produce identical facts, and PILOT
+  has to hear six detents. In Chamber II the count is the puzzle (doc 02
+  section 3.3), so a missed repeat is a wrong answer rather than a missed
+  flourish.
+- **The worker picks the cue and the client picks the sound.** Each chamber's
+  `lastSound` returns the cue and its prose subtitle from one branch, so a cue
+  with no text equivalent cannot be added without deleting the other half on
+  purpose. Deaf players depend on that, and doc 06 section 11 requires it.
+- **Sound is the one subsystem allowed to be absent.** A machine with no audio
+  device throws on `new AudioContext()` and a headless browser is one, so
+  `createStationAudio().start()` fails to silence rather than taking the
+  session down with it. The screenshot tour clicks the same launch card.
+
 ### Looking at it
 
 - **Run the tour and look at the frames before calling a renderer change done.** `SHOTS=<dir> ARCHIVE="" node --experimental-strip-types tests/cross-origin-delegation.ts` plays a full session against live servers and writes a frame at every beat in about a minute. Every renderer this project has had shipped green and then produced defects in its first tour that six hundred unit tests could not see.
+- **Play it, do not only look at it.** Twelve defects in four sittings; eleven were in a frame somebody had not read, and the twelfth was in a frame that was unambiguous, well composed, and wrong (D-049). The Blind Panel drew `DIAL n` directly under `GAUGE n` in the one chamber whose secret is that the wiring is a permutation, and nothing but a person describing that room aloud to a blind partner could have caught it. The renderer must never assert a relation between two fixtures that it cannot know: alignment is a claim.
 - **The tour's wait has to stay longer than `WALK_MS + SHOT_MS`.** A frame grabbed early is the previous room with the next room's name over it, or the whole building from four hundred metres up. Both have happened, once per renderer.
 
 ## Change Log
@@ -81,4 +109,6 @@ The client. It renders PILOT's world in real-time 3D and hosts the WebMCP tool d
 | 2026-08-29 | Ahmed Saad | The station became one connected floor plan with a camera over it (D-038). |
 | 2026-08-29 | Ahmed Saad | The Archive's monitor landed (D-039). |
 | 2026-08-29 | Ahmed Saad | **The interface was rebuilt in real-time 3D on Three.js (D-042 to D-045).** This file was reorganised into sections rather than one list, because the rule count outgrew it. The Phaser, tile, 320x320, art-pack and licence rules are superseded; the design law, the WebMCP rules and the pure/impure split are unchanged. New rules for the cutaway camera, the four-light budget, fog as a wide-shot setting, materials coming only from `kit.ts`, the palette's two locked sets and `check-palette.mjs`, and for running the tour before calling a rendering change done. |
+| 2026-08-30 | Ahmed Saad | The console was rebuilt around the room (D-052): a Console section here, plus the rules that a drawer never pushes the viewport, that `[hidden]` needs help against `display`, that the palette was not what made the page flat, and that a body at rest must not be a body at zero. |
+| 2026-08-30 | Ahmed Saad | The audio layer landed (D-050): a Sound section here, and the detail in `src/audio/CLAUDE.md`. The fourth playthrough's rule added: play it, do not only look at it, and alignment between two fixtures is a claim (D-049). |
 | 2026-08-30 | Ahmed Saad | Rules added from the second and third playthroughs (D-046 to D-048): hidden means gone, a room shot stands one room, KEEPER's alcove is reserved, nothing hangs in front of a screen, a phase with no facts is not a phase with no room, low is not zero, and the three separate scars behind how a caption is built and sized. |

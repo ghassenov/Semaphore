@@ -118,6 +118,28 @@ export function formatCall(tool: string, outcome: string, durationMs: number): s
  * A pure function rather than an array mutation on the model, so the "newest
  * first, oldest dropped" rule is checkable without constructing a renderer.
  */
+/**
+ * Whether a keystroke is being typed into something rather than aimed at the
+ * station.
+ *
+ * Here, in the one module both the console and the stage already import, and
+ * not in either of them. It was in `ui.ts` alone, guarding `F` for fullscreen,
+ * and `stage.ts` had no equivalent at all - so writing "was the spiral on the
+ * left" into the shared notepad walked PILOT across the room three times,
+ * because `w`, `a` and `s` are the body's own keys and that listener is on
+ * `globalThis` and sees every keystroke in the page whatever has focus.
+ *
+ * Two copies of this predicate is how it happened: one surface grew the guard
+ * and the other did not. One copy, and both of them route through it.
+ */
+export function isTypingTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLInputElement ||
+    (target instanceof HTMLElement && target.isContentEditable)
+  );
+}
+
 export function pushLine(lines: readonly string[], line: string): readonly string[] {
   return [line, ...lines].slice(0, LOG_LINES);
 }

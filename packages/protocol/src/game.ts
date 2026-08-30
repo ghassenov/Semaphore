@@ -37,6 +37,57 @@ export function nextChamber(id: ChamberId): ChamberId | null {
 }
 
 /**
+ * The station's audible vocabulary: what a mechanism sounds like when it moves.
+ *
+ * Defined here, in the package both parties share, for the same reason the
+ * channel tags are: the server decides what happened and the client decides
+ * what it sounds like, and a vocabulary held separately at each end is a
+ * vocabulary that drifts. The chambers emit one of these on the `AUDIBLE`
+ * channel beside the prose subtitle, from the same branch, so the sound PILOT
+ * hears and the line PILOT reads can never describe different events.
+ *
+ * `detent` is the one that carries a count, and it is the only one that is
+ * puzzle-critical: doc 02 section 3.3 has PILOT counting clicks through the
+ * grate to learn what KEEPER's rotation actually registered. The count travels
+ * as the Blind Panel's own `lastClicks` fact rather than beside the cue,
+ * because that fact already exists and already means exactly this.
+ */
+export type Cue =
+  /** A lever seating, and bolts running back. The Airlock opening. */
+  | "clunk"
+  /** Air venting hard through a valve. The Airlock's wrong lever. */
+  | "hiss"
+  /** One brass key accepted. */
+  | "chime"
+  /** A ring settling: the long, low resolution of a solved chamber. */
+  | "resolve"
+  /** An alarm. A wrong key, or the Concord Lock throwing itself out. */
+  | "klaxon"
+  /** One click of a dial, felt through a grate. Counted. */
+  | "detent"
+  /** Twelve bolts running back in sequence. The outer door. */
+  | "bolts"
+  /** A lock holding under tension. Continuous, not a one-shot. */
+  | "hum";
+
+/** Every cue, for exhaustiveness checks and for the client's synth table. */
+export const CUES: readonly Cue[] = [
+  "clunk",
+  "hiss",
+  "chime",
+  "resolve",
+  "klaxon",
+  "detent",
+  "bolts",
+  "hum",
+] as const;
+
+/** Whether `value` is one of the station's cues. */
+export function isCue(value: unknown): value is Cue {
+  return typeof value === "string" && (CUES as readonly string[]).includes(value);
+}
+
+/**
  * The session state machine (doc 05 section 4).
  *
  * `ENTRY` is the landing page, where the registry holds exactly one tool. The
@@ -277,4 +328,23 @@ export interface PilotView {
    * forbids however convenient it looks.
    */
   readonly ghost: GhostTrack | null;
+  /**
+   * How many events this session has logged so far.
+   *
+   * Strictly increasing across every mutating action, because every one of
+   * them writes at least a `tool_call` event before anything else happens.
+   *
+   * It is on the view so the client can tell a repeated **fact** from a
+   * repeated **event**, which nothing else here can do. The `AUDIBLE` channel
+   * is the reason: KEEPER rotating a dial twice and registering three clicks
+   * each time produces two frames whose facts are identical in every field,
+   * and PILOT has to hear six detents, not three. Doc 02 section 3.3 makes
+   * that count puzzle-critical, so "sound it only when something changed" is
+   * not an option here.
+   *
+   * It carries no channel of its own and leaks nothing: KEEPER already knows
+   * how many calls it has made, and a count of events says nothing about what
+   * any of them touched.
+   */
+  readonly seq: number;
 }
