@@ -255,7 +255,7 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 - [x] **SPECTATE** - a recorded session on demand, on the same painter the Archive's monitor uses *(the ghost's own 29 seconds rather than an authored 90-second cut, D-058)*
 - [x] `?chamber=N` deep links with prior state pre-solved *(D-059)*
 - [x] Ablation chart placed on the landing page under the fold *(a disclosure rather than a scroll position: the console is a deck with no fold, D-058)*
-- [ ] Starter prompt card polished to final art
+- [x] Starter prompt card polished to final art *(a station requisition slip, doc 04 section 2's own words: torn edges, form number, a ruled ISSUE TO field, the split lamp stamped across the foot. One builder for both homes, and it is open on the landing screen rather than behind a closed tab, D-062)*
 
 ▸ **Checkpoint: a judge who never types anything still understands the whole project.**
 

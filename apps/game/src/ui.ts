@@ -148,24 +148,131 @@ function lampMark(size: number): SVGSVGElement {
  */
 function copyButton(label: string, source: () => string, target: HTMLElement): HTMLButtonElement {
   const button = el("button", { type: "button", class: "copy" }, label);
+  // The confirmation is announced, not just shown. This button's whole job is
+  // to be pressed once, by somebody who is about to switch to another window,
+  // and a state change that only exists as a colour tells a screen reader
+  // nothing about whether the thing they came for actually happened.
+  button.setAttribute("aria-live", "polite");
+  let restore = 0;
+
+  /** Say what happened, then go back to being an offer. */
+  function report(text: string, ok: boolean): void {
+    button.textContent = text;
+    button.classList.toggle("done", ok);
+    globalThis.clearTimeout(restore);
+    // It returns to its label rather than staying "Copied" for the rest of the
+    // session: a button stuck on its own past tense stops reading as something
+    // that can be pressed again, and a paste that went to the wrong window is
+    // exactly when somebody needs to press it again.
+    restore = globalThis.setTimeout(() => {
+      button.textContent = label;
+      button.classList.remove("done");
+    }, 2400);
+  }
+
   button.addEventListener("click", () => {
     void navigator.clipboard
-      .writeText(source())
+      ?.writeText(source())
       .then(() => {
-        button.textContent = "Copied";
+        report("Copied", true);
       })
       .catch(() => {
+        // Clipboard access can be refused outright, and a button that silently
+        // fails is worse than one that hands the job back. Selecting the text
+        // leaves the reader one keystroke from the same result.
         const range = document.createRange();
         range.selectNodeContents(target);
         globalThis.getSelection()?.removeAllRanges();
         globalThis.getSelection()?.addRange(range);
-        button.textContent = "Select and copy";
+        report("Selected - press Ctrl+C", false);
       });
   });
   return button;
 }
 
 /** The colour law, as a compact key rather than a panel. */
+/**
+ * The starter prompt, as a station requisition slip.
+ *
+ * **This is the single most important UI element in the project** (doc 02
+ * section 12, doc 04 section 2, doc 07 section 4): it is the thing that makes
+ * an agent engage at all, and it is on the never-cut list in the repo
+ * `CLAUDE.md`. Doc 04 asks for it "styled as a station requisition slip, with a
+ * copy button", carrying the prompt and a one-line fallback for the case where
+ * the agent still does not bite.
+ *
+ * ## One builder, two places
+ *
+ * It appears on the gate screen and in the console's YOUR AGENT drawer. Those
+ * were two hand-assembled copies, and they had already drifted: the gate's had
+ * no fallback line at all, which is the half of the card that rescues the
+ * interaction the other half failed to start. Building both from here is what
+ * stops the most important element in the project being the one nobody
+ * notices is wrong in one of its two homes.
+ *
+ * ## Why a slip rather than a quote block
+ *
+ * The prompt is a thing the station issues, not a thing the page says. Drawn as
+ * a form it reads that way: a torn top edge, a form number, a ruled ISSUE TO
+ * field naming KEEPER, the prompt typed into the body, and the split lamp
+ * stamped across the foot. All of it is CSS and the mark's existing SVG, so it
+ * costs no asset file (D-044) and no colour outside the locked set - the paper
+ * is pearl mixed down into the ink, which is what a form looks like under a
+ * sodium lamp rather than what it looks like in daylight.
+ *
+ * The prompt itself stays in the UI sans rather than the monospace the rest of
+ * the form furniture uses. Doc 06 reserves the monospace for identifiers and
+ * figures, and this is neither: it is the most-read paragraph in the project,
+ * and legibility beats the typewriter conceit.
+ */
+function promptCard(): HTMLElement {
+  const slip = el("section", { class: "slip" });
+
+  const head = el("div", { class: "slip-head" });
+  head.append(
+    el("span", { class: "slip-title" }, "STATION REQUISITION"),
+    el("span", { class: "slip-form" }, "FORM 14-B"),
+  );
+
+  // The field that says what is being requisitioned. In fiction the station is
+  // asking for an operator; in fact it is telling the human what to paste.
+  const field = el("div", { class: "slip-field" });
+  field.append(
+    el("span", { class: "slip-label" }, "ISSUE TO"),
+    el("span", { class: "slip-value" }, "KEEPER"),
+  );
+
+  const heading = el("p", { class: "slip-heading" }, "Paste this to your KEEPER");
+  const prompt = el("blockquote", { class: "prompt" }, STARTER_PROMPT);
+
+  const foot = el("div", { class: "slip-foot" });
+  // The stamp. Decorative, and marked so: a screen reader reading "authorised"
+  // out of a rubber stamp adds nothing a player can act on.
+  const stamp = el("span", { class: "slip-stamp", "aria-hidden": "true" });
+  stamp.append(lampMark(22), el("span", {}, "AUTHORISED"));
+  foot.append(
+    copyButton("Copy prompt", () => STARTER_PROMPT, prompt),
+    stamp,
+  );
+
+  slip.append(
+    head,
+    field,
+    heading,
+    prompt,
+    foot,
+    // Doc 04 section 2 asks for this line by name, and it belongs on both
+    // copies: it is the recovery path for the failure the card exists to
+    // prevent, and an agent that does not bite is the commonest one.
+    el(
+      "p",
+      { class: "note slip-note" },
+      "If your agent does not respond, ask it: what tools does this page give you?",
+    ),
+  );
+  return slip;
+}
+
 function legendRow(): HTMLElement {
   const list = el("ul", { class: "legend-row" });
   for (const row of LEGEND) {
@@ -387,12 +494,10 @@ export function renderGate(root: HTMLElement): void {
   );
   routes.append(chrome.section, chatgpt.section);
 
-  const card = panel("Paste this to your agent once you are in");
-  const prompt = el("blockquote", { class: "prompt" }, STARTER_PROMPT);
-  card.body.append(
-    prompt,
-    copyButton("Copy prompt", () => STARTER_PROMPT, prompt),
-  );
+  // The slip carries its own heading, so it is not wrapped in a panel: two
+  // headings over one card is the "BACK TO AIRLOCK printed across PAGE MARKED"
+  // shape (D-054), one level up.
+  const card = promptCard();
 
   const key = panel("Who perceives what");
   key.body.append(legendRow());
@@ -429,7 +534,7 @@ export function renderGate(root: HTMLElement): void {
     screen.element,
   );
 
-  main.append(routes, card.section, watch.section, ablationChart(), key.section);
+  main.append(routes, card, watch.section, ablationChart(), key.section);
   root.append(main);
 }
 
@@ -578,6 +683,8 @@ function edge(side: "left" | "right"): {
   readonly drawer: HTMLElement;
   add(label: string, section: HTMLElement): void;
   close(): void;
+  open(label: string): void;
+  showing(): string | null;
 } {
   const tabs = el("nav", { class: `tabs tabs-${side}` });
   const drawer = el("aside", { class: `drawer drawer-${side}` });
@@ -669,6 +776,12 @@ function edge(side: "left" | "right"): {
     close: () => {
       show(null);
     },
+    /** Open one panel by name, for a caller that knows which should be first. */
+    open: (label: string) => {
+      show(label);
+    },
+    /** Which panel is open, or null. Lets a caller tell "still mine" from "moved on". */
+    showing: () => open,
     add(label, section) {
       section.hidden = true;
       panels.set(label, section);
@@ -993,13 +1106,7 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
 
   // ---- KEEPER's surface, and the one surface they share. ------------------
 
-  const card = panel("Your agent");
-  const prompt = el("blockquote", { class: "prompt" }, STARTER_PROMPT);
-  card.body.append(
-    prompt,
-    copyButton("Copy prompt", () => STARTER_PROMPT, prompt),
-    el("p", { class: "note" }, "No response? Ask it: what tools does this page give you?"),
-  );
+  const card = promptCard();
 
   const manifestPanel = panel("Faculties");
   const manifestCount = el("span", { class: "count" }, "0");
@@ -1119,10 +1226,26 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   west.add("Station", station.section);
   west.add("Your hands", controls.section);
   west.add("Access", access.section);
-  east.add("Your agent", card.section);
+  east.add("Your agent", card);
   east.add("Faculties", manifestPanel.section);
   east.add("Activity", logPanel.section);
   east.add("Notepad", padPanel.section);
+
+  // The requisition slip is open when the page loads, and only then.
+  //
+  // Doc 02 section 12 and doc 04 section 2 both call it the single most
+  // important element on this screen, and D-052 put every panel behind a tab -
+  // which left it behind a *closed* one, so the thing that makes an agent
+  // engage at all was one click away from a player who did not know it existed.
+  // The start card tells them to paste the prompt on the right; the right had
+  // nothing visible on it.
+  //
+  // Once, though. It is opened here and never reopened, so a player who closes
+  // it has closed it: the room is the page (D-052), and a panel that kept
+  // coming back would be the console arguing with them.
+  east.open("Your agent");
+  /** Whether the opening slip has already given the room back. */
+  let handedOver = false;
 
   deck.append(west.tabs, viewport, east.tabs, west.drawer, east.drawer);
 
@@ -1199,6 +1322,21 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
       // A recording playing over a room the pair is standing in would be a
       // second station. The card going away takes it with it.
       if (launch.hidden) stopAttract();
+
+      // The slip hands the room over when the shift starts.
+      //
+      // It is opened on load because it is the most important element on the
+      // landing screen, and it has to get out of the way the moment there is a
+      // room, because the room is the page (D-052) and a panel overlaying its
+      // right third is the console talking over the game.
+      //
+      // Once, and only if it is still the panel this opened. A player who has
+      // moved to Faculties or Notepad by then is reading something they chose,
+      // and closing it would be the console overruling them.
+      if (launch.hidden && !handedOver) {
+        handedOver = true;
+        if (east.showing() === "Your agent") east.close();
+      }
       // And the replay link, at the one phase where the pair has finished.
       ending.hidden = phase !== "ESCAPED";
 
