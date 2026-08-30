@@ -485,12 +485,18 @@ export function startDrone(engine: Engine): Voice {
   const { node, voice } = fader(engine, engine.music);
   const filter = ctx.createBiquadFilter();
   filter.type = "lowpass";
-  filter.frequency.value = 340;
+  // Opened up a little now the source is a triangle: the old value was set to
+  // tame a sawtooth and leaves a triangle muddy rather than warm.
+  filter.frequency.value = 420;
   filter.connect(node);
 
   const oscillators = [55, 55.4, 82.5].map((hz) => {
     const osc = ctx.createOscillator();
-    osc.type = "sawtooth";
+    // Triangle, not sawtooth. The drone is the pedal the theme's harmony hangs
+    // over, so it is the one voice whose timbre decides whether the whole
+    // score reads as warm: a sawtooth's odd and even partials all the way up
+    // buzz through the lowpass and make the room sound electrical.
+    osc.type = "triangle";
     osc.frequency.value = hz;
     const gain = ctx.createGain();
     gain.gain.value = 0.2;
@@ -512,6 +518,139 @@ export function startDrone(engine: Engine): Voice {
       for (const osc of oscillators) osc.stop(ctx.currentTime + 0.8);
     },
   };
+}
+
+/**
+ * The theme: a warm, slow, unresolved instrumental, and the station's resting
+ * state.
+ *
+ * Three decisions make it sound mysterious rather than merely quiet, and none
+ * of them is a timbre.
+ *
+ * **It sits on a pedal.** `startDrone` holds A and its fifth under everything,
+ * and the harmony below moves over the top of that without ever agreeing to
+ * leave. A held bass under changing chords is the oldest device there is for
+ * "something is going on here that you have not been told", and it costs
+ * nothing because the drone already existed.
+ *
+ * **Nothing resolves.** The cycle is A minor with an added ninth, F major
+ * seventh, A minor again with an eleventh, then D minor ninth - four colours
+ * that share most of their notes, so each change is a shift of light rather
+ * than a chord progression going somewhere. There is no dominant anywhere in
+ * it, which is what a progression would need to sound like it had arrived.
+ *
+ * **And the mode is missing a note.** The melody draws on A C D E F G: A
+ * natural minor with the second taken out. The gap is what stops a phrase
+ * sounding like a tune with an answer, and the flattened sixth is the note
+ * doing most of the work.
+ *
+ * Warm is then the easy part: triangles rather than the squares and sawtooths
+ * the tension layers use, slow attacks so nothing is struck, and a long send
+ * to the same concrete tower everything else rings in.
+ */
+export const THEME_CHORDS: readonly (readonly number[])[] = [
+  [110, 130.81, 164.81, 246.94], // A minor, added ninth
+  [87.31, 110, 130.81, 164.81], // F major seventh
+  [110, 130.81, 164.81, 293.66], // A minor, added eleventh
+  [146.83, 174.61, 220, 329.63], // D minor ninth
+];
+
+/** How many grid steps one chord is held. Sixteen is five seconds. */
+const CHORD_STEPS = 16;
+
+/** How long a phrase runs before the other one takes over. */
+const PHRASE_STEPS = 32;
+
+/**
+ * Two phrases, as `[step, hertz]`, and they are written out rather than
+ * generated.
+ *
+ * A melody drawn at random sounds exactly like a melody drawn at random: the
+ * ear hears the absence of intent immediately, even when every note is in the
+ * mode. These are sparse on purpose - six notes in ten seconds - because the
+ * gaps are where the reverb tail does the work, and because a room the player
+ * is trying to describe out loud should not have something insisting over it.
+ */
+export const THEME_PHRASES: readonly (readonly (readonly [number, number])[])[] = [
+  [
+    [0, 440],
+    [6, 392],
+    [10, 329.63],
+    [16, 349.23],
+    [22, 329.63],
+    [26, 261.63],
+  ],
+  [
+    [2, 523.25],
+    [8, 440],
+    [12, 392],
+    [18, 349.23],
+    [20, 329.63],
+    [28, 293.66],
+  ],
+];
+
+/**
+ * One step of the theme: a chord swell on the boundary, a note if the phrase
+ * has one here.
+ *
+ * The chords are scheduled as long overlapping swells rather than held on a
+ * continuous voice, which is both less code and the better sound: each one
+ * takes 1.6s to arrive and 4.4s to leave, so it is still fading while the next
+ * is rising and the harmony is never seen to change.
+ *
+ * On `engine.bed` rather than the music bus, so it ducks with the ambience
+ * under the heartbeat. See `Score.bed`.
+ */
+export function playTheme(engine: Engine, at: number, step: number, level: number): void {
+  if (level <= 0.01) return;
+
+  if (step % CHORD_STEPS === 0) {
+    const chord = THEME_CHORDS[Math.floor(step / CHORD_STEPS) % THEME_CHORDS.length] ?? [];
+    chord.forEach((hz, voice) => {
+      // Staggered by a breath, so the chord arrives as four things rather than
+      // as one block. Four oscillators landing on the same millisecond is an
+      // organ, and an organ is not mysterious.
+      tone(engine, {
+        at: at + voice * 0.09,
+        type: "triangle",
+        from: hz,
+        attack: 1.6,
+        decay: 4.4,
+        peak: 0.085 * level,
+        wet: 0.7,
+        bus: engine.bed,
+      });
+    });
+  }
+
+  const phrase = THEME_PHRASES[Math.floor(step / PHRASE_STEPS) % THEME_PHRASES.length];
+  const hz = phrase?.find(([on]) => on === step % PHRASE_STEPS)?.[1];
+  if (hz === undefined) return;
+
+  // The note, and an octave above it at a third of the level. The upper
+  // partial is what makes a triangle read as an instrument with a body rather
+  // than as a test tone, and it decays faster so the note warms as it fades.
+  tone(engine, {
+    at,
+    type: "triangle",
+    from: hz,
+    attack: 0.035,
+    decay: 1.9,
+    peak: 0.13 * level,
+    wet: 0.85,
+    bus: engine.bed,
+  });
+  tone(engine, {
+    at,
+    type: "sine",
+    from: hz * 2,
+    attack: 0.05,
+    decay: 1.1,
+    peak: 0.042 * level,
+    wet: 0.9,
+    bus: engine.bed,
+  });
 }
 
 /** The rhythmic pulse: a soft kick on the beat, from half the clock down. */

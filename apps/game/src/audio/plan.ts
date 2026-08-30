@@ -15,17 +15,20 @@ import { isCue, type Cue, type PilotView } from "@semaphore/protocol";
  * A continuous voice. The bed always runs; the rest are doc 06 section 11's
  * adaptive tension layers, added as the chamber's clock drains.
  */
-export type Layer = "bed" | "drone" | "pulse" | "arpeggio" | "heartbeat";
+export type Layer = "bed" | "theme" | "drone" | "pulse" | "arpeggio" | "heartbeat";
 
 /** What should be sounding continuously, and how loud the ambience sits. */
 export interface Score {
   readonly layers: readonly Layer[];
   /**
-   * The ambience bed's level, 0 to 1.
+   * How loud the atmospheric half sits, 0 to 1: the ambience and the theme.
    *
    * Ducked under the heartbeat, which is the one place doc 06 asks for it: at
-   * the last tenth of the clock the bed steps out of the way rather than
-   * competing.
+   * the last tenth of the clock it steps out of the way rather than competing.
+   * The theme rides this rather than carrying a level of its own, because
+   * "the warm layer" and "the ambience" want to move together in every case
+   * that has come up, and two knobs that are always turned together are one
+   * knob and a chance to forget the second.
    */
   readonly bed: number;
 }
@@ -47,7 +50,13 @@ const BED_DUCKED = 0.45;
  * hurry them. A chamber with no clock is the same case.
  */
 export function scoreFor(remainingMs: number | null, totalMs: number): Score {
-  const base: readonly Layer[] = ["bed", "drone"];
+  // The theme is always on, and it is the station's resting state: warm, slow
+  // and unresolved. It does not escalate and it is never taken away. What
+  // happens as the clock drains is that harder things arrive *on top of* it,
+  // which is why the last tenth ducks it rather than cutting it - a warm
+  // instrumental under a heartbeat is the room still being the room while
+  // something goes wrong in it.
+  const base: readonly Layer[] = ["bed", "theme", "drone"];
   if (remainingMs === null || totalMs <= 0) return { layers: base, bed: 1 };
 
   const left = Math.max(0, remainingMs) / totalMs;
