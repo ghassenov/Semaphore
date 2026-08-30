@@ -240,6 +240,35 @@ async function shot(name: string, waitMs = 2800): Promise<void> {
   console.log(`[shot] ${file}`);
 }
 
+/**
+ * Hold a key down, take a frame, let it go.
+ *
+ * The lean-in (`E`) is the one camera move the human drives, and it had no
+ * frame in this tour at all: it was verified by arithmetic, which is exactly
+ * the kind of proof this file exists to replace. Held through a real
+ * `rawKeyDown` rather than a synthetic event, because the stage listens on
+ * `globalThis` and a dispatched `KeyboardEvent` would not prove the browser
+ * path works.
+ */
+async function shotHolding(key: string, name: string, waitMs = 1400): Promise<void> {
+  if (SHOTS.length === 0) return;
+  const code = `Key${key.toUpperCase()}`;
+  await send("Input.dispatchKeyEvent", {
+    type: "rawKeyDown",
+    key,
+    code,
+    windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0),
+  });
+  await shot(name, waitMs);
+  await send("Input.dispatchKeyEvent", {
+    type: "keyUp",
+    key,
+    code,
+    windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0),
+  });
+  await sleep(600);
+}
+
 await send("Page.enable");
 await send("Runtime.enable");
 await send("Log.enable");
@@ -363,6 +392,7 @@ const spiralLever = Object.keys(glyphByLever).find((lever) => glyphByLever[lever
 await post("pull_lever", { lever_id: spiralLever });
 await until((v) => v.chamber === "signal_room", "the signal room");
 await shot("signal-room");
+await shotHolding("e", "signal-room-leaning");
 await sleep(400);
 
 // ---- Chamber I: ascending stroke count, primes omitted.
