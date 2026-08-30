@@ -38,7 +38,7 @@
  */
 
 import type { SessionMode } from "@semaphore/protocol";
-import type { FloorId } from "./floors.js";
+import { nextFloor, previousFloor, type FloorId } from "./floors.js";
 
 /** Which wall an opening is cut in. South is the face the camera looks through. */
 export type Wall = "north" | "east" | "south" | "west";
@@ -129,3 +129,34 @@ export function doorsOf(mode: SessionMode, floor: FloorId): RoomDoors {
 
 /** How wide an opening is, in metres: one corridor's width, which the door fills. */
 export const DOORWAY_WIDTH = 3;
+
+/** The id `chamber.ts` gives the door that leads back the way you came. */
+export const BACK_DOOR_ID = "door-back";
+
+/**
+ * Where a door leads, or null if it leads nowhere PILOT may go.
+ *
+ * The whole gate for walking back (D-054), and deliberately one function, so
+ * there is one place to read it and one place to test it.
+ *
+ * Three conditions, and the third is the one that matters. The door has to be
+ * **open**, because "after it is opened" is the mechanic. It has to lead
+ * somewhere in play order. And the room on the other side has to be one the
+ * pair has **already stood in** - `reachable` answers that from the rooms the
+ * client has actually been sent frames for. A room ahead of them has never
+ * been drawn, so a door onto one answers null and `E` does nothing but frame
+ * it. That is what keeps this a camera feature rather than a hole in the
+ * design law: no projection the server has not already pushed can be reached
+ * through it, and nothing withheld becomes visible.
+ */
+export function doorLeadsTo(
+  mode: SessionMode,
+  from: FloorId,
+  door: { readonly id: string; readonly kind: string; readonly on: boolean },
+  reachable: (floor: FloorId) => boolean,
+): FloorId | null {
+  if (door.kind !== "door" || !door.on) return null;
+  const to = door.id === BACK_DOOR_ID ? previousFloor(mode, from) : nextFloor(mode, from);
+  if (to === null || to === from) return null;
+  return reachable(to) ? to : null;
+}

@@ -68,7 +68,9 @@ import {
 import type { PilotView, SessionMode } from "@semaphore/protocol";
 import {
   ARCHIVE_SCREEN,
+  asCleared,
   clearOf,
+  doorPlacement,
   hasInterlude,
   interlude,
   alcoveOf,
@@ -98,7 +100,8 @@ import {
   stationOwners,
   stationStrips,
 } from "./plan.js";
-import { activeFloor, stationFloors, type FloorId } from "./floors.js";
+import { activeFloor, previousFloor, stationFloors, type FloorId } from "./floors.js";
+import { doorLeadsTo, doorsOf, type Doorway } from "./doorways.js";
 import { isTypingTarget } from "./hud.js";
 import { ghostFrame } from "./ghost.js";
 import { FixtureView, buildDressing } from "./fixtures.js";
@@ -130,6 +133,19 @@ const LARGE_VIEWPORT = 1100;
 
 /** How many dust motes drift in the active room. */
 const DUST = 260;
+
+/**
+ * How long `E` has to be held on a door before PILOT walks through it.
+ *
+ * Long enough that leaning in to *read* a door is not also a way of leaving
+ * the room by accident, short enough that it never becomes a puzzle of its
+ * own. The lean-in settles at `SHOT_MS`, so this is a beat past the camera
+ * arriving: you see the door you are about to go through before you go.
+ */
+const THROUGH_MS = 900;
+
+/** How far into a room PILOT stands after coming through its door, in metres. */
+const OVER_THRESHOLD = 1.8;
 
 /** What `station.ts` holds once the stage is up. */
 export interface StageHandle {
@@ -527,6 +543,41 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
   /** Which way PILOT is facing, held between steps. */
   let facing = 0;
 
+  /*
+   * Where PILOT's *body* is, which is not always where the session is.
+   *
+   * The pair can walk back through a door they have already opened (D-054).
+   * That is a change to what the human is looking at and nothing else: the
+   * server is not told, the clock does not stop, KEEPER's tools still act on
+   * the chamber the session is in, and none of this leaves this file.
+   * `viewing` is the floor the body stands in; `here`, each frame, is the
+   * floor the session is in. They are equal except while somebody has
+   * wandered.
+   */
+  let viewing: FloorId | null = null;
+  /** The floor the session was in last frame, so the pair moving on wins. */
+  let wasHere: FloorId | null | undefined;
+  /**
+   * The last plan seen for each floor.
+   *
+   * `PilotView.facts` only ever carries the active chamber's facts, so a room
+   * the pair has left has no live state to be drawn from. This is what they
+   * saw while they were standing in it, held frame by frame, which is exactly
+   * the right thing to show and leaks nothing: it is the same projection that
+   * was already on screen. `asCleared` opens its doors on the way out.
+   */
+  const seen = new Map<FloorId, RoomPlan>();
+  /**
+   * The last ghost the Archive played.
+   *
+   * `view.ghost` is null outside the ARCHIVE phase, so walking back into the
+   * Archive later would find a monitor with nothing on it - in the one room
+   * whose entire content is that monitor.
+   */
+  let lastGhost: PilotView["ghost"] = null;
+  /** When `E` first landed on the door PILOT is currently holding. */
+  let holdingDoorSince = 0;
+
   const held = new Set<string>();
   // PILOT's body must not answer to a keystroke that was aimed at the shared
   // notepad. See `isTypingTarget`.
@@ -654,8 +705,7 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
   }
 
   /** Draw the ghost onto the monitor's canvas. */
-  function paintScreen(view: PilotView, elapsedMs: number): void {
-    const track = view.ghost;
+  function paintScreen(track: PilotView["ghost"], elapsedMs: number): void {
     const context = screenCanvas.getContext("2d");
     if (!context) return;
     const { width, height } = screenCanvas;
@@ -778,6 +828,33 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
     camera.lookAt(lookAt);
   }
 
+  /**
+   * Stand PILOT just inside one of a room's doorways.
+   *
+   * Walking is held as a fraction of the walkable box on each axis, so arriving
+   * somewhere means solving for the fraction rather than writing a position.
+   * With no doorway - the very first room, which is entered from the sea - the
+   * middle of the room is kept, which is where the game has always opened.
+   */
+  function standAt(floor: FloorId, doorway: Doorway | undefined): void {
+    const size = footprintOf(floor);
+    if (doorway === undefined) {
+      walk = 0.5;
+      walkZ = 0.5;
+      return;
+    }
+    const { at, facing: yaw } = doorPlacement(size, doorway);
+    // Into the room is the direction the door faces, the same relation
+    // `doorDressing` uses to put the chevrons on the inside of the threshold.
+    const x = at.x + Math.sin(yaw) * OVER_THRESHOLD;
+    const z = at.z + Math.cos(yaw) * OVER_THRESHOLD;
+    const span = size.width * WALK_SPAN;
+    const depth = size.depth * WALK_SPAN_Z;
+    walk = span > 0 ? Math.max(0, Math.min(1, (x + span / 2) / span)) : 0.5;
+    walkZ = depth > 0 ? Math.max(0, Math.min(1, (z + depth / 2) / depth)) : 0.5;
+    facing = yaw;
+  }
+
   let last = performance.now();
   let running = true;
 
@@ -790,8 +867,36 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
     const mode: SessionMode = view?.mode ?? "full";
     buildStation(mode);
 
-    const floor = view === null ? null : activeFloor(view);
-    const plan = view === null ? null : roomPlan(view);
+    // Where the *session* is. The clock, the tool surface and KEEPER's body
+    // all answer to this and never to where the human has wandered off to.
+    const here = view === null ? null : activeFloor(view);
+    const livePlan = view === null ? null : roomPlan(view);
+    if (here !== null && livePlan !== null) seen.set(here, livePlan);
+    if (view?.ghost != null) lastGhost = view.ghost;
+
+    // The pair moving on ends any wander: the body goes where the session
+    // goes, and it arrives standing in the doorway it came in through rather
+    // than materialising in the middle of the floor.
+    if (here !== wasHere) {
+      viewing = here;
+      wasHere = here;
+      if (here !== null) standAt(here, doorsOf(mode, here).back);
+    }
+
+    // Where PILOT's *body* is. Identical to `here` unless somebody has walked
+    // back through a door, in which case the room is drawn from the last frame
+    // the server sent for it, with its doors open.
+    const floor = viewing;
+    // The console reads this to name the room the viewport is actually
+    // showing. One value, written where it is decided.
+    model.standing = floor;
+    const behind = floor === null || floor === here ? null : seen.get(floor);
+    const plan =
+      behind !== undefined && behind !== null
+        ? asCleared(behind)
+        : floor === here
+          ? livePlan
+          : null;
 
     // Changing room starts the walk: the camera holds the whole building for a
     // moment before settling into the next chamber.
@@ -861,6 +966,40 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
       wantsLean && plan !== null && standing !== null
         ? nearestFixture(plan, pilotAt.x - standing.x, pilotAt.z - standing.z)
         : null;
+
+    /*
+     * Going through a door.
+     *
+     * Layered on the lean-in rather than given a key of its own, because it is
+     * the same gesture: you walk up to the door, `E` takes you to it, and if
+     * you keep holding, you go through. A player who leans in on a door to
+     * read where it goes gets `THROUGH_MS` to let go, and the camera has
+     * settled on the door before then, so what they are about to do is on
+     * screen while they are deciding.
+     */
+    const leftBehind = floor;
+    const doorTo =
+      leaning === null || leftBehind === null
+        ? null
+        : doorLeadsTo(mode, leftBehind, leaning, (to) => to === here || seen.has(to));
+    if (doorTo === null || leftBehind === null) {
+      holdingDoorSince = 0;
+    } else if (holdingDoorSince === 0) {
+      holdingDoorSince = now;
+    } else if (now - holdingDoorSince >= THROUGH_MS) {
+      holdingDoorSince = 0;
+      // Standing at the door on the far side that leads back to the room just
+      // left, so the two doorways are the same doorway from either side.
+      const doors = doorsOf(mode, doorTo);
+      standAt(doorTo, doorTo === previousFloor(mode, leftBehind) ? doors.out : doors.back);
+      viewing = doorTo;
+      leaning = null;
+      // The rest of this frame was measured against the old room, and a lamp,
+      // a shot and a set of fixtures resolved for a room PILOT is no longer in
+      // is one frame of the wrong building. The next tick has the new one.
+      requestAnimationFrame(tick);
+      return;
+    }
 
     let shot: Shot;
     if (leaning !== null && standing !== null) {
@@ -1048,11 +1187,18 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
                 ? "walking"
                 : "idle";
         pilot.step(now, reduceMotion ? 0 : stride, pose);
-        // KEEPER stands in the east wall of whichever room the pair is in. It
-        // is not *in* the room: it is behind the station's panels, reaching
-        // into every cavity at once. They can see each other and reach each
-        // other nowhere.
-        keeper.root.visible = true;
+        // KEEPER stands in the east wall of whichever room the *session* is
+        // in. It is not *in* the room: it is behind the station's panels,
+        // reaching into every cavity at once. They can see each other and
+        // reach each other nowhere.
+        //
+        // **Not in a room PILOT has walked back to.** KEEPER is a body at the
+        // chamber the pair is working on, and drawing it in a room the session
+        // left two chambers ago would be the animation claiming a presence the
+        // tool surface does not have. An empty alcove in the room behind you
+        // is the honest picture, and it is a good one: you went back and your
+        // partner is not there.
+        keeper.root.visible = floor === here;
         // The east wall, from the one function the room plans are checked
         // against, so a rack of shelves can never be written into the body -
         // and neither can a doorway, which three of the five east walls now
@@ -1076,7 +1222,9 @@ export function createStage(parent: HTMLElement, model: StationModel): StageHand
     keeper.setBusy(performance.now() < model.busyUntilMs);
     keeper.step(deltaMs, now);
 
-    if (view !== null && plan?.id === "archive") paintScreen(view, now);
+    // The last ghost seen rather than this phase's, so walking back into the
+    // Archive finds the recording it played rather than an empty monitor.
+    if (plan?.id === "archive") paintScreen(view?.ghost ?? lastGhost, now);
 
     // The water, everywhere it appears. Suppressed under reduced motion along
     // with everything else that moves on its own.
