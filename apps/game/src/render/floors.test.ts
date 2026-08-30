@@ -18,6 +18,7 @@ function view(over: Partial<PilotView> = {}): PilotView {
     mode: "full",
     designation: "KEEPER",
     remainingMs: 120_000,
+    seq: 0,
     retries: 0,
     facts: {},
     ghost: null,
