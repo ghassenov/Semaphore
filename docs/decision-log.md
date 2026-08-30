@@ -1468,3 +1468,62 @@ One thing the frames caught that no test would have: the three faders rendered
 as three identical unlabelled sliders. The control that has to be findable is
 the mechanism one, because a player who cannot hear the detents needs to turn
 the score down off the answer. They are named in the frame now.
+
+---
+
+### D-051 A warm theme, against doc 06's chiptune
+
+**2026-08-30.** Asked for directly: warm, instrumental, mysterious. Built as a
+fifth continuous layer that is on from the first bar of a session to the last.
+
+**It contradicts doc 06 section 11, and that is the decision rather than a side
+effect.** That section asks for music that is "chiptune-adjacent but wet -
+square and triangle waves through long convolution reverb". A warm instrumental
+is not chiptune-adjacent. The reasoning for changing it: the chiptune direction
+was written for the *tension* layers, where it is exactly right - the arpeggio
+that arrives at a quarter of the clock is a square wave and should stay one -
+but it left the resting state of the station with no music in it at all, only
+ambience and a drone. A station that sounds like nothing until it is nearly out
+of time is a station with no character for the eighty percent of a session when
+nothing is going wrong.
+
+So the two coexist rather than one replacing the other, which is also why this
+cost one layer rather than a rewrite: **warm and unresolved while there is
+time, chiptune urgency on top when there is not.**
+
+**Three devices, none of them a timbre.** It sits on a pedal - the drone
+already held A and its fifth under the whole station, so the harmony moves over
+a bass that never agrees to leave. Nothing resolves: A minor add9, F major
+seventh, A minor add11, D minor ninth, four colours sharing most of their notes
+and no dominant anywhere, so each change is a shift of light rather than a
+progression arriving. And the mode has a hole in it: the melody draws on A C D
+E F G, natural minor with the second taken out, which is what stops six notes
+sounding like a tune with an answer.
+
+Warm was then the easy part. Triangles rather than the squares and sawtooths
+the tension layers use, slow attacks so nothing is struck, chords scheduled as
+overlapping swells so the harmony is never *seen* to change, and a long send to
+the same tower everything else rings in.
+
+**The drone moved from sawtooth to triangle** in the same change, and it is not
+cosmetic: it is the pedal the theme hangs over, so its timbre decides whether
+the whole score reads as warm, and a sawtooth's partials buzz through the
+lowpass and make the room sound electrical rather than old.
+
+**It rides the ambience gain rather than carrying a level of its own**, so it
+ducks with the bed under the heartbeat instead of competing in the last tenth.
+It is never taken away. Two knobs that are always turned together are one knob
+and a chance to forget the second.
+
+*What the tests can and cannot do.* Nothing in this pipeline can hear - the
+screenshot tour runs in a headless browser with no audio device - so the tests
+hold the one thing a machine can check: every pitch is a real equal-tempered
+note rather than a number near one, every pitch is in the mode, no chord
+carries a leading note, and the second never appears in the melody. A mistyped
+frequency is a wrong note, a wrong note is the entire difference between
+mysterious and broken, and it would otherwise ship past every check in the
+repository. Whether it is actually *good* is still unverified and needs an ear.
+
+**Result.** 677 tests, up from 671. Entry 22.4KB gzipped of a 400KB budget, up
+0.3KB. Still no asset files. 17 of 17 browser checks with the theme scheduling
+on every step, and no console error.
