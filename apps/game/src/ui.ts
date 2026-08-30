@@ -55,6 +55,9 @@ import {
 import { roomPlan, roomTitle } from "./render/chamber.js";
 import { FLOOR_NAMES, activeFloor, stationFloors, type FloorId } from "./render/floors.js";
 import { CHANNEL_MARKER } from "./render/palette.js";
+import { TAIL_MS } from "./render/ghost.js";
+import { paintMonitor } from "./render/monitor.js";
+import type { GhostTrack } from "@semaphore/protocol";
 
 const STARTER_PROMPT =
   "You are KEEPER, maintenance intelligence of a derelict signal station. You cannot " +
@@ -170,6 +173,98 @@ function legendRow(): HTMLElement {
   }
   return list;
 }
+
+/**
+ * A recorded session, playing on a canvas: SPECTATE, and attract mode.
+ *
+ * Doc 08 phase 4 asks for two things that turn out to be one thing. A judge
+ * who never types anything should still be shown the game (SPECTATE), and a
+ * landing screen nobody has touched for twenty seconds should start showing it
+ * by itself (attract mode). Both are a recording of a session, and the station
+ * already has a surface that plays one: the Archive's monitor. `monitor.ts` is
+ * that surface's drawing routine, lifted out so this can be the same picture
+ * rather than a second drawing of it.
+ *
+ * **It costs the gate screen nothing.** The painter reaches `ghost.ts`,
+ * `plan.ts` and the palette, and none of those import Three.js, so a browser
+ * that cannot play the game still does not fetch the 143KB engine to be shown
+ * it. `scripts/check-bundle.mjs` is what keeps that true.
+ *
+ * The recording loops with its own tail on the end, because the tail is the
+ * beat: the ghost is holding a bar that they could not hold, and cutting
+ * straight back to the start reads as a loop rather than as an ending.
+ */
+function ghostScreen(): { element: HTMLElement; play: () => void; stop: () => void } {
+  const canvas = el("canvas", { class: "ghost-screen" });
+  canvas.width = 384;
+  canvas.height = 252;
+  // A recording is not the page's content, and a screen reader reading a
+  // scrub bar frame by frame is noise. The caption below it carries the fact.
+  canvas.setAttribute("role", "img");
+  canvas.setAttribute("aria-label", "A recording of a previous shift, playing.");
+
+  let track: GhostTrack | null = null;
+  let raf = 0;
+  let startedAt = 0;
+
+  // One fetch per page. The track is a projection of a constant fixture, and
+  // both callers here are on the same page.
+  loadGhost()
+    .then((loaded) => {
+      track = loaded;
+    })
+    .catch(() => {
+      // A gate screen that cannot reach the worker still has a gate screen.
+      // NO TAPE is what `paintMonitor` draws for a null track, and it is a
+      // prop rather than an error, which is the right thing to show here.
+      track = null;
+    });
+
+  function tick(now: number): void {
+    startedAt ||= now;
+    const span = (track?.durationMs ?? 0) + TAIL_MS;
+    paintMonitor(canvas, track, span > 0 ? (now - startedAt) % span : 0);
+    raf = globalThis.requestAnimationFrame(tick);
+  }
+
+  return {
+    element: canvas,
+    play: () => {
+      if (raf !== 0) return;
+      startedAt = 0;
+      raf = globalThis.requestAnimationFrame(tick);
+    },
+    stop: () => {
+      if (raf === 0) return;
+      globalThis.cancelAnimationFrame(raf);
+      raf = 0;
+    },
+  };
+}
+
+/**
+ * The recorded session both attract mode and SPECTATE play.
+ *
+ * `/ghost` is the worker's one route with no session behind it, because the
+ * gate screen has no session and cannot start one. The origin comes from the
+ * environment like every other origin in this client (repo CLAUDE.md section
+ * 3); empty means same-origin, which in development is the Vite proxy.
+ */
+async function loadGhost(): Promise<GhostTrack | null> {
+  const origin = import.meta.env.VITE_WORKER_ORIGIN ?? "";
+  const response = await fetch(`${origin}/ghost`);
+  if (!response.ok) return null;
+  return (await response.json()) as GhostTrack | null;
+}
+
+/**
+ * How long the landing screen waits before it starts playing by itself.
+ *
+ * Doc 08 phase 4's number. Long enough that it never interrupts somebody
+ * reading the start card, short enough that a judge who walked away from the
+ * tab comes back to the game rather than to a menu.
+ */
+const ATTRACT_AFTER_MS = 20_000;
 
 /**
  * The ablation, as three bars.
@@ -303,7 +398,36 @@ export function renderGate(root: HTMLElement): void {
     el("p", { class: "note" }, "Every marked thing carries its shape as well as its colour."),
   );
 
-  main.append(routes, card.section, ablationChart(), key.section);
+  // SPECTATE. For some judges this screen is the whole submission, and until
+  // now it described a game without ever showing one.
+  //
+  // Behind a button rather than autoplaying: this screen is read, not watched,
+  // and a canvas that starts moving under a paragraph somebody is reading is
+  // the thing attract mode is allowed to do on the landing screen and this is
+  // not that screen.
+  const watch = panel("Watch a shift instead");
+  const screen = ghostScreen();
+  screen.element.hidden = true;
+  const spectate = el("button", { type: "button", class: "spectate" }, "SPECTATE");
+  spectate.addEventListener("click", () => {
+    const playing = !screen.element.hidden;
+    screen.element.hidden = playing;
+    spectate.textContent = playing ? "SPECTATE" : "STOP";
+    if (playing) screen.stop();
+    else screen.play();
+  });
+  watch.body.append(
+    el(
+      "p",
+      {},
+      "A recording of a previous pair, from the station's own log. It is the same " +
+        "picture the Archive's monitor plays inside the game.",
+    ),
+    spectate,
+    screen.element,
+  );
+
+  main.append(routes, card.section, watch.section, ablationChart(), key.section);
   root.append(main);
 }
 
@@ -673,6 +797,54 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
       "Your agent opens the door. Paste it the prompt on the right first.",
     ),
   );
+
+  // The ablation, on the landing screen and folded away (doc 08 phase 4).
+  //
+  // A `<details>` rather than a scroll position, because the console is a deck
+  // that fills the viewport and has no fold to be under. It is the argument
+  // for why the game needs two players at all, so it belongs where somebody
+  // deciding whether to start one will meet it, and closed, because somebody
+  // who has already decided should not have to scroll past it.
+  const why = el("details", { class: "why" });
+  why.append(el("summary", {}, "Why does this need two of you?"), ablationChart());
+  launch.append(why);
+
+  // Attract mode: after twenty seconds of nothing, the start card starts
+  // playing a shift (doc 08 phase 4).
+  //
+  // The same recording SPECTATE plays on the gate screen and the same painter
+  // the Archive's monitor uses. It never survives a keystroke, a click or a
+  // pointer move, and it never starts under `prefers-reduced-motion`, where a
+  // page that begins animating on its own is precisely the thing being asked
+  // about.
+  const attract = ghostScreen();
+  attract.element.hidden = true;
+  launch.append(attract.element);
+  const stillness = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+  let idleTimer = 0;
+  function stopAttract(): void {
+    if (!attract.element.hidden) {
+      attract.element.hidden = true;
+      attract.stop();
+    }
+  }
+  function restartIdle(): void {
+    stopAttract();
+    globalThis.clearTimeout(idleTimer);
+    if (stillness || launch.hidden) return;
+    idleTimer = globalThis.setTimeout(() => {
+      // Only over the start card. Once a shift is running the room is the
+      // thing to look at and a recording over it would be a second station.
+      if (launch.hidden) return;
+      attract.element.hidden = false;
+      attract.play();
+    }, ATTRACT_AFTER_MS);
+  }
+  for (const event of ["keydown", "pointerdown", "pointermove"] as const) {
+    globalThis.addEventListener(event, restartIdle, { passive: true });
+  }
+  restartIdle();
+
   viewport.append(launch);
 
   const audible = el("p", { class: "audible", "aria-live": "polite" });
@@ -883,6 +1055,9 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
       // The start card is the only thing worth touching before a session
       // exists, and three buttons that can no longer do anything afterwards.
       launch.hidden = phase !== null && phase !== "ENTRY" && phase !== "LOBBY";
+      // A recording playing over a room the pair is standing in would be a
+      // second station. The card going away takes it with it.
+      if (launch.hidden) stopAttract();
 
       paintFloors(floorList, view, model.standing);
       paintGauge();

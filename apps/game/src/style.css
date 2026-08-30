@@ -1549,3 +1549,80 @@ button[hidden] {
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
+
+/**
+ * SPECTATE, attract mode, and the ablation folded into the start card.
+ *
+ * One canvas class for both, because they are the same picture: the recording
+ * `render/monitor.ts` paints, which is also what the Archive's monitor plays
+ * inside the game. The element is sized by CSS and drawn at its own fixed
+ * backing-store resolution, so the picture is the same on every screen and the
+ * browser does the scaling.
+ */
+.ghost-screen {
+  display: block;
+  width: 100%;
+  max-width: 24rem;
+  height: auto;
+  margin-top: var(--gap);
+  border: var(--edge);
+  border-radius: var(--radius);
+  background: var(--abyss);
+  /* A CRT is a soft surface. Nearest filtering here would make the ghost read
+     as pixel art, which is the one thing this renderer is not. */
+  image-rendering: auto;
+}
+
+.ghost-screen[hidden] {
+  display: none;
+}
+
+.spectate {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  padding: 0.45rem 1.1rem;
+  color: var(--lamp);
+  background: color-mix(in srgb, var(--lamp) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--lamp) 45%, transparent);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.spectate:hover,
+.spectate:focus-visible {
+  color: var(--lamp-bright);
+  background: color-mix(in srgb, var(--lamp) 18%, transparent);
+}
+
+/**
+ * The ablation on the landing screen, closed.
+ *
+ * The console is a deck that fills the viewport, so there is no fold for this
+ * to sit under; a disclosure is the same idea in a layout that does not
+ * scroll. Closed by default: it is the argument for playing, and somebody who
+ * has already decided to play should not have to get past it.
+ */
+.why {
+  margin-top: var(--gap);
+  border-top: var(--edge);
+  padding-top: var(--gap);
+}
+
+.why > summary {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--pearl-dim);
+  cursor: pointer;
+}
+
+.why > summary:hover,
+.why > summary:focus-visible {
+  color: var(--lamp);
+}
+
+.why .ablation {
+  margin-top: var(--gap);
+}

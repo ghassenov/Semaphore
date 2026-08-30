@@ -47,6 +47,18 @@ export default defineConfig({
         // the proxy has to forward the upgrade as well as the fetches.
         ws: true,
       },
+      // The recording SPECTATE and attract mode play. It is the worker's one
+      // route with no session behind it, so it does not live under `/session`
+      // and would otherwise be answered by this dev server with its own index
+      // page. In production `VITE_WORKER_ORIGIN` names the worker and no
+      // proxy is involved; in development the client asks its own origin and
+      // this is what forwards it. Without this entry the gate screen shows a
+      // monitor reading NO TAPE, which is a prop rather than an error, so
+      // nothing anywhere reports that it is broken.
+      "/ghost": {
+        target: process.env.WORKER_DEV_ORIGIN ?? "http://127.0.0.1:8787",
+        changeOrigin: true,
+      },
     },
     // Over a tunnel the page is served on https:443 while Vite still listens
     // on 5173, so the hot-reload socket has to be told where to call home or
