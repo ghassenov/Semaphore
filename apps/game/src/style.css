@@ -677,6 +677,14 @@ body::after {
  * unread.
  */
 .keys {
+  /*
+   * A full row of the wrapping flex container it sits in, the same way
+   * `.controls .note` is. Without it the list is a shrinkable flex item beside
+   * the action buttons, and a narrow drawer squeezes the grid until the
+   * descriptions wrap a character at a time - which is exactly the failure
+   * this list has already had once.
+   */
+  flex-basis: 100%;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 0.3rem 0.7rem;
@@ -686,11 +694,31 @@ body::after {
   font-size: 0.74rem;
 }
 
-.keys li {
+/*
+ * Each row hands its two parts straight to the grid above.
+ *
+ * **Specificity, not source order, and that is the bug this is fixing.**
+ * `.panel li` sets `display: flex` for the running lists - the log, the
+ * manifest, the notes - and sits several hundred lines further down this file
+ * at exactly the same specificity, so it won and this rule had never once
+ * applied. What that produced was four whole key rows laid into the grid's two
+ * *columns*, which in the old wide panel looked like a deliberate two-column
+ * list and went unquestioned for as long as the console has existed. In a
+ * 290px drawer the second column collapses to eleven pixels and every
+ * description wraps one character per line.
+ */
+.panel .keys li {
   display: contents;
 }
 
 .keys kbd {
+  /*
+   * A grid item stretches to its row by default, and a row is as tall as a
+   * description that wrapped, so without this the key caps grow into tall
+   * empty boxes beside a two-line line of text.
+   */
+  align-self: center;
+  justify-self: start;
   padding: 0.1rem 0.4rem;
   border: 1px solid color-mix(in srgb, var(--lamp-deep) 90%, transparent);
   border-radius: 2px;
