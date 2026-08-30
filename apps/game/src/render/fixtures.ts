@@ -43,12 +43,14 @@ import {
   SphereGeometry,
   Sprite,
   TorusGeometry,
+  Vector3,
 } from "three";
 import type { Fixture } from "./chamber.js";
 import { GAUGE_MAX, MONITOR_DEPTH } from "./chamber.js";
 import type { Dressing } from "./chamber.js";
 import { GLYPHS, glyphCanvas } from "./glyphs.js";
 import { CHANNEL, PALETTE } from "./palette.js";
+import { captionHeight } from "./camera.js";
 import type { Kit } from "./kit.js";
 
 /**
@@ -81,6 +83,9 @@ const CAPTION_FLOOR = 0.24;
 type Animator = (progress: number, elapsedMs: number, fixture: Fixture) => void;
 
 /** One fixture, built and drivable. */
+/** Scratch for the caption resize, so a frame allocates nothing. */
+const CAPTION_AT = new Vector3();
+
 export class FixtureView {
   readonly root = new Group();
   readonly #animate: Animator;
@@ -154,18 +159,14 @@ export class FixtureView {
       }
     }
 
-    if (fixture.label !== undefined) {
-      const caption = kit.label(fixture.label, CHANNEL[fixture.channel].key);
-      // A fixture may name its own caption height - a door's sign belongs above
-      // the doorway, not at the foot of the lever standing in front of it.
-      // Otherwise it hangs below the anchor, clamped in *world* height, because
-      // the anchor is what varies between a floor-standing lever and a gauge up
-      // a wall.
-      const drop = fixture.captionAt ?? Math.max(-CAPTION_DROP, CAPTION_FLOOR - fixture.at.y);
-      caption.position.set(0, drop, 0.3);
-      this.root.add(caption);
-      this.#readable.push({ material: caption.material, base: caption.material.opacity });
-    }
+    // **Through `#writeCaption`, never inline.** The constructor used to build
+    // its own caption here and leave `#caption` null, so the first `apply` saw
+    // no caption, wrote a second one, and every fixture in the game carried two
+    // stacked sprites for the rest of the session. It read as captions being
+    // washed out and slightly doubled - "DIAL 1" printed over "0/7" - which is
+    // the kind of fault that looks like a font problem and is not. One path in
+    // and the duplicate cannot come back.
+    if (fixture.label !== undefined) this.#writeCaption(fixture.label);
 
     // Placed at its true state rather than animated up to it.
     this.#wanted = fixture.on ? 1 : 0;
@@ -183,6 +184,22 @@ export class FixtureView {
     if (fixture.label !== undefined && fixture.label !== this.#caption?.text) {
       this.#writeCaption(fixture.label);
     }
+  }
+
+  /**
+   * Resize this fixture's caption so it reads the same at any camera distance.
+   *
+   * Called every frame from the stage, which is the only place that knows where
+   * the camera is. Cheap: a handful of sprites, one multiply each.
+   */
+  sizeCaption(cameraAt: Vector3, fovDegrees: number): void {
+    const caption = this.#caption;
+    if (caption === null) return;
+    const sprite = caption.sprite;
+    sprite.getWorldPosition(CAPTION_AT);
+    const height = captionHeight(CAPTION_AT.distanceTo(cameraAt), fovDegrees);
+    const aspect = (sprite.userData.aspect as number | undefined) ?? 4;
+    sprite.scale.set(height * aspect, height, 1);
   }
 
   /**
