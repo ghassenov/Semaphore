@@ -55,9 +55,10 @@ import {
 } from "./render/hud.js";
 import { roomPlan, roomTitle } from "./render/chamber.js";
 import { FLOOR_NAMES, activeFloor, stationFloors, type FloorId } from "./render/floors.js";
-import { CHANNEL_MARKER } from "./render/palette.js";
+import { CHANNEL, CHANNEL_MARKER, hex } from "./render/palette.js";
 import { describeRoom } from "./render/mirror.js";
 import { TAIL_MS } from "./render/ghost.js";
+import { GLYPHS, glyphCanvas } from "./render/glyphs.js";
 import { paintMonitor } from "./render/monitor.js";
 import type { GhostTrack } from "@semaphore/protocol";
 
@@ -68,8 +69,81 @@ const STARTER_PROMPT =
 
 const CHROME_FLAG = "chrome://flags/#enable-webmcp-testing";
 
+/**
+ * What KEEPER is told about the lever PILOT is looking at, near enough.
+ *
+ * Lifted in shape from `views.ts`'s own `describeChamber`, not invented: the
+ * landing screen's whole job is to show the split honestly, and a prettier
+ * sentence than the agent really gets would be a sales pitch for a different
+ * game. The one thing it may not contain is the glyph's name, for exactly the
+ * reason the game may not: naming it is PILOT's half of the work.
+ */
+const KEEPER_SIDE = [
+  "THE AIRLOCK. A cramped chamber, ankle-deep in cold water.",
+  "Three levers on the far wall: lever_a down, lever_b upright, lever_c upright.",
+  "Pulled so far: none.",
+  "You cannot see what is lit above them. PILOT can. Ask.",
+].join(" ");
+
 /** How many segments the ambiguity gauge in the rail is divided into. */
 const GAUGE_SEGMENTS = 12;
+
+/**
+ * The two halves of the game, side by side, on the screen that has to sell it.
+ *
+ * This is the thesis as a picture rather than as a paragraph: the *same* lever,
+ * rendered the two ways the two players receive it. The left is drawn with the
+ * game's own `glyphCanvas`, so it is the actual mark from the actual chamber
+ * and not an illustration of one; the right is the shape of text the agent
+ * actually gets.
+ *
+ * **The glyph is a canvas and it is never named.** Both are the same rule the
+ * chambers run on: a text node holding a glyph is one an agent with page access
+ * can scrape, and a lever captioned "spiral" deletes the puzzle. Here that rule
+ * is also the argument - the point being made is that this shape only becomes
+ * words if a person makes them.
+ */
+function heroSplit(): HTMLElement {
+  const split = el("div", { class: "split" });
+
+  const seen = el("figure", { class: "half half-pilot" });
+  seen.append(el("figcaption", { class: "half-who" }, "WHAT YOU SEE"));
+  const plate = el("div", { class: "half-plate" });
+  const mark = glyphCanvas(GLYPHS.spiral ?? [], 7);
+  // Tinted to PILOT's own channel, the same way `kit.glyphPlane` tints it in
+  // the station. `glyphCanvas` draws white on purpose so the caller decides
+  // the channel, and leaving it white here would have said "both of you can
+  // see this" on the one graphic whose entire argument is that only one of
+  // you can. `source-in` keeps the mark's shape and replaces its colour.
+  const ink = mark.getContext("2d");
+  if (ink) {
+    ink.globalCompositeOperation = "source-in";
+    ink.fillStyle = hex(CHANNEL.pilot.key);
+    ink.fillRect(0, 0, mark.width, mark.height);
+  }
+  mark.className = "half-glyph";
+  mark.setAttribute("role", "img");
+  mark.setAttribute("aria-label", "a mark on a plate, which only you can see");
+  plate.append(mark);
+  seen.append(
+    plate,
+    el("p", { class: "half-note" }, "A mark above one lever. You will have to put it into words."),
+  );
+
+  const told = el("figure", { class: "half half-keeper" });
+  told.append(el("figcaption", { class: "half-who" }, "WHAT YOUR AGENT GETS"));
+  told.append(
+    el("div", { class: "half-tool" }, KEEPER_SIDE),
+    el(
+      "p",
+      { class: "half-note" },
+      "Every lever feels the same. It can pull them. It cannot look.",
+    ),
+  );
+
+  split.append(seen, el("div", { class: "split-seam" }, "AND"), told);
+  return split;
+}
 
 /** Build one element, with text and attributes, in one call. */
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -894,14 +968,31 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
 
   // The start card, over the room, until there is a session.
   const launch = el("div", { class: "launch" });
-  launch.append(el("h3", {}, "Start the shift"));
+  const sheet = el("div", { class: "launch-card" });
+  launch.append(sheet);
+
+  // The identity, then the thesis, then the proof of the thesis. In that order
+  // because somebody who has just arrived does not yet know what this is, and
+  // the old card opened with three unlabelled buttons in an empty room.
+  const badge = el("div", { class: "launch-badge" });
+  badge.append(lampMark(34), el("p", { class: "launch-name" }, "SEMAPHORE"));
+  sheet.append(
+    badge,
+    el(
+      "h3",
+      { class: "launch-thesis" },
+      "An escape room for a human and an agent who cannot see the same room.",
+    ),
+    heroSplit(),
+    el("p", { class: "launch-claim" }, "Neither of you gets out alone. That is measurable."),
+  );
   // A `?chamber=` deep link, read once. The card says so rather than opening
   // three chambers in without explaining why: a judge who lands here from a
   // link should know they are being shown the middle of a session, and a
   // player who arrives by accident should know why the airlock is missing.
   const deepLink = startChamberFrom(globalThis.location.search);
   if (deepLink) {
-    launch.append(
+    sheet.append(
       el(
         "p",
         { class: "note deep-link" },
@@ -935,12 +1026,13 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
     });
     modes.append(button);
   }
-  launch.append(
+  sheet.append(
+    el("p", { class: "launch-go" }, "START THE SHIFT"),
     modes,
     el(
       "p",
       { class: "note" },
-      "Your agent opens the door. Paste it the prompt on the right first.",
+      "Your agent opens the door. Paste it the prompt from YOUR AGENT first.",
     ),
   );
 
@@ -953,7 +1045,7 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   // who has already decided should not have to scroll past it.
   const why = el("details", { class: "why" });
   why.append(el("summary", {}, "Why does this need two of you?"), ablationChart());
-  launch.append(why);
+  sheet.append(why);
 
   // Attract mode: after twenty seconds of nothing, the start card starts
   // playing a shift (doc 08 phase 4).
