@@ -40,6 +40,7 @@ import {
   Object3D,
   PlaneGeometry,
   SphereGeometry,
+  Sprite,
   TorusGeometry,
 } from "three";
 import type { Fixture } from "./chamber.js";
@@ -106,8 +107,21 @@ export class FixtureView {
   #wantedReveal = 1;
   /** Whether a lamp reading has ever been applied, so the first one snaps. */
   #lit = false;
+  /**
+   * The caption, and the text currently baked into it.
+   *
+   * A caption is a texture drawn once from a string, so a fixture whose label
+   * changes keeps showing the old one until something rebuilds it. Every
+   * changing label in the game was stale: a gauge read `0/7` after it had moved
+   * to `1/7`, a door said SEALED after it opened, the bolt count never
+   * advanced. Reloading the page fixed it, which is exactly the shape of a bug
+   * that is only ever seen by somebody playing rather than by a test.
+   */
+  #caption: { readonly sprite: Sprite; text: string } | null = null;
+  readonly #kit: Kit;
 
   constructor(kit: Kit, fixture: Fixture) {
+    this.#kit = kit;
     this.#fixture = fixture;
     this.root.position.set(fixture.at.x, fixture.at.y, fixture.at.z);
     this.root.rotation.y = fixture.facing ?? 0;
@@ -162,6 +176,40 @@ export class FixtureView {
   apply(fixture: Fixture): void {
     this.#fixture = fixture;
     this.#wanted = fixture.on ? 1 : 0;
+    // Only when the words actually change. A caption is a canvas, a texture and
+    // a material, so rebuilding one every frame would allocate three GPU
+    // objects sixty times a second for a string that changes twice a minute.
+    if (fixture.label !== undefined && fixture.label !== this.#caption?.text) {
+      this.#writeCaption(fixture.label);
+    }
+  }
+
+  /**
+   * Draw a caption, replacing whatever was there.
+   *
+   * The old sprite's slot in `#readable` goes with it, so the lamp keeps
+   * addressing the caption that is actually on screen rather than a freed one.
+   */
+  #writeCaption(text: string): void {
+    const previous = this.#caption;
+    if (previous !== null) {
+      const at = this.#readable.findIndex((part) => part.material === previous.sprite.material);
+      if (at >= 0) this.#readable.splice(at, 1);
+      previous.sprite.removeFromParent();
+    }
+
+    const fixture = this.#fixture;
+    const sprite = this.#kit.label(text, CHANNEL[fixture.channel].key);
+    // A fixture may name its own caption height - a door's sign belongs above
+    // the doorway, not at the foot of the lever standing in front of it.
+    // Otherwise it hangs below the anchor, clamped in *world* height, because
+    // the anchor is what varies between a floor-standing lever and a gauge up a
+    // wall.
+    const drop = fixture.captionAt ?? Math.max(-CAPTION_DROP, CAPTION_FLOOR - fixture.at.y);
+    sprite.position.set(0, drop, 0.3);
+    this.root.add(sprite);
+    this.#readable.push({ material: sprite.material, base: sprite.material.opacity });
+    this.#caption = { sprite, text };
   }
 
   /**
