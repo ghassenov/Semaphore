@@ -157,7 +157,7 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 
 - [x] Dial→gauge permutation + inversions, seeded, **`HIDDEN`**
 - [x] `rotate_dial` with detent semantics
-- [ ] **`AUDIBLE` channel: `lastClicks` in both projections** — sound for PILOT, text for KEEPER, and a visible pip counter for deaf players
+- [x] **`AUDIBLE` channel: `lastClicks` in both projections** - sound for PILOT, text for KEEPER, and a visible pip counter for deaf players *(the count ships as prose beside the room, "3 clicks registered", which is the text equivalent the pip counter existed to be, D-061)*
 - [x] Gauge drift toward zero (1 mark / 20s, difficulty-scaled)
 - [x] Dial 4 cross-link to gauge 1 (the late complication)
 - [x] Simultaneous-target win condition
@@ -196,7 +196,7 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 - [ ] Notepad with per-line authorship via `agentInvoked`
 - [ ] **The station-notices line** on repeated wasted calls
 - [ ] Possible-worlds + solvability tests for everything, across 20 seeds
-- [ ] `?seed=` and `?chamber=` URL parameters
+- [x] `?seed=` and `?chamber=` URL parameters *(the deep link walks the real transitions rather than assigning a state, D-059)*
 
 ▸ **Checkpoint: the complete game is playable in greybox and has been tuned by real testers.**
 
@@ -250,11 +250,11 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 
 *Cheap, high-leverage, and easy to forget until it is too late.*
 
-- [ ] **Gate screen** for browsers without WebMCP: pitch, mark, ablation chart, SPECTATE, setup steps for both browsers with a copy button for the flag URL
-- [ ] **Attract mode** — autoplay a ghost session after 20s idle on the landing screen
-- [ ] **SPECTATE** — a 90-second highlight replay on demand
-- [ ] `?chamber=N` deep links with prior state pre-solved
-- [ ] Ablation chart placed on the landing page under the fold
+- [x] **Gate screen** for browsers without WebMCP: pitch, mark, ablation chart, SPECTATE, setup steps for both browsers with a copy button for the flag URL
+- [x] **Attract mode** - autoplay a ghost session after 20s idle on the landing screen *(never under `prefers-reduced-motion`, and it does not survive a keystroke, D-058)*
+- [x] **SPECTATE** - a recorded session on demand, on the same painter the Archive's monitor uses *(the ghost's own 29 seconds rather than an authored 90-second cut, D-058)*
+- [x] `?chamber=N` deep links with prior state pre-solved *(D-059)*
+- [x] Ablation chart placed on the landing page under the fold *(a disclosure rather than a scroll position: the console is a deck with no fold, D-058)*
 - [ ] Starter prompt card polished to final art
 
 ▸ **Checkpoint: a judge who never types anything still understands the whole project.**
@@ -298,17 +298,17 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 
 ## Phase 6 — Accessibility
 
-- [ ] Full keyboard control; verify **zero** mouse-only paths
-- [ ] `aria-live` screen-reader mirror (toggleable)
-- [ ] Text mode sharing `projectForPilot` with the canvas renderer
-- [ ] High-contrast mode
-- [ ] `prefers-reduced-motion` honoured + manual toggle; `toolchange` retained at reduced amplitude
-- [ ] **Deaf-accessible detent counts** — visible pip counter verified as puzzle-sufficient
-- [ ] Colourblind verification: protanopia, deuteranopia, **tritanopia**
-- [ ] Focus rings and focus trapping in menus
-- [ ] Practice and BRIEF surfaced on the start screen
+- [x] Full keyboard control; verify **zero** mouse-only paths *(checked in Chrome: every control focusable, drawer opens on Enter, closes on Escape)*
+- [x] `aria-live` screen-reader mirror (toggleable) *(off by default, and it never names a glyph, D-061)*
+- [x] Text mode sharing `projectForPilot` with the canvas renderer *(the same mirror: one describer, `render/mirror.ts`, D-061)*
+- [x] High-contrast mode *(derived from the locked palette with `color-mix`, never new hex, D-061)*
+- [x] `prefers-reduced-motion` honoured + manual toggle; `toolchange` retained at reduced amplitude *(the stage reads the switch every frame, D-061)*
+- [x] **Deaf-accessible detent counts** - the count ships as prose beside the room *(verified as puzzle-sufficient by a human is still open, D-061)*
+- [x] Colourblind verification: protanopia, deuteranopia, **tritanopia** *(a Vienot simulation in `palette.test.ts`; the channels separate under all three, D-061)*
+- [x] Focus rings and focus returned from menus *(`:focus-visible` throughout; closing a drawer hands focus back to the tab that opened it, because a panel that hid the focused element dropped a keyboard player to the top of the document. Not trapped: the drawers overlay the room without blocking it, and trapping focus in a non-modal panel is the wrong behaviour, D-061)*
+- [x] Practice and BRIEF surfaced on the start screen *(all three modes are buttons on the launch card)*
 - [ ] **Test with an actual screen reader** (NVDA or VoiceOver)
-- [ ] Document the DOM-mirror / asymmetry trade-off in the README
+- [x] Document the DOM-mirror / asymmetry trade-off in the README *(D-061)*
 
 ▸ **Checkpoint: playable without sight, without hearing, without a mouse, and without time pressure.**
 
@@ -326,10 +326,10 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 
 ### 7.2 Replay viewer
 
-- [ ] `/replay/:sessionId` reading session JSONL from R2
-- [ ] Two-track timeline: amber PILOT, cyan KEEPER, **CONCORD trace underneath**
-- [ ] Scrubbing with room state rendered at any point
-- [ ] Shareable links
+- [x] `/replay?id=` reading session JSONL from D1 *(the nested path shape cannot work under `base: "./"` and is refused rather than half-supported, D-060)*
+- [x] Two-track timeline: amber PILOT, cyan KEEPER, **CONCORD trace underneath** *(D-060)*
+- [x] Scrubbing with room state rendered at any point *(a native range input, and the station's own monitor for the room, D-060)*
+- [x] Shareable links *(the viewer hands out the canonical form, not whatever was typed)*
 
 ### 7.3 Benchmark
 

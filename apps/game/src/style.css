@@ -1753,12 +1753,46 @@ button[hidden] {
 }
 
 /**
- * The card at the end of a session, carrying the replay link.
+ * The strip at the end of a session, carrying the replay link.
  *
- * Shares `.launch`'s shape because it occupies the same place over the room
- * and does the same job: it is the one thing worth touching at a phase where
- * the station is no longer asking anything of the pair.
+ * Along the foot of the room rather than over it. The first build reused the
+ * start card's full-bleed veil and covered the last shot of the game with a
+ * second copy of the headline the caption band was already showing. Doc 08
+ * phase 3.2 wants that frame held and let breathe, so this takes a band at the
+ * bottom and nothing else.
  */
+.ending {
+  position: absolute;
+  /* Along the *top* of the room, not the bottom.
+     `.viewport-caption` owns the bottom edge - it is `inset: auto 0 0 0` - and
+     the ending is the one phase where that band is carrying its longest copy.
+     A strip at the foot printed the replay button straight across "COLD AIR,
+     AND THE SOUND OF THE SEA". Two absolutely positioned bands over one
+     viewport have to be told which edge each one owns, or they agree to share
+     and neither is readable. */
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--gap);
+  padding: 0.9rem 1.5rem 1.6rem;
+  text-align: center;
+  background: linear-gradient(to bottom, #05070aee 0%, #05070a00 100%);
+}
+
+.ending[hidden] {
+  display: none;
+}
+
+.ending .note {
+  margin: 0;
+  max-width: 34rem;
+}
+
 .ending .spectate {
   display: inline-block;
   text-decoration: none;
