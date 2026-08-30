@@ -10,7 +10,7 @@ It answers three questions and only three: where the repo is right now, what to 
 
 | | |
 |---|---|
-| **Last updated** | 2026-08-30, Ahmed Saad |
+| **Last updated** | 2026-08-31, Ahmed Saad |
 | **Branch** | `feat/judge-path-replay-access`, off `main` at `84bbcb0` |
 | **Pipeline** | Green: **726 tests**, typecheck, lint, format, both `vite build`s plus the bundle budget and the palette check |
 | **Sound** | **Built and heard** (D-050, D-051). Listened to on a real machine on 2026-08-30 and signed off. Plan phase 5.2 in full: eight mechanism cues, the ambience bed, four timer-keyed tension layers, a behind-the-wall thump per KEEPER tool call, and a mix with a mute. Plus **a warm unresolved theme** on top, always on, which is a deliberate departure from doc 06's chiptune direction (D-051). All synthesised in `apps/game/src/audio/`; still no asset file of any kind. `PilotView` gained `seq`, without which the detents cannot repeat. |
@@ -67,6 +67,27 @@ It answers three questions and only three: where the repo is right now, what to 
 | `bench/` | Ablation and Cooperative Benchmark, both **re-run this session and byte-identical**, which is the determinism check passing. `benchmark.md` was a version behind on disk and is regenerated. Both entrypoints now resolve their paths from `import.meta.dirname`, so `pnpm ablation` and `pnpm benchmark` work from any directory - they used to write into `bench/bench/results` or crash. |
 
 ---
+
+## What landed on 2026-08-31
+
+The three review findings on the teammate's work are fixed: `deep_linked` now
+reaches D1 (it was recorded on the session and died at the persistence
+boundary, so the flag protected nothing), the replay's chamber labels measure
+themselves, and the fullscreen button is out from under the tab rail. The page
+no longer scrolls on a window that fits it: the console had a definite row plan
+but only a `min-height`, so `minmax(0, 1fr)` had no space to divide and the deck
+sized itself to the canvas's drawing buffer.
+
+Then the redesign (D-063, D-064): a landing screen and a gate screen that lead
+with the thesis and prove it with the split graphic, the ground palette retuned
+and the type lifted, real elevation on every surface, **a guided first shift in
+two layers**, and **told sequences opening and closing a shift**.
+
+**Two things to know before touching the visuals.** The channel hues are
+information and carry a measured colourblind guarantee - retuning them retunes
+the legend. And `check-palette.mjs` now fails on any hex written into a rule,
+not only on a token declaration, because twenty inline colours had accumulated
+behind the old check and eleven of them silently kept the previous palette.
 
 ## Do this next
 
