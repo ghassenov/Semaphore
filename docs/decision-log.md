@@ -1342,3 +1342,129 @@ against a live worker: 17 of 17 browser checks, and ten frames written and *read
 - the Archive's monitor unobstructed, the lean-in framed at eye height with the
 glyphs legible, and an ending that is a dark cathedral with a shaft of sea light
 across the floor instead of a grey box.
+
+---
+
+### D-049 The dial bank was claiming which gauge it drives
+
+**2026-08-30.** A fourth sitting, and the first with somebody playing KEEPER
+over the tool surface while somebody else watched the room. The Blind Panel
+gave up a defect in the first minute of being played rather than looked at.
+
+PILOT reported the chamber as "dial 1 has 0/2, dial 2 has 0/1, dial 3 has 0/6,
+dial 4 has 0/6", and then, after a probe, "dial 4 now turned from 0/6 to 1/6" -
+about a gauge that dial 4 does not drive. Nothing was wrong with the reporting.
+The renderer had told them that.
+
+**The dials were built inside the gauge loop, at the gauge's own `x`.** So
+`DIAL n` stood directly beneath `GAUGE n` for every n, in matched columns, in
+the one chamber whose entire secret is that the dial-to-gauge wiring is a random
+permutation. The renderer cannot know that wiring - it is `HIDDEN` and no
+projection carries it - so any alignment between the two banks is a claim the
+renderer is not entitled to make. This one was also false: the tour's own dump
+for the session played that afternoon reads `2>4, 4>2`.
+
+Two more faults fell out of the same shared loop and coordinate.
+
+**A gauge had no name.** Its only caption was its reading, `0/6`, so PILOT had
+no word for *which* `0/6` and the nearest handle in reach was the dial caption
+underneath. The pair needs a shared noun for a thing whose *value* stays
+PILOT's alone, and the server already had one: these are its own gauge ids. The
+caption is `GAUGE 3  0/6` now.
+
+**And a dial settled on the wrong gauge.** `buildDial` stops a settled dial
+turning, which is a cue PILOT can act on, and `on` was keyed to `value ===
+target` at the paired index - publishing the same false link, in motion, in
+every session whose permutation is not the identity. It settles on the *room*
+being solved now, which is a thing the renderer actually knows.
+
+Separately, at the gauge bank's eleven-metre spacing the outer two dials stood
+0.6m past the ends of a 9.5m grate, in a room whose own description puts every
+dial behind it. `GRATE_WIDTH` is one number shared with `fixtures.ts` now rather
+than two that disagreed, which is D-048's lesson about two positions measured
+from different origins, arriving for the third time.
+
+*Why no test saw it.* Every existing check was about a fixture's own fields -
+levels inside the scale, ids unique, no glyph in a caption. Not one was about
+the relation between two fixtures, which is where this lived. The three added
+are written as relations rather than as the coordinates that happen to be right
+today: no dial within 0.75m of a gauge's column, every dial inside the grate,
+and no dial `on` while the room is unsolved.
+
+*And the lesson, which is new.* The previous eleven defects were all found by
+looking at a frame. This one was found by **playing**, and it could not have
+been found by looking: the frame is unambiguous and perfectly composed, and it
+is composed into a lie. What exposed it was a second person having to *say the
+room out loud* to somebody who could not see it. That is the one instrument
+this project had not used on its own renderer, and it is the cheapest one it
+has: the game is about describing a room to somebody blind, so describing a
+room to somebody blind is the test.
+
+---
+
+### D-050 The station has a voice
+
+**2026-08-30.** Doc 06 section 11 and plan phase 5.2, built in full: the eight
+mechanism cues, the ambience bed, the four adaptive tension layers, the
+behind-the-wall sound of a KEEPER tool call, and the mix. It was the largest
+hole left in the art direction - the station looked like a place and sounded
+like nothing - and it is the half of the `AUDIBLE` channel that did not exist.
+
+**Options.** The `AUDIBLE` channel alone, roughly one module; cues plus the
+ambience bed; or all of 5.2 including the timer-keyed score. The last was
+chosen. The first two were the cheaper answers and the argument for them was
+that the music half moves no judging criterion the cues do not already move.
+
+**Everything is synthesised, and that is not a flourish.** D-044 took the last
+asset out of the bundle, and the client fetches no images, no fonts and no
+media at all. A reverb tail is exponentially decaying noise, which is cheaper
+to generate than to download. Entry chunk 16.9KB to 22.1KB gzipped of a 400KB
+budget; no new request of any kind.
+
+**Two of these are puzzle mechanisms rather than atmosphere.**
+
+The detents. Doc 02 section 3.3 has PILOT counting clicks through the grate to
+learn what KEEPER's rotation actually registered, so they are 180ms apart, never
+overlapped, identical every time, and the score ducks 6dB under them. A rotation
+that registers *nothing* is silent - which is itself the information, since it
+says the linkage is against a bound - and the tool call's own muffled thump is
+what still says KEEPER did something. That is the whole reason doc 06 asks for a
+per-tool-call sound, and it only became obvious while wiring the two together.
+
+And the tool call. PILOT cannot see what KEEPER is doing and can always hear
+that it is doing something, pitched off a hash of the tool name so a new tool
+gets its own note without anybody maintaining a table.
+
+**`PilotView` gains `seq`, without which none of it works.** Cues fire on the
+event counter, never on a diff of the facts. Two rotations that each register
+three clicks produce frames identical in every field, and PILOT has to hear six
+detents rather than three: "sound it only when something changed" hears the
+second rotation as silence, in the one chamber where the count *is* the puzzle.
+It leaks nothing - KEEPER already knows how many calls it has made.
+
+**The worker picks the cue, from the same branch that writes the subtitle.**
+Each chamber's `lastSound` returns a cue and its prose together, so a cue with
+no text equivalent cannot be added without deleting the other half on purpose.
+Doc 06 requires that and deaf players depend on it; making it structural was
+cheaper than remembering it. The vocabulary lives in `@semaphore/protocol`,
+because a vocabulary held separately at each end is a vocabulary that drifts.
+
+**The split that made it testable.** Web Audio does not exist in the test
+environment and never will, so every decision is in `audio/plan.ts` and is
+checked, and `voices.ts` decides nothing and only knows how a bolt sounds. This
+is the same pure/impure split `chamber.ts` and `stage.ts` already use, and it is
+the reason there are eleven tests here rather than none.
+
+**Sound is the one subsystem allowed to be absent.** A machine with no audio
+device throws on `new AudioContext()`, and a headless browser is one - the
+screenshot tour clicks the same launch card. It fails to silence rather than
+taking the session down.
+
+**Result.** 671 tests, up from 657. Pipeline green, palette check green, both
+builds green. Driven in Chrome 151 against a live worker: 17 of 17 browser
+checks, twice, with no console error from the audio graph.
+
+One thing the frames caught that no test would have: the three faders rendered
+as three identical unlabelled sliders. The control that has to be findable is
+the mechanism one, because a player who cannot hear the detents needs to turn
+the score down off the answer. They are named in the frame now.
