@@ -19,7 +19,7 @@
  * which this project does not use anywhere.
  */
 
-import { GameError, errors } from "@semaphore/protocol";
+import { CHAMBER_ORDER, GameError, errors, type ChamberId } from "@semaphore/protocol";
 import { appendEvent, gzipJsonl, readAllEvents } from "./log.js";
 import {
   ambiguityFor,
@@ -181,10 +181,19 @@ export class Session {
       return this.#act({ type: "begin_shift", designation: String(body.designation ?? "") });
     }
     if (pathname.endsWith("/start")) {
+      // `chamber` is the `?chamber=N` deep link (doc 08 phase 4). An unknown
+      // name is dropped rather than rejected: it is a convenience on a URL a
+      // judge may well hand-edit, and the right failure is a normal session
+      // from the beginning, not a session that refuses to start.
+      const asked = String(body.chamber ?? "");
+      const startAt = (CHAMBER_ORDER as readonly string[]).includes(asked)
+        ? (asked as ChamberId)
+        : undefined;
       return this.#act({
         type: "start",
         difficulty: (body.difficulty as PersistedSession["difficulty"] | undefined) ?? "standard",
         mode: (body.mode as "full" | "brief" | undefined) ?? "full",
+        ...(startAt ? { startAt } : {}),
       });
     }
     if (pathname.endsWith("/pull_lever")) {

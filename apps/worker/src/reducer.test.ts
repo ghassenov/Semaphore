@@ -142,6 +142,66 @@ describe("start", () => {
     ]);
   });
 
+  it("opens at the chamber a ?chamber= deep link asked for", () => {
+    const { session: begun } = reduce(fresh(), { type: "begin_shift", designation: "K" }, NOW);
+    const { session } = reduce(
+      begun,
+      { type: "start", difficulty: "standard", mode: "full", startAt: "concord_lock" },
+      NOW,
+    );
+    expect(session.machine.phase).toBe("IN_CHAMBER");
+    expect(session.machine.chamber).toBe("concord_lock");
+    // Reached through the real transitions, so the chamber it landed in has
+    // its generated state and its deadline exactly as a played session would.
+    expect(session.concordLock).not.toBeNull();
+    expect(session.deepLinked).toBe(true);
+  });
+
+  it("accepts ?chamber= for a chamber sitting behind the Archive", () => {
+    // blind_panel is the Archive trigger, so reaching concord_lock means the
+    // machine passed through ARCHIVE and had to leave it the way a pair does.
+    const { session: begun } = reduce(fresh(), { type: "begin_shift", designation: "K" }, NOW);
+    const { events } = reduce(
+      begun,
+      { type: "start", difficulty: "standard", mode: "full", startAt: "concord_lock" },
+      NOW,
+    );
+    const chambersOf = (type: "chamber_enter" | "chamber_solved") =>
+      events.flatMap((event) => (event.type === type ? [event.chamber] : []));
+    const entered = chambersOf("chamber_enter");
+    const solved = chambersOf("chamber_solved");
+    // The log says the session really passed through every earlier chamber,
+    // because it did. A replay reading this must not be told they were skipped.
+    expect(entered).toEqual(["airlock", "signal_room", "blind_panel", "concord_lock"]);
+    expect(solved).toEqual(["airlock", "signal_room", "blind_panel"]);
+  });
+
+  it("marks a normal session as not deep-linked", () => {
+    expect(begunSession().deepLinked).toBe(false);
+  });
+
+  it("ignores a chamber this mode does not contain", () => {
+    // BRIEF is 0, I and III (doc 02 section 7), so blind_panel is not in it.
+    const { session: begun } = reduce(fresh(), { type: "begin_shift", designation: "K" }, NOW);
+    const { session } = reduce(
+      begun,
+      { type: "start", difficulty: "standard", mode: "brief", startAt: "blind_panel" },
+      NOW,
+    );
+    expect(session.machine.chamber).toBe("airlock");
+    expect(session.deepLinked).toBe(false);
+  });
+
+  it("stops where it is when the deep link names the chamber it already opens in", () => {
+    const { session: begun } = reduce(fresh(), { type: "begin_shift", designation: "K" }, NOW);
+    const { session } = reduce(
+      begun,
+      { type: "start", difficulty: "standard", mode: "full", startAt: "airlock" },
+      NOW,
+    );
+    expect(session.machine.chamber).toBe("airlock");
+  });
+
   it("describes only what KEEPER's projection allows, never a glyph", () => {
     const session = begunSession();
     const glyphs = Object.values(session.airlock!.params.glyphByLever);

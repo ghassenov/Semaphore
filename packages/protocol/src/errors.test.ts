@@ -75,6 +75,21 @@ describe("the error taxonomy", () => {
     expect(err.message).toContain("7");
   });
 
+  it("says a field was absent rather than printing a hole in the sentence", () => {
+    // Every route coerces a missing argument to "" on the way in, so this is
+    // what an agent gets for `inspect({target})` when the parameter is called
+    // `object_id`: a plausible misspelling, and the most likely way to arrive
+    // here. "Received ." asserts an empty value was sent, which is a different
+    // and wrong repair from "you left the field out".
+    for (const absent of [undefined, null, ""]) {
+      const err = errors.invalidInput("object_id", "one of lever_a, lever_b", absent);
+      expect(err.message).toContain("Received nothing.");
+      expect(err.message).not.toContain("Received .");
+    }
+    // A value that really was sent is still quoted back verbatim.
+    expect(errors.invalidInput("dial_id", "1-4", 0).message).toContain("Received 0.");
+  });
+
   // Spec issue 262 argues WebMCP loses semantic context when tools disappear.
   // This message is our application-layer answer: it re-orients rather than
   // describing, because an agent that has lost the thread needs a next action.

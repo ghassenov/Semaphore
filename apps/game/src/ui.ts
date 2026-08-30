@@ -40,9 +40,10 @@
  * of them out here, the change is wrong.
  */
 
-import type { PilotView } from "@semaphore/protocol";
+import { CHAMBER_NAMES, type PilotView } from "@semaphore/protocol";
 import type { Fader, StationAudio } from "./audio/index.js";
-import type { SessionClient } from "./net/sessionClient.js";
+import { startChamberFrom, type SessionClient } from "./net/sessionClient.js";
+import { replayUrl } from "./replay.js";
 import type { StationModel } from "./render/station.js";
 import {
   LEGEND,
@@ -55,6 +56,10 @@ import {
 import { roomPlan, roomTitle } from "./render/chamber.js";
 import { FLOOR_NAMES, activeFloor, stationFloors, type FloorId } from "./render/floors.js";
 import { CHANNEL_MARKER } from "./render/palette.js";
+import { describeRoom } from "./render/mirror.js";
+import { TAIL_MS } from "./render/ghost.js";
+import { paintMonitor } from "./render/monitor.js";
+import type { GhostTrack } from "@semaphore/protocol";
 
 const STARTER_PROMPT =
   "You are KEEPER, maintenance intelligence of a derelict signal station. You cannot " +
@@ -143,24 +148,131 @@ function lampMark(size: number): SVGSVGElement {
  */
 function copyButton(label: string, source: () => string, target: HTMLElement): HTMLButtonElement {
   const button = el("button", { type: "button", class: "copy" }, label);
+  // The confirmation is announced, not just shown. This button's whole job is
+  // to be pressed once, by somebody who is about to switch to another window,
+  // and a state change that only exists as a colour tells a screen reader
+  // nothing about whether the thing they came for actually happened.
+  button.setAttribute("aria-live", "polite");
+  let restore = 0;
+
+  /** Say what happened, then go back to being an offer. */
+  function report(text: string, ok: boolean): void {
+    button.textContent = text;
+    button.classList.toggle("done", ok);
+    globalThis.clearTimeout(restore);
+    // It returns to its label rather than staying "Copied" for the rest of the
+    // session: a button stuck on its own past tense stops reading as something
+    // that can be pressed again, and a paste that went to the wrong window is
+    // exactly when somebody needs to press it again.
+    restore = globalThis.setTimeout(() => {
+      button.textContent = label;
+      button.classList.remove("done");
+    }, 2400);
+  }
+
   button.addEventListener("click", () => {
     void navigator.clipboard
-      .writeText(source())
+      ?.writeText(source())
       .then(() => {
-        button.textContent = "Copied";
+        report("Copied", true);
       })
       .catch(() => {
+        // Clipboard access can be refused outright, and a button that silently
+        // fails is worse than one that hands the job back. Selecting the text
+        // leaves the reader one keystroke from the same result.
         const range = document.createRange();
         range.selectNodeContents(target);
         globalThis.getSelection()?.removeAllRanges();
         globalThis.getSelection()?.addRange(range);
-        button.textContent = "Select and copy";
+        report("Selected - press Ctrl+C", false);
       });
   });
   return button;
 }
 
 /** The colour law, as a compact key rather than a panel. */
+/**
+ * The starter prompt, as a station requisition slip.
+ *
+ * **This is the single most important UI element in the project** (doc 02
+ * section 12, doc 04 section 2, doc 07 section 4): it is the thing that makes
+ * an agent engage at all, and it is on the never-cut list in the repo
+ * `CLAUDE.md`. Doc 04 asks for it "styled as a station requisition slip, with a
+ * copy button", carrying the prompt and a one-line fallback for the case where
+ * the agent still does not bite.
+ *
+ * ## One builder, two places
+ *
+ * It appears on the gate screen and in the console's YOUR AGENT drawer. Those
+ * were two hand-assembled copies, and they had already drifted: the gate's had
+ * no fallback line at all, which is the half of the card that rescues the
+ * interaction the other half failed to start. Building both from here is what
+ * stops the most important element in the project being the one nobody
+ * notices is wrong in one of its two homes.
+ *
+ * ## Why a slip rather than a quote block
+ *
+ * The prompt is a thing the station issues, not a thing the page says. Drawn as
+ * a form it reads that way: a torn top edge, a form number, a ruled ISSUE TO
+ * field naming KEEPER, the prompt typed into the body, and the split lamp
+ * stamped across the foot. All of it is CSS and the mark's existing SVG, so it
+ * costs no asset file (D-044) and no colour outside the locked set - the paper
+ * is pearl mixed down into the ink, which is what a form looks like under a
+ * sodium lamp rather than what it looks like in daylight.
+ *
+ * The prompt itself stays in the UI sans rather than the monospace the rest of
+ * the form furniture uses. Doc 06 reserves the monospace for identifiers and
+ * figures, and this is neither: it is the most-read paragraph in the project,
+ * and legibility beats the typewriter conceit.
+ */
+function promptCard(): HTMLElement {
+  const slip = el("section", { class: "slip" });
+
+  const head = el("div", { class: "slip-head" });
+  head.append(
+    el("span", { class: "slip-title" }, "STATION REQUISITION"),
+    el("span", { class: "slip-form" }, "FORM 14-B"),
+  );
+
+  // The field that says what is being requisitioned. In fiction the station is
+  // asking for an operator; in fact it is telling the human what to paste.
+  const field = el("div", { class: "slip-field" });
+  field.append(
+    el("span", { class: "slip-label" }, "ISSUE TO"),
+    el("span", { class: "slip-value" }, "KEEPER"),
+  );
+
+  const heading = el("p", { class: "slip-heading" }, "Paste this to your KEEPER");
+  const prompt = el("blockquote", { class: "prompt" }, STARTER_PROMPT);
+
+  const foot = el("div", { class: "slip-foot" });
+  // The stamp. Decorative, and marked so: a screen reader reading "authorised"
+  // out of a rubber stamp adds nothing a player can act on.
+  const stamp = el("span", { class: "slip-stamp", "aria-hidden": "true" });
+  stamp.append(lampMark(22), el("span", {}, "AUTHORISED"));
+  foot.append(
+    copyButton("Copy prompt", () => STARTER_PROMPT, prompt),
+    stamp,
+  );
+
+  slip.append(
+    head,
+    field,
+    heading,
+    prompt,
+    foot,
+    // Doc 04 section 2 asks for this line by name, and it belongs on both
+    // copies: it is the recovery path for the failure the card exists to
+    // prevent, and an agent that does not bite is the commonest one.
+    el(
+      "p",
+      { class: "note slip-note" },
+      "If your agent does not respond, ask it: what tools does this page give you?",
+    ),
+  );
+  return slip;
+}
+
 function legendRow(): HTMLElement {
   const list = el("ul", { class: "legend-row" });
   for (const row of LEGEND) {
@@ -170,6 +282,98 @@ function legendRow(): HTMLElement {
   }
   return list;
 }
+
+/**
+ * A recorded session, playing on a canvas: SPECTATE, and attract mode.
+ *
+ * Doc 08 phase 4 asks for two things that turn out to be one thing. A judge
+ * who never types anything should still be shown the game (SPECTATE), and a
+ * landing screen nobody has touched for twenty seconds should start showing it
+ * by itself (attract mode). Both are a recording of a session, and the station
+ * already has a surface that plays one: the Archive's monitor. `monitor.ts` is
+ * that surface's drawing routine, lifted out so this can be the same picture
+ * rather than a second drawing of it.
+ *
+ * **It costs the gate screen nothing.** The painter reaches `ghost.ts`,
+ * `plan.ts` and the palette, and none of those import Three.js, so a browser
+ * that cannot play the game still does not fetch the 143KB engine to be shown
+ * it. `scripts/check-bundle.mjs` is what keeps that true.
+ *
+ * The recording loops with its own tail on the end, because the tail is the
+ * beat: the ghost is holding a bar that they could not hold, and cutting
+ * straight back to the start reads as a loop rather than as an ending.
+ */
+function ghostScreen(): { element: HTMLElement; play: () => void; stop: () => void } {
+  const canvas = el("canvas", { class: "ghost-screen" });
+  canvas.width = 384;
+  canvas.height = 252;
+  // A recording is not the page's content, and a screen reader reading a
+  // scrub bar frame by frame is noise. The caption below it carries the fact.
+  canvas.setAttribute("role", "img");
+  canvas.setAttribute("aria-label", "A recording of a previous shift, playing.");
+
+  let track: GhostTrack | null = null;
+  let raf = 0;
+  let startedAt = 0;
+
+  // One fetch per page. The track is a projection of a constant fixture, and
+  // both callers here are on the same page.
+  loadGhost()
+    .then((loaded) => {
+      track = loaded;
+    })
+    .catch(() => {
+      // A gate screen that cannot reach the worker still has a gate screen.
+      // NO TAPE is what `paintMonitor` draws for a null track, and it is a
+      // prop rather than an error, which is the right thing to show here.
+      track = null;
+    });
+
+  function tick(now: number): void {
+    startedAt ||= now;
+    const span = (track?.durationMs ?? 0) + TAIL_MS;
+    paintMonitor(canvas, track, span > 0 ? (now - startedAt) % span : 0);
+    raf = globalThis.requestAnimationFrame(tick);
+  }
+
+  return {
+    element: canvas,
+    play: () => {
+      if (raf !== 0) return;
+      startedAt = 0;
+      raf = globalThis.requestAnimationFrame(tick);
+    },
+    stop: () => {
+      if (raf === 0) return;
+      globalThis.cancelAnimationFrame(raf);
+      raf = 0;
+    },
+  };
+}
+
+/**
+ * The recorded session both attract mode and SPECTATE play.
+ *
+ * `/ghost` is the worker's one route with no session behind it, because the
+ * gate screen has no session and cannot start one. The origin comes from the
+ * environment like every other origin in this client (repo CLAUDE.md section
+ * 3); empty means same-origin, which in development is the Vite proxy.
+ */
+async function loadGhost(): Promise<GhostTrack | null> {
+  const origin = import.meta.env.VITE_WORKER_ORIGIN ?? "";
+  const response = await fetch(`${origin}/ghost`);
+  if (!response.ok) return null;
+  return (await response.json()) as GhostTrack | null;
+}
+
+/**
+ * How long the landing screen waits before it starts playing by itself.
+ *
+ * Doc 08 phase 4's number. Long enough that it never interrupts somebody
+ * reading the start card, short enough that a judge who walked away from the
+ * tab comes back to the game rather than to a menu.
+ */
+const ATTRACT_AFTER_MS = 20_000;
 
 /**
  * The ablation, as three bars.
@@ -290,12 +494,10 @@ export function renderGate(root: HTMLElement): void {
   );
   routes.append(chrome.section, chatgpt.section);
 
-  const card = panel("Paste this to your agent once you are in");
-  const prompt = el("blockquote", { class: "prompt" }, STARTER_PROMPT);
-  card.body.append(
-    prompt,
-    copyButton("Copy prompt", () => STARTER_PROMPT, prompt),
-  );
+  // The slip carries its own heading, so it is not wrapped in a panel: two
+  // headings over one card is the "BACK TO AIRLOCK printed across PAGE MARKED"
+  // shape (D-054), one level up.
+  const card = promptCard();
 
   const key = panel("Who perceives what");
   key.body.append(legendRow());
@@ -303,7 +505,36 @@ export function renderGate(root: HTMLElement): void {
     el("p", { class: "note" }, "Every marked thing carries its shape as well as its colour."),
   );
 
-  main.append(routes, card.section, ablationChart(), key.section);
+  // SPECTATE. For some judges this screen is the whole submission, and until
+  // now it described a game without ever showing one.
+  //
+  // Behind a button rather than autoplaying: this screen is read, not watched,
+  // and a canvas that starts moving under a paragraph somebody is reading is
+  // the thing attract mode is allowed to do on the landing screen and this is
+  // not that screen.
+  const watch = panel("Watch a shift instead");
+  const screen = ghostScreen();
+  screen.element.hidden = true;
+  const spectate = el("button", { type: "button", class: "spectate" }, "SPECTATE");
+  spectate.addEventListener("click", () => {
+    const playing = !screen.element.hidden;
+    screen.element.hidden = playing;
+    spectate.textContent = playing ? "SPECTATE" : "STOP";
+    if (playing) screen.stop();
+    else screen.play();
+  });
+  watch.body.append(
+    el(
+      "p",
+      {},
+      "A recording of a previous pair, from the station's own log. It is the same " +
+        "picture the Archive's monitor plays inside the game.",
+    ),
+    spectate,
+    screen.element,
+  );
+
+  main.append(routes, card, watch.section, ablationChart(), key.section);
   root.append(main);
 }
 
@@ -452,6 +683,8 @@ function edge(side: "left" | "right"): {
   readonly drawer: HTMLElement;
   add(label: string, section: HTMLElement): void;
   close(): void;
+  open(label: string): void;
+  showing(): string | null;
 } {
   const tabs = el("nav", { class: `tabs tabs-${side}` });
   const drawer = el("aside", { class: `drawer drawer-${side}` });
@@ -487,6 +720,17 @@ function edge(side: "left" | "right"): {
   }
 
   function show(name: string | null): void {
+    // Where focus was, before anything is hidden underneath it.
+    //
+    // A drawer that closes while the keyboard is inside it leaves focus on an
+    // element that is no longer rendered, and the browser's answer to that is
+    // to drop the user at the top of the document - so Escape, which exists to
+    // get back to the room, instead costs a keyboard player their place
+    // entirely. Returning focus to the tab that opened the panel is where they
+    // were before they opened it, and it is the control that reopens it.
+    const wasInside = drawer.contains(document.activeElement);
+    const previous = open;
+
     open = name;
     for (const [id, section] of panels) section.hidden = id !== name;
     for (const [id, button] of buttons) {
@@ -495,6 +739,8 @@ function edge(side: "left" | "right"): {
       button.setAttribute("aria-expanded", String(on));
     }
     drawer.hidden = name === null;
+
+    if (name === null && wasInside && previous !== null) buttons.get(previous)?.focus();
   }
 
   grip.addEventListener("pointerdown", (event) => {
@@ -530,6 +776,12 @@ function edge(side: "left" | "right"): {
     close: () => {
       show(null);
     },
+    /** Open one panel by name, for a caller that knows which should be first. */
+    open: (label: string) => {
+      show(label);
+    },
+    /** Which panel is open, or null. Lets a caller tell "still mine" from "moved on". */
+    showing: () => open,
     add(label, section) {
       section.hidden = true;
       panels.set(label, section);
@@ -643,6 +895,20 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   // The start card, over the room, until there is a session.
   const launch = el("div", { class: "launch" });
   launch.append(el("h3", {}, "Start the shift"));
+  // A `?chamber=` deep link, read once. The card says so rather than opening
+  // three chambers in without explaining why: a judge who lands here from a
+  // link should know they are being shown the middle of a session, and a
+  // player who arrives by accident should know why the airlock is missing.
+  const deepLink = startChamberFrom(globalThis.location.search);
+  if (deepLink) {
+    launch.append(
+      el(
+        "p",
+        { class: "note deep-link" },
+        `This link opens at ${CHAMBER_NAMES[deepLink]}. Everything before it is already done.`,
+      ),
+    );
+  }
   const modes = el("div", { class: "launch-modes" });
   for (const [mode, blurb] of BEGIN_MODES) {
     const button = el("button", { type: "button" }, mode);
@@ -655,10 +921,14 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
       deps.audio.start();
       // Practice is a difficulty, not a mode: doc 02 section 7 makes it the
       // untimed preset of a full session rather than a shorter one.
-      const body =
-        mode === "practice"
+      const body = {
+        ...(mode === "practice"
           ? { difficulty: "practice", mode: "full" }
-          : { difficulty: "standard", mode };
+          : { difficulty: "standard", mode }),
+        // `?chamber=N`, if the URL carried one. The server drops a name it
+        // does not know, so a mistyped parameter starts a normal session.
+        ...(deepLink ? { chamber: deepLink } : {}),
+      };
       void deps.client.post("start", body).then((response) => {
         deps.onNote(`start ${mode}: ${response.text}`);
       });
@@ -673,6 +943,83 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
       "Your agent opens the door. Paste it the prompt on the right first.",
     ),
   );
+
+  // The ablation, on the landing screen and folded away (doc 08 phase 4).
+  //
+  // A `<details>` rather than a scroll position, because the console is a deck
+  // that fills the viewport and has no fold to be under. It is the argument
+  // for why the game needs two players at all, so it belongs where somebody
+  // deciding whether to start one will meet it, and closed, because somebody
+  // who has already decided should not have to scroll past it.
+  const why = el("details", { class: "why" });
+  why.append(el("summary", {}, "Why does this need two of you?"), ablationChart());
+  launch.append(why);
+
+  // Attract mode: after twenty seconds of nothing, the start card starts
+  // playing a shift (doc 08 phase 4).
+  //
+  // The same recording SPECTATE plays on the gate screen and the same painter
+  // the Archive's monitor uses. It never survives a keystroke, a click or a
+  // pointer move, and it never starts under `prefers-reduced-motion`, where a
+  // page that begins animating on its own is precisely the thing being asked
+  // about.
+  const attract = ghostScreen();
+  attract.element.hidden = true;
+  launch.append(attract.element);
+  const stillness = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+  let idleTimer = 0;
+  function stopAttract(): void {
+    if (!attract.element.hidden) {
+      attract.element.hidden = true;
+      attract.stop();
+    }
+  }
+  function restartIdle(): void {
+    stopAttract();
+    globalThis.clearTimeout(idleTimer);
+    if (stillness || launch.hidden) return;
+    idleTimer = globalThis.setTimeout(() => {
+      // Only over the start card. Once a shift is running the room is the
+      // thing to look at and a recording over it would be a second station.
+      if (launch.hidden) return;
+      attract.element.hidden = false;
+      attract.play();
+    }, ATTRACT_AFTER_MS);
+  }
+  for (const event of ["keydown", "pointerdown", "pointermove"] as const) {
+    globalThis.addEventListener(event, restartIdle, { passive: true });
+  }
+  restartIdle();
+
+  // The ending's other half (doc 08 phase 3.2): the link to the replay, on the
+  // same monitor the ghosts were on.
+  //
+  // It lives over the room like the start card does and appears only at
+  // ESCAPED, which is the one phase where the pair has stopped playing and has
+  // something to take away. The session's own id is the replay's id, so there
+  // is nothing to look up.
+  //
+  // It is *not* a `.launch` veil. The first build reused that class and put a
+  // dimmed full-bleed card over the last shot of the game, printing "The door
+  // is open" a second time across the caption band that was already saying it.
+  // Doc 08 phase 3.2 asks for the opposite: hold the balcony, let it breathe,
+  // and only then offer the stats. So this is a strip along the foot of the
+  // room that takes a little of the frame and covers none of the middle.
+  const ending = el("div", { class: "ending" });
+  ending.hidden = true;
+  const replayHref = replayUrl(deps.client.sessionId);
+  const replayLink = el("a", { class: "spectate", href: replayHref }, "WATCH THE REPLAY");
+  ending.append(
+    el(
+      "p",
+      { class: "note" },
+      "The whole shift is on the station's log: what you did, what your agent " +
+        "called, and the ambiguity between you.",
+    ),
+    replayLink,
+  );
+  viewport.append(ending);
+
   viewport.append(launch);
 
   const audible = el("p", { class: "audible", "aria-live": "polite" });
@@ -759,13 +1106,7 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
 
   // ---- KEEPER's surface, and the one surface they share. ------------------
 
-  const card = panel("Your agent");
-  const prompt = el("blockquote", { class: "prompt" }, STARTER_PROMPT);
-  card.body.append(
-    prompt,
-    copyButton("Copy prompt", () => STARTER_PROMPT, prompt),
-    el("p", { class: "note" }, "No response? Ask it: what tools does this page give you?"),
-  );
+  const card = promptCard();
 
   const manifestPanel = panel("Faculties");
   const manifestCount = el("span", { class: "count" }, "0");
@@ -804,12 +1145,107 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
    * on the other. The difference is that now neither side is in the way until
    * it is asked for.
    */
+  /**
+   * Access: the mirror, contrast and motion (doc 08 phase 6).
+   *
+   * On PILOT's edge because every switch here belongs to the person looking at
+   * the room. All three are off by default and all three are remembered for
+   * the session only: a setting that survived a reload would be a setting
+   * somebody turned on once and then could not explain.
+   */
+  const access = panel("Access");
+
+  /**
+   * The room in words, in an `aria-live` region.
+   *
+   * **This is the one sanctioned exception to the no-puzzle-values-in-DOM
+   * rule, and it is a trade-off rather than a loophole** (`CLAUDE.md`, and
+   * `render/mirror.ts` at length). A text node holding a fixture is one an
+   * agent with page access can scrape, and KEEPER not being able to see is the
+   * whole game. What keeps it honest is that it is off until the person it is
+   * for turns it on, and that the describer never names a glyph: the mark is
+   * still PILOT's to describe.
+   */
+  const mirrorToggle = el(
+    "button",
+    { type: "button", class: "access-toggle" },
+    "Describe the room",
+  );
+  mirrorToggle.setAttribute("aria-pressed", "false");
+  const mirrorBody = el("div", { class: "mirror", role: "region", "aria-live": "polite" });
+  mirrorBody.hidden = true;
+  mirrorToggle.addEventListener("click", () => {
+    mirrorBody.hidden = !mirrorBody.hidden;
+    mirrorToggle.setAttribute("aria-pressed", String(!mirrorBody.hidden));
+    paintMirror();
+  });
+
+  /** Repaint the mirror, but only when somebody is reading it. */
+  let mirrorView: PilotView | null = null;
+  function paintMirror(): void {
+    if (mirrorBody.hidden) return;
+    const lines = describeRoom(mirrorView);
+    mirrorBody.replaceChildren(...lines.map((line) => el("p", {}, line)));
+  }
+
+  /**
+   * Contrast and motion, as switches rather than only as media queries.
+   *
+   * `prefers-reduced-motion` is already honoured, and it is not enough on its
+   * own: it is a system setting, and somebody who wants the station still for
+   * this session should not have to change their whole desktop to get it. The
+   * same argument applies to contrast. Both set an attribute on the root and
+   * the stylesheet does the rest.
+   */
+  function rootSwitch(label: string, attribute: string): HTMLButtonElement {
+    const button = el("button", { type: "button", class: "access-toggle" }, label);
+    button.setAttribute("aria-pressed", "false");
+    button.addEventListener("click", () => {
+      const on = document.documentElement.hasAttribute(attribute);
+      if (on) document.documentElement.removeAttribute(attribute);
+      else document.documentElement.setAttribute(attribute, "");
+      button.setAttribute("aria-pressed", String(!on));
+    });
+    return button;
+  }
+
+  access.body.append(
+    mirrorToggle,
+    mirrorBody,
+    rootSwitch("High contrast", "data-contrast"),
+    rootSwitch("Reduce motion", "data-still"),
+    el(
+      "p",
+      { class: "note" },
+      "Describing the room puts what you can see into the page as text. Your agent " +
+        "can read the page, so this hands it part of your half. It is off unless you " +
+        "ask for it.",
+    ),
+  );
+
   west.add("Station", station.section);
   west.add("Your hands", controls.section);
-  east.add("Your agent", card.section);
+  west.add("Access", access.section);
+  east.add("Your agent", card);
   east.add("Faculties", manifestPanel.section);
   east.add("Activity", logPanel.section);
   east.add("Notepad", padPanel.section);
+
+  // The requisition slip is open when the page loads, and only then.
+  //
+  // Doc 02 section 12 and doc 04 section 2 both call it the single most
+  // important element on this screen, and D-052 put every panel behind a tab -
+  // which left it behind a *closed* one, so the thing that makes an agent
+  // engage at all was one click away from a player who did not know it existed.
+  // The start card tells them to paste the prompt on the right; the right had
+  // nothing visible on it.
+  //
+  // Once, though. It is opened here and never reopened, so a player who closes
+  // it has closed it: the room is the page (D-052), and a panel that kept
+  // coming back would be the console arguing with them.
+  east.open("Your agent");
+  /** Whether the opening slip has already given the room back. */
+  let handedOver = false;
 
   deck.append(west.tabs, viewport, east.tabs, west.drawer, east.drawer);
 
@@ -883,7 +1319,29 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
       // The start card is the only thing worth touching before a session
       // exists, and three buttons that can no longer do anything afterwards.
       launch.hidden = phase !== null && phase !== "ENTRY" && phase !== "LOBBY";
+      // A recording playing over a room the pair is standing in would be a
+      // second station. The card going away takes it with it.
+      if (launch.hidden) stopAttract();
 
+      // The slip hands the room over when the shift starts.
+      //
+      // It is opened on load because it is the most important element on the
+      // landing screen, and it has to get out of the way the moment there is a
+      // room, because the room is the page (D-052) and a panel overlaying its
+      // right third is the console talking over the game.
+      //
+      // Once, and only if it is still the panel this opened. A player who has
+      // moved to Faculties or Notepad by then is reading something they chose,
+      // and closing it would be the console overruling them.
+      if (launch.hidden && !handedOver) {
+        handedOver = true;
+        if (east.showing() === "Your agent") east.close();
+      }
+      // And the replay link, at the one phase where the pair has finished.
+      ending.hidden = phase !== "ESCAPED";
+
+      mirrorView = view ?? null;
+      paintMirror();
       paintFloors(floorList, view, model.standing);
       paintGauge();
       // The subtitle and the sound, one line apart, from one frame. Doc 06

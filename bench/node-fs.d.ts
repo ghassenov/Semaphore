@@ -13,3 +13,18 @@ declare module "node:fs" {
   export function writeFileSync(path: string, data: string, encoding: string): void;
   export function readFileSync(path: string, encoding: string): string;
 }
+
+/**
+ * `import.meta.dirname`, which Node has had since 20.11 and which the ES2022
+ * library does not declare.
+ *
+ * Both programs in this directory write their results beside their own source
+ * rather than beside whoever's shell started them. Anchoring to the module's
+ * directory is what makes `pnpm ablation` correct from `bench/`, from the repo
+ * root, and from anywhere else; resolving against the working directory meant
+ * the package's own scripts wrote into `bench/bench/results` or could not find
+ * the suite at all.
+ */
+interface ImportMeta {
+  readonly dirname: string;
+}

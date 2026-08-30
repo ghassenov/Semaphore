@@ -11,16 +11,19 @@ It answers three questions and only three: where the repo is right now, what to 
 | | |
 |---|---|
 | **Last updated** | 2026-08-30, Ahmed Saad |
-| **Branch** | `feat/room-traversal`, off `main` at `ee40c20` |
-| **Pipeline** | Green: 702 tests, typecheck, lint, format, both `vite build`s plus the bundle budget and the palette check |
+| **Branch** | `feat/judge-path-replay-access`, off `main` at `84bbcb0` |
+| **Pipeline** | Green: **726 tests**, typecheck, lint, format, both `vite build`s plus the bundle budget and the palette check |
 | **Sound** | **Built and heard** (D-050, D-051). Listened to on a real machine on 2026-08-30 and signed off. Plan phase 5.2 in full: eight mechanism cues, the ambience bed, four timer-keyed tension layers, a behind-the-wall thump per KEEPER tool call, and a mix with a mute. Plus **a warm unresolved theme** on top, always on, which is a deliberate departure from doc 06's chiptune direction (D-051). All synthesised in `apps/game/src/audio/`; still no asset file of any kind. `PilotView` gained `seq`, without which the detents cannot repeat. |
 | **Doors and the way back** | **Every door stands in an opening you can actually walk through, and PILOT can go back through one** (D-053 to D-055). `doorways.ts` holds each room's openings room-local and its test derives the real ones from `stationCells`; two openings could not carry a door (a south face, and eleven metres of gauge bank) so the **corridors were rerouted**, not the doors. `Q` at an open door walks PILOT back into a room the pair has already cleared, drawn from the last frame the server sent for it with its doors opened by `asCleared`. Nothing crosses the wire: the clock keeps running, KEEPER's 14 tools are untouched, and KEEPER's body is not drawn in a room the session has left. Every room also got a decoration and ambient-motion pass, including the two that had never had a composition pass. |
 | **Console** | **Rebuilt around the room** (D-052). The room fills the deck and is centred; panels live behind labelled tabs on the two edges, open on demand, one per edge, resizable by drag or arrow keys, closed with Escape. Deeper ground, a grain layer, a beacon sweep on the start card and the gate, and PILOT has four poses and a flickering lamp. Channel colours untouched. |
 | **Interface** | **Rebuilt in real-time 3D** (D-042 to D-045). Phaser and the tile renderer are gone. The station is a lit cutaway model: rooms open at the top and on their south face, camera always to the south, four lights and no post-processing. New colour language (D-043), procedural assets and **no asset files at all** (D-044), and a console laid out as two surfaces with the room between them (D-045). |
 | **Licence** | **MIT throughout again.** The vendored art pack went with the tile renderer, so `LICENSE` has no carve-out (D-044). |
-| **Toured** | **21 of 21 browser checks and eleven frames, on Chrome 151, 2026-08-30.** The tour now walks back through a door and forward again, and checks the key, the cached room, the console header and that the session never notices. It found four defects, all of them in the frames and none in 700 passing tests: `E` held at a door hijacking the lean-in (it is `Q` now, edge-triggered), arriving in a chamber standing PILOT in the doorway and dragging the camera onto the outside of a wall, `BACK TO AIRLOCK` printed across `PAGE MARKED`, and the console growing a horizontal scrollbar when a room name got eight characters longer. All fixed, and captions are now checked by projection as well as by anchor. |
+| **Toured** | **25 of 25 browser checks and eleven frames, on Chrome 151, 2026-08-30.** The tour now waits on the camera's own `data-settled` flag instead of a copied `WALK_MS + SHOT_MS` (D-056), which had already gone wrong: the Archive's frame was taken at 2000ms against a 2400ms arrival, so every tour since the doors landed photographed that beat as the station from four hundred metres up, with all twenty-one assertions green. It also checks the ending's replay link, and runs a third faster. Earlier: **21 of 21 on Chrome 151.** The tour now walks back through a door and forward again, and checks the key, the cached room, the console header and that the session never notices. It found four defects, all of them in the frames and none in 700 passing tests: `E` held at a door hijacking the lean-in (it is `Q` now, edge-triggered), arriving in a chamber standing PILOT in the doorway and dragging the camera onto the outside of a wall, `BACK TO AIRLOCK` printed across `PAGE MARKED`, and the console growing a horizontal scrollbar when a room name got eight characters longer. All fixed, and captions are now checked by projection as well as by anchor. |
 | **Played** | A full session end to end in Chrome 152 against a live `wrangler dev`: all four chambers, the Archive, the finale, the ending. 17/17 browser checks green on the single-origin path. **A second pass on a real machine found five more defects, all of them things a frame shows and no test does** (D-046, D-047): neighbouring rooms crowding a room shot, hidden masonry left as lit plates, the Archive's beams across its own monitor, KEEPER's body sharing a wall with a shelf rack, and every fixture carrying two stacked captions. All fixed. **A third pass then found six more in the two beats nobody had inspected** (D-048): the finale drew an empty room for its last two phases, an open door showed a crack instead of its opening, the bolt ring floated over the lintel, its count printed on top of the door sign, the room lit itself flat with the door open, and a pendant hung between the camera and the Archive monitor. All fixed. The tour now also presses `E`. **A fourth pass was *played* rather than looked at** - one person as PILOT in the browser, one driving KEEPER over the worker's HTTP tool surface - and found a twelfth that no frame could show (D-049): the Blind Panel drew `DIAL n` directly beneath `GAUGE n`, asserting the one thing that chamber exists to withhold. Fixed. |
-| **Bundle** | Entry **25.4KB** gzipped of a 400KB budget: 5.5KB of audio, 1.8KB of the console rework and 1.2KB of the doors. Three.js is a **143KB** chunk fetched only when a shift starts, against Phaser's 358KB. No images, no fonts, no asset requests at all. |
+| **Judge path** | **Built, and phase 4 is now complete** (D-058, D-059, D-062). SPECTATE on the gate screen, attract mode after twenty seconds on the landing screen, the ablation folded into the start card, and `?chamber=N` deep links that walk the real transitions rather than assigning a state. All three recorded-session surfaces share one painter, `render/monitor.ts`, which uses a 2D context so the gate never fetches Three.js. The starter prompt card is a **station requisition slip** now, doc 04's own art direction: one builder for both homes, open on the landing screen, and it hands the room over when the shift starts. |
+| **Replay viewer** | **Built** (D-060). `/replay?id=<session>` reads the gzipped D1 row and draws two tracks over one axis - amber PILOT, cyan KEEPER - with the CONCORD trace underneath and the station's own monitor beside it, scrubbable. The ending links to it. It is a **projection**: `state_delta` never leaves the server, because a seed is reproducible and a replay URL is meant to be shared. |
+| **Accessibility** | **Built** (D-061). Doc 08 phase 6 bar the screen-reader session. An Access panel on PILOT's edge: the room described into an `aria-live` region (off by default, never names a glyph), high contrast derived from the locked palette, and a reduce-motion switch the stage reads every frame. Colourblind verification is now a Vienot simulation over all three dichromacies in `palette.test.ts`. |
+| **Bundle** | Entry **30.4KB** gzipped of a 400KB budget, up from 25.4KB across all of phases 4, 6 and 7.2. Three.js is still a **143KB** chunk fetched only when a shift starts. No images, no fonts, no asset requests at all. |
 | **Archive** | Both halves still built (D-039). KEEPER calls `read_station_log`; PILOT watches the same log on a CRT drawn to a canvas. The exclusion is asserted in both directions, on the projection and again on the wire. |
 | **Delegation** | Working and proved. `ARCHIVE_ORIGIN` stays `same` (D-033). `tests/cross-origin-delegation.ts` is also the screenshot tour: `SHOTS=<dir>` writes a frame at every beat and is a no-op without it. |
 | **Ablation / Benchmark** | Unchanged and still published (D-040, D-041). Nothing in the last two reworks touched `bench/`, `apps/worker/`, `packages/` or the possible-worlds proof. |
@@ -39,7 +42,13 @@ It answers three questions and only three: where the repo is right now, what to 
 | `apps/worker/**` | Done. The only change since the 3D rework is that each chamber's `lastSound` now returns a cue beside its prose, from one branch (D-050). Four chambers, the reducer, the Archive beat, the timer, the read-only tool surface, the manual, PILOT's view socket, CONCORD, the notepad. |
 | `apps/game/src/webmcp/*` | Done and untouched. Adapter, three-tier director, 14 tools, the archive frame. |
 | `apps/game/src/net/*` | Done and untouched. |
-| `apps/game/src/render/palette.ts` | **New.** "Low Tide": 20 colours in two locked sets. Channel colours carry information; ground and material colours carry none. |
+| `apps/game/src/render/palette.ts` | "Low Tide": 20 colours in two locked sets. Its test now simulates protanopia, deuteranopia and tritanopia and holds the two channels apart under all three (D-061). |
+| `apps/game/src/render/monitor.ts` | **Pure-ish. New** (D-058). One recorded-session picture, drawn with a 2D context and nothing else. The Archive's CRT, SPECTATE, attract mode and the replay viewer all use it, which is what keeps Three.js off the gate screen's path. |
+| `apps/game/src/ui.ts` (`promptCard`) | **New** (D-062). The requisition slip, built once for the gate screen and the console drawer. The tour asserts it is whole and on screen, not merely present. |
+| `apps/game/src/render/mirror.ts` | **Pure. New** (D-061). The room in words, for the accessibility mirror. Never names a glyph; `mirror.test.ts` asserts that for every chamber. |
+| `apps/game/src/replay.ts` | **New** (D-060). The `/replay?id=` viewer: two tracks, the CONCORD trace, the monitor and a native range scrubber. `replayIdFrom` is the route match and refuses the path form. |
+| `apps/worker/src/replay.ts` | **Pure. New** (D-060). Projects a finished session for the viewer. Drops every `state_delta`, which is where the `HIDDEN` fields are. |
+| `apps/game/public/_redirects` | **New.** Pages routing for `/replay`, and only that shape. Its comment says why the nested one is not routed. |
 | `apps/game/src/render/glyphs.ts` | **New.** The twelve glyphs, pixel maps carried over unchanged from `sprites.ts`. Still the one thing with hard edges. |
 | `apps/game/src/render/chamber.ts` | **Pure. New.** What is in a room, as fixtures in metres. Replaces `room.ts`'s tile plans. Now also places every door from `doorways.ts`, moves KEEPER's alcove off whichever doorway is in the east wall, and holds `asCleared` (D-053, D-054). |
 | `apps/game/src/render/doorways.ts` | **Pure. New** (D-053). Which wall of each room has a hole in it, room-local, per mode. Its own module because the fact belongs beside the corridors and `plan.ts` imports `chamber.ts`, so putting it there would close a cycle. Also `doorLeadsTo`, which is the whole gate for walking back. |
@@ -55,13 +64,40 @@ It answers three questions and only three: where the repo is right now, what to 
 | `apps/game/scripts/check-palette.mjs` | **New.** Holds `style.css` and `palette.ts` to the same values, both directions, on every build. Replaces `check-art.mjs`. |
 | `tests/possible-worlds.test.ts` | Done and passing for all four chambers. Untouched. |
 | `tests/cross-origin-delegation.ts` | The browser proof and the screenshot tour. Its wait is stated against the camera's own constants, `shotHolding` presses `E` so the lean-in has a frame (D-047), and it now walks back through a door and forward again (D-054). 21 checks, eleven frames. |
-| `bench/` | Ablation and Cooperative Benchmark, both run and published. Untouched. |
+| `bench/` | Ablation and Cooperative Benchmark, both **re-run this session and byte-identical**, which is the determinism check passing. `benchmark.md` was a version behind on disk and is regenerated. Both entrypoints now resolve their paths from `import.meta.dirname`, so `pnpm ablation` and `pnpm benchmark` work from any directory - they used to write into `bench/bench/results` or crash. |
 
 ---
 
 ## Do this next
 
 In order. Each item ends somewhere the pipeline is green and the repo is committable.
+
+### 0. What this session closed, so nobody re-does it
+
+Doc 08 **phase 4 (the judge path), phase 6 (accessibility) and phase 7.2 (the
+replay viewer)** are built and verified in Chrome (D-056 to D-062). **Phase 4 is
+complete**, including the starter prompt card's art.
+
+Four defects were found and fixed on the way, and three of them were only
+findable by running the thing:
+
+- The tour photographed the Archive beat from four hundred metres up, in runs
+  whose twenty-one assertions were green (D-056).
+- `inspect({target})` told an agent `Received .` (D-057).
+- A failed fetch drew `NO TAPE`, which is a **prop**, so nothing reported a
+  failure and the first check passed on it (D-058).
+- The replay page was blank in production and perfect in development, twice over
+  (D-060).
+- The starter prompt card, which is on the never-cut list, existed as two
+  hand-assembled copies and the gate's had silently lost its fallback line
+  (D-062).
+
+**The stale-server trap cost the first hour and will cost yours.** Two previous
+sessions had left a `vite` on 5173 and a Chrome on 9222. The tour ran green
+against a seven-hour-old build and reported failures that were not in this
+checkout. Before trusting any browser run: `ss -ltnp | grep -E ':(5173|8787|9222)'`,
+kill what is there, and start Vite with `--strictPort` so it cannot quietly
+land on 5175.
 
 ### 1. Keep playing and fixing, and play it properly this time
 
@@ -149,6 +185,13 @@ constant - ambient at 0.62, the doorway spotlight at 110, the caption's 0.032 of
 viewport height - was set by looking at a 1400x900 desktop window, and two
 things have now been measured going wrong at narrower ones. See item 2a. (The
 Signal Room and the Concord Lock have had their composition pass, D-055.)
+
+**Four new surfaces have been proved but never played.** The Access panel's
+mirror (is a room actually describable from it, by somebody who cannot see the
+canvas?), SPECTATE and attract mode on the gate (does a judge who lands there
+watch it?), the replay viewer (does the two-track picture say anything to
+somebody who was not in the session?), and `?chamber=N`. Every one of them
+passed a scripted check and none has met a person.
 
 **And `Q` is new.** Walking back through an open door (D-054) has been proved in
 a browser by the tour but never *played*. What a script cannot tell you: whether
@@ -278,6 +321,14 @@ seconds with zero tokens. Budget the tokens before running, not after.
 - **Never import Three.js from a module the entry chunk reaches.** `render/station.ts`'s dynamic `import("./stage.js")` is the boundary. `scripts/check-bundle.mjs` fails the build when it is crossed, which is the only thing that will tell you.
 - **A sentinel guard is only as good as the number of ways a value can arrive.** The camera's "do not hold the building on the first room" guard tested `wasOn !== undefined`, and the lobby frame set it to `null` first, so every room shot in the first tour was the wide shot.
 
+### The instruments that watch the game
+
+- **A stale dev server is the most expensive bug in this repo and it does not look like a bug.** A `vite` from a previous session on 5173 and a Chrome on 9222 made a fresh tour report seven failures that existed in nobody's checkout. Check the ports and use `--strictPort`; Vite silently walking to 5175 is what makes this survivable-looking.
+- **A number copied out of another module cannot hear it change** (D-056). The tour's screenshot wait was a hand-typed `WALK_MS + SHOT_MS` living in a different package from the constants, and it was already 400ms short. It now polls `data-settled`, which the stage sets from the easing itself.
+- **A prop is not an error** (D-058). `NO TAPE` is what the monitor is *meant* to draw for a null recording, so a broken fetch produced a screen nothing reported and a check asking "is anything lit" passed on it. Assert the thing, never its brightness.
+- **A check that matches substrings will fail on a word that contains one.** The mirror's glyph test tripped on `cross` inside `across`. Narrowing the match is the fix; widening what counts as a leak never is.
+- **A key event without its `char` half does not activate a button.** A keyboard-accessibility check reported the drawer unreachable when the drawer was fine. Dispatch `rawKeyDown`, `char` and `keyUp`, or the harness is testing itself.
+
 ### The console
 
 - **A CSS grid column defaults to `auto`, which floors at its content's min-content width.** The console is a grid and its rail is a flex row of nowrap parts, so with no `grid-template-columns` the rail sized itself to its contents and took the page with it - a horizontal scrollbar and the east tab rail off the edge of the window, the moment a room name grew by eight characters. `min-width: 0` on the shrinkable child cannot help: the column has already grown to give it room.
@@ -318,7 +369,10 @@ seconds with zero tokens. Budget the tokens before running, not after.
 - Never weaken an asymmetry check to go green. It is the one class of change that is never accepted.
 - The possible-worlds proof is scoped, deliberately (D-009). If a chamber fails it, the chamber is wrong, not the test.
 - **`tests/` is a workspace package** (`@semaphore/tests`); import `@semaphore/worker/chambers/airlock`, not a relative path.
-- **D1 migrations are not automatic.** Run both the local and `--remote` `wrangler d1 execute` from `apps/worker/`.
+- **D1 migrations are not automatic.** Run both the local and `--remote` `wrangler d1 execute` from `apps/worker/`. The local database in this checkout had **no `sessions` table at all** until this session applied it, which nothing noticed because the only writer swallows its failure on purpose so a finished session never breaks on a logging error.
+- **D1 hands a BLOB back as an array of byte numbers**, not the `ArrayBuffer` the types say or the `Uint8Array` that was written. `new Blob([thatArray])` does not fail; it stringifies it, and the only symptom is `Decompression failed` from a line that looks right.
+- **`base: "./"` means no route may be nested** (D-060). Relative asset paths resolve against the URL's directory, so `/replay/abc` asks for `/replay/assets/...` and comes up blank - in production only, since Vite serves an absolute entry in development. Any new page route is a query on an existing path, or it is a build-config decision.
+- **A page and an API may not share a URL when the API sets `cache-control`.** A navigation to a URL the page had already fetched was served the cached JSON: one request, 200, no modules loaded.
 
 ---
 
@@ -334,6 +388,7 @@ seconds with zero tokens. Budget the tokens before running, not after.
 | Socket behaviour through Cloudflare's edge | Human | Verified against local `workerd` only. |
 | Chamber II's drift rate | Whoever holds the design | Blocked on doc 11 sections 6 and 7. Re-run `ablation` and `benchmark` after any change. |
 | Per-model benchmark numbers | Human | Harness done and free to run. Needs a backend behind the tool surface. |
+| A real screen reader | Human | The accessibility mirror is built and checked against the accessibility tree, never against NVDA or VoiceOver. Doc 08 phase 6's last line. |
 | Repo made public | Human | Deliberately deferred to just before the deadline. |
 | Doc 03 section 10 wording fix | Whoever writes submission copy | It claims "server-generated ID"; the real guarantee is zero PII (D-023). |
 | Submission copy refresh | Whoever writes it | Doc 10 section 3.4 and doc 09's shot list both describe the pixel renderer and its files. The claims are unchanged; the file paths and the pictures are not. |
