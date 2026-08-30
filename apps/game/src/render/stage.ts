@@ -104,10 +104,10 @@ import {
 import { activeFloor, previousFloor, stationFloors, type FloorId } from "./floors.js";
 import { doorLeadsTo, doorsOf, type Doorway } from "./doorways.js";
 import { isTypingTarget } from "./hud.js";
-import { ghostFrame } from "./ghost.js";
+import { paintMonitor } from "./monitor.js";
 import { FixtureView, buildDressing } from "./fixtures.js";
 import { KeeperBody, buildPilot, type PilotPose } from "./keeper.js";
-import { CHANNEL, PALETTE, hex } from "./palette.js";
+import { CHANNEL, PALETTE } from "./palette.js";
 import { Kit } from "./kit.js";
 import type { StationModel } from "./station.js";
 
@@ -741,79 +741,18 @@ export function createStage(
     }
   }
 
-  /** Draw the ghost onto the monitor's canvas. */
+  /**
+   * Draw the ghost onto the monitor's canvas.
+   *
+   * The picture itself lives in `monitor.ts`, because the gate screen plays
+   * the same recording and must not reach a module that imports Three.js to
+   * do it. What stays here is the pair of things that are this scene's and
+   * not the picture's: when playback started, and telling the texture the
+   * canvas underneath it changed.
+   */
   function paintScreen(track: PilotView["ghost"], elapsedMs: number): void {
-    const context = screenCanvas.getContext("2d");
-    if (!context) return;
-    const { width, height } = screenCanvas;
-
-    context.fillStyle = hex(PALETTE.abyss);
-    context.fillRect(0, 0, width, height);
-
-    if (track === null) {
-      context.fillStyle = hex(PALETTE.lampDeep);
-      context.font = "600 22px ui-monospace, Menlo, monospace";
-      context.textAlign = "center";
-      context.fillText("NO TAPE", width / 2, height / 2);
-      screenTexture.needsUpdate = true;
-      return;
-    }
-
     ghostFrom ??= elapsedMs;
-    const frame = ghostFrame(track, elapsedMs - ghostFrom);
-
-    // The designation. A session log carries no other name, and it is the
-    // reason the beat lands at all: the pair are watching somebody.
-    context.fillStyle = hex(PALETTE.lampDeep);
-    context.font = "600 17px ui-monospace, Menlo, monospace";
-    context.textAlign = "left";
-    context.fillText(track.designation, 14, 26);
-
-    // The room the ghost was in, as a plan at its true proportion.
-    const bandTop = 40;
-    const bandHeight = height - 96;
-    const scale = Math.min((width - 60) / frame.width, bandHeight / frame.depth);
-    const planWidth = frame.width * scale;
-    const planDepth = frame.depth * scale;
-    const planX = (width - planWidth) / 2;
-    const planY = bandTop + (bandHeight - planDepth) / 2;
-
-    context.strokeStyle = hex(frame.ended ? PALETTE.lampDeep : PALETTE.lamp);
-    context.lineWidth = 2;
-    context.strokeRect(planX, planY, planWidth, planDepth);
-
-    // The ghost, walking. Every position between two beats is `ghost.ts`'s
-    // invention: PILOT's position is client-local and no session log has ever
-    // carried it. The beats themselves are real, which is what makes the
-    // interpolation honest rather than a fiction.
-    const bodySize = Math.max(6, scale * 0.9);
-    const bodyX = planX + frame.walk * (planWidth - bodySize);
-    const bodyY = planY + planDepth - bodySize - 4;
-    context.fillStyle = hex(frame.ended ? PALETTE.lampDeep : PALETTE.lamp);
-    context.fillRect(bodyX, bodyY, bodySize, bodySize);
-    // Gripping is the one posture worth drawing: the ghost is holding the bar,
-    // and the reason the recording stops is that they could not hold it.
-    if (frame.gripping) context.fillRect(bodyX, bodyY - bodySize - 2, bodySize, bodySize);
-
-    // One line, centred, saying what is happening.
-    context.fillStyle = hex(frame.ended ? PALETTE.pearl : PALETTE.lamp);
-    context.font = "600 16px ui-monospace, Menlo, monospace";
-    context.textAlign = "center";
-    context.fillText(frame.caption, width / 2, height - 34);
-
-    // The scrub bar, so a pair arriving part way through can see there is a
-    // beginning to wait for.
-    context.fillStyle = hex(PALETTE.lampDeep);
-    context.fillRect(14, height - 18, width - 28, 3);
-    context.fillStyle = hex(PALETTE.lamp);
-    context.fillRect(14, height - 18, (width - 28) * frame.progress, 3);
-
-    // Scanlines, last, over everything. A monitor in a station this old is not
-    // a clean surface, and the lines are what stop the schematic reading as a
-    // modern overlay pasted onto a 3D scene.
-    context.fillStyle = "rgba(5,7,10,0.28)";
-    for (let y = 0; y < height; y += 3) context.fillRect(0, y, width, 1);
-
+    paintMonitor(screenCanvas, track, elapsedMs - ghostFrom);
     screenTexture.needsUpdate = true;
   }
 

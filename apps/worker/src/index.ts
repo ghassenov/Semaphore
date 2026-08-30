@@ -1,5 +1,6 @@
 import { Session, type Env } from "./Session.js";
 import { allowedOrigins, corsHeaders, preflight, withCors } from "./cors.js";
+import { GHOST_LOG, pilotTrack } from "./archive/index.js";
 
 export { Session };
 
@@ -30,6 +31,28 @@ export default {
     if (options) return options;
 
     const url = new URL(request.url);
+
+    // The one route with no session behind it.
+    //
+    // The gate screen and the landing screen both play a recorded session:
+    // SPECTATE on demand, and attract mode when nobody has touched the page
+    // (doc 08 phase 4). Neither has a session and the gate cannot start one -
+    // it is the screen a browser without WebMCP gets - so this cannot address
+    // a Durable Object. It does not need to: the ghost is a constant, and the
+    // track is a pure projection of it that already drops KEEPER's half.
+    //
+    // Read-only, so it takes no semaphore and is not logged (D-019).
+    if (url.pathname === "/ghost") {
+      return withCors(
+        Response.json(pilotTrack(GHOST_LOG), {
+          // Immutable in the sense that matters: the fixture changes only when
+          // somebody regenerates it and redeploys.
+          headers: { "cache-control": "public, max-age=3600" },
+        }),
+        headers,
+      );
+    }
+
     const match = /^\/session\/([^/]+)(\/.*)?$/.exec(url.pathname);
     if (!match) return withCors(new Response("Not found", { status: 404 }), headers);
 
