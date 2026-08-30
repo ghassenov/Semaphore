@@ -112,6 +112,16 @@ export interface Fixture {
    * is. This is how a fixture says so.
    */
   readonly captionAt?: number;
+  /**
+   * Worth leaning in on, even with nothing written under it.
+   *
+   * Leaning in defaults to "things with a caption or a glyph", because those
+   * are the things with something to read. That default has one bad hole: **the
+   * Archive's monitor carries neither**, so `E` did nothing at all in the one
+   * room whose entire content is a screen you are meant to study. This is how a
+   * fixture says it is worth a closer look regardless.
+   */
+  readonly study?: boolean;
 }
 
 /**
@@ -590,6 +600,17 @@ export const LAMP_REACH = 3.6;
 export const LAMP_FALLOFF = 3.0;
 
 /**
+ * How near PILOT has to be to lean in on something, in metres.
+ *
+ * Deliberately further than the lamp reaches. Leaning in is *how you go and
+ * look at* a thing you cannot read from here, so tying it to the distance at
+ * which you can already read is exactly backwards: it made `E` work only where
+ * it was least needed. It is still a reach rather than a whole room, because
+ * leaning in on something across the hall is a camera move nobody asked for.
+ */
+export const LEAN_REACH = 6;
+
+/**
  * How strongly PILOT's lamp resolves a fixture, from 0 (unreadable) to 1.
  *
  * Distance is measured on the floor plane. Height is deliberately ignored: a
@@ -613,9 +634,11 @@ export function lampReveal(pilotX: number, pilotZ: number, at: Vec3): number {
  */
 export function nearestFixture(plan: RoomPlan, pilotX: number, pilotZ: number): Fixture | null {
   let best: Fixture | null = null;
-  let bestDistance = LAMP_REACH;
+  let bestDistance = LEAN_REACH;
   for (const fixture of plan.fixtures) {
-    if (fixture.label === undefined && fixture.glyph === undefined) continue;
+    const worth =
+      fixture.study === true || fixture.label !== undefined || fixture.glyph !== undefined;
+    if (!worth) continue;
     const distance = Math.hypot(fixture.at.x - pilotX, fixture.at.z - pilotZ);
     if (distance < bestDistance) {
       bestDistance = distance;
@@ -1066,6 +1089,10 @@ export const ARCHIVE_PLAN: RoomPlan = {
       at: { x: 0, y: ARCHIVE_SCREEN.y, z: -ROOM_SIZES.archive.depth / 2 + 0.25 },
       channel: "pilot",
       on: true,
+      // The one screen in the game, in the one room that is nothing but a
+      // screen. It carries no caption, so without this the lean-in skipped it
+      // and `E` did nothing in the Archive at all.
+      study: true,
     },
     // Tape crates, either side of the floor. Shared, because a crate is
     // furniture: it carries no fact and neither party can act on it.

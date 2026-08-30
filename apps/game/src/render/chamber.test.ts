@@ -26,6 +26,7 @@ import {
   facingCentre,
   BODY_RADIUS,
   LAMP_REACH,
+  LEAN_REACH,
   clearOf,
   interlude,
   lampReveal,
@@ -319,6 +320,22 @@ describe("PILOT's lamp", () => {
     // Nothing within reach is null rather than the least-far thing: leaning in
     // on something across the room would be a camera move nobody asked for.
     expect(nearestFixture(plan, 500, 500)).toBeNull();
+  });
+
+  it("leans in on the Archive's monitor, which has no caption at all", () => {
+    // The worst possible hole in the default rule: leaning in defaulted to
+    // "things with a caption or a glyph", and the monitor has neither, so `E`
+    // did nothing in the one room whose whole content is a screen.
+    const monitor = ARCHIVE_PLAN.fixtures.find((f) => f.id === "monitor");
+    if (!monitor) throw new Error("the Archive has a monitor");
+    expect(monitor.label).toBeUndefined();
+    expect(nearestFixture(ARCHIVE_PLAN, monitor.at.x, monitor.at.z + 2)?.id).toBe("monitor");
+  });
+
+  it("reaches further than the lamp does, because that is what it is for", () => {
+    // Tying the lean to the lamp's reach made `E` work only where you could
+    // already read the thing, which is exactly backwards.
+    expect(LEAN_REACH).toBeGreaterThan(LAMP_REACH);
   });
 
   it("never leans in on something with nothing to read", () => {
