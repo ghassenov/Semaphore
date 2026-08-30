@@ -1930,3 +1930,176 @@ button[hidden] {
 :root[data-still] .rail .clock.urgent {
   animation: none;
 }
+
+/**
+ * The starter prompt, as a station requisition slip (doc 04 section 2).
+ *
+ * The single most important UI element in the project: it is what makes an
+ * agent engage at all, and it is on the never-cut list. Drawn as a form so it
+ * reads as a thing the station *issues* rather than a thing the page says.
+ *
+ * Every colour here is the locked palette pushed around with `color-mix`;
+ * nothing declares a hex, so `scripts/check-palette.mjs` stays meaningful and
+ * the set stays at twenty (D-043). The paper is pearl mixed down into the
+ * ink - a form under a sodium lamp, not a form in daylight - because a white
+ * card in a dark console would be the brightest object on a page whose whole
+ * job is to make the player look at the room.
+ *
+ * No asset file, and no web font (D-044, doc 06 section 9): the torn edges are
+ * gradients, the stamp is the mark's existing SVG, and the type is the system
+ * stack the rest of the console uses.
+ */
+.slip {
+  /* The paper is lifted well clear of the panels around it, deliberately.
+     The first pass sat at 7% and the slip read as one more panel in a column
+     of panels - which is the one thing it must not be, because doc 02 section
+     12 calls it the single most important element on this screen and doc 04
+     section 2 says it is what makes the agent engage at all. Weight is how a
+     page says which of six boxes to read first, and this one has to win. */
+  --slip-paper: color-mix(in srgb, var(--pearl) 13%, var(--ink));
+  --slip-rule: color-mix(in srgb, var(--lamp) 30%, transparent);
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin: 0 0 var(--gap);
+  padding: 1rem 1rem 0.9rem;
+  background:
+    linear-gradient(to bottom, color-mix(in srgb, var(--lamp) 5%, transparent), transparent 40%),
+    var(--slip-paper);
+  border: 1px solid color-mix(in srgb, var(--lamp) 45%, transparent);
+  /* Lamplight falling on the one object the page wants you to pick up. Not a
+     hue the palette does not have: it is the channel colour that already means
+     "PILOT perceives this", at an opacity low enough to read as light rather
+     than as a highlight. */
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--lamp) 8%, transparent),
+    0 10px 34px color-mix(in srgb, var(--abyss) 80%, transparent);
+  /* Torn along the top and bottom, which is what makes it a slip rather than a
+     box. A repeating cone gradient bites notches out of both edges; the border
+     above stops at the same inset so the two do not disagree about the shape. */
+  mask-image:
+    repeating-conic-gradient(from -45deg at 50% 0, transparent 0deg 90deg, #000 90deg 180deg),
+    repeating-conic-gradient(from -45deg at 50% 100%, transparent 0deg 90deg, #000 90deg 180deg),
+    linear-gradient(#000, #000);
+  mask-size:
+    9px 5px,
+    9px 5px,
+    100% calc(100% - 10px);
+  mask-position:
+    top left,
+    bottom left,
+    center;
+  mask-repeat: repeat-x, repeat-x, no-repeat;
+  mask-composite: add;
+}
+
+/* The form's own header: what this is, and its number. Monospace, because a
+   form number is an identifier and doc 06 reserves the mono for those. */
+.slip-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--gap);
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid var(--slip-rule);
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  color: var(--lamp);
+}
+
+.slip-form {
+  color: var(--pearl-dim);
+}
+
+/* A ruled field. In fiction the station is requisitioning an operator; in fact
+   this is the line that tells the human which of the two roles is not theirs. */
+.slip-field {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+}
+
+.slip-label {
+  color: var(--pearl-dim);
+}
+
+.slip-value {
+  flex: 1;
+  color: var(--tide);
+  border-bottom: 1px dashed var(--slip-rule);
+  padding-bottom: 0.15rem;
+}
+
+.slip-heading {
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--pearl);
+}
+
+/* The prompt itself. Sans rather than mono: doc 06 keeps the monospace for
+   identifiers and figures, and this is the most-read paragraph in the project,
+   so legibility beats the typewriter conceit. */
+.slip .prompt {
+  margin: 0;
+  border-left: 2px solid var(--lamp);
+  background: color-mix(in srgb, var(--abyss) 55%, transparent);
+}
+
+.slip-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  flex-wrap: wrap;
+}
+
+/* The stamp: the split lamp, tilted, over a ring. Decorative and marked
+   aria-hidden - a screen reader reading "authorised" off a rubber stamp adds
+   nothing anybody can act on. */
+.slip-stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.7rem;
+  transform: rotate(-6deg);
+  border: 1px solid color-mix(in srgb, var(--lamp) 40%, transparent);
+  border-radius: 2px;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.22em;
+  color: color-mix(in srgb, var(--lamp) 72%, transparent);
+  /* Ink that did not take evenly, which is the whole of what makes a stamp
+     read as pressed rather than printed. */
+  opacity: 0.85;
+}
+
+.slip-note {
+  margin: 0;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--slip-rule);
+}
+
+/* On the gate screen the slip is the page's centrepiece rather than a panel in
+   a drawer, so it gets room to be one. */
+.gate .slip {
+  padding: 1.3rem 1.4rem 1.1rem;
+}
+
+.gate .slip .prompt {
+  font-size: 0.86rem;
+}
+
+/* The copy button's confirmed state. A shape change as well as a colour one:
+   the text itself changes, so this never carries the information alone. */
+.copy.done {
+  color: var(--lamp-bright);
+  border-color: color-mix(in srgb, var(--lamp) 70%, transparent);
+  background: color-mix(in srgb, var(--lamp) 14%, transparent);
+}

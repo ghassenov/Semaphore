@@ -1959,3 +1959,49 @@ protanopia at 59.3, and the test's floor is 40.
 The detent count Chamber II is built on already had its text equivalent - "3
 clicks registered" beside the room - so the pip counter doc 08 phase 2.2 asks
 for is satisfied by prose rather than by pips.
+
+---
+
+### D-062 The starter prompt is a requisition slip
+
+**2026-08-30.** Doc 08 phase 4's last line, and the element doc 02 section 12
+and doc 04 section 2 both call the single most important one on the landing
+screen: it is what makes an agent engage at all, and it is on the repo's
+never-cut list.
+
+Doc 04 already specified the art and it had simply never been built: "styled as
+a station requisition slip, with a copy button". So the card is a form now - a
+torn top and bottom edge, `STATION REQUISITION` against a form number, a ruled
+`ISSUE TO` field naming KEEPER, the prompt typed into the body, and the split
+lamp stamped across the foot beside the copy button.
+
+**All of it is CSS and the mark's existing SVG.** No asset file (D-044), no web
+font, and no colour outside the locked twenty: the paper is pearl mixed down
+into the ink with `color-mix`, which is what a form looks like under a sodium
+lamp rather than what it looks like in daylight, and the border and stamp are
+the lamplight channel that already means "PILOT perceives this". A first pass
+sat the paper at 7% and the slip read as one more panel in a column of panels,
+which is the one thing it must not be; weight is how a page says which of six
+boxes to read first.
+
+**It was two hand-assembled copies, and they had already drifted.** The gate
+screen's had no fallback line - "if your agent does not respond, ask it: what
+tools does this page give you?" - which doc 04 asks for by name and which is the
+recovery path for the exact failure the card exists to prevent. Both are built
+from one function now, and the tour asserts the card is whole and on screen
+rather than merely present.
+
+**And it was behind a closed tab.** D-052 put every console panel behind one,
+which left the most important element on the landing screen one click away from
+a player who did not know it existed - while the start card told them to paste
+the prompt on the right, and the right showed nothing. It is open on load now,
+and it **hands the room over when the shift starts**, once: the room is the page
+(D-052), so a panel overlaying its right third during play would be the console
+talking over the game. Only if it is still the panel that was opened, because a
+player who has moved to Faculties by then is reading something they chose.
+
+The copy button also stopped being a one-way switch. It says what happened, is
+announced to a screen reader, and returns to its label after a moment - a button
+stuck on its own past tense stops reading as something that can be pressed
+again, and a paste that went to the wrong window is exactly when somebody needs
+to press it again.

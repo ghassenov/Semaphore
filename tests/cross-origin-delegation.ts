@@ -411,10 +411,39 @@ check(
   (await all()).join(","),
 );
 
+// The starter prompt card, which is on the never-cut list (repo CLAUDE.md) and
+// is the element doc 04 section 2 calls the thing that makes an agent engage at
+// all. It is built once and rendered in two places, and the gate's copy had
+// already silently lost its fallback line while the console's kept it - so what
+// is asserted is that the card is whole and on screen before the shift, not
+// that some element with that class exists.
+{
+  const slip = await evaluate<string>(
+    `(()=>{const e=document.querySelector(".slip");
+      if(!e || e.getBoundingClientRect().width < 100) return "";
+      return e.textContent ?? "";})()`,
+  );
+  check(
+    "the requisition slip is on screen before the shift",
+    slip.includes("STATION REQUISITION") && slip.includes("Paste this to your KEEPER"),
+    slip.slice(0, 60) || "(not visible)",
+  );
+  check(
+    "it carries the prompt and the fallback line",
+    slip.includes("You are KEEPER") && slip.includes("what tools does this page give you"),
+  );
+}
+
 // The shift begins. PILOT drives it from here; the page's director follows.
 await post("begin_shift", { designation: "KEEPER" });
 await post("start", { difficulty: "practice", mode: "full" });
 await until((v) => v.chamber === "airlock", "the airlock");
+check(
+  "and it hands the room over once the shift starts",
+  (await evaluate<number>(`document.querySelector(".slip")?.getBoundingClientRect().width ?? 0`)) <
+    100,
+);
+
 await shot("airlock");
 await sleep(600);
 
