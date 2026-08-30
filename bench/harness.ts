@@ -38,7 +38,7 @@
  *
  *   SEEDS=20          how many of the suite's seeds to run
  *   GAP_MS=6000       virtual milliseconds between an agent's calls
- *   OUT=bench/results where the raw log, the table and the CSV are written
+ *   OUT=<this directory>/results  where the raw log, the table and the CSV are written
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -74,9 +74,11 @@ interface Suite {
   readonly seeds: readonly string[];
 }
 
-const suite = JSON.parse(readFileSync("bench/suites/standard.json", "utf8")) as Suite;
+const suite = JSON.parse(
+  readFileSync(`${import.meta.dirname}/suites/standard.json`, "utf8"),
+) as Suite;
 
-const OUT = process.env.OUT ?? "bench/results";
+const OUT = process.env.OUT ?? `${import.meta.dirname}/results`;
 const SEED_COUNT = Math.max(
   1,
   Math.min(suite.seeds.length, Number(process.env.SEEDS ?? suite.seeds.length)),

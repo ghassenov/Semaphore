@@ -23,7 +23,7 @@
  *
  *   SEEDS=20          how many seeds, from the fixed list below
  *   GAP_MS=6000       virtual milliseconds between an agent's calls
- *   OUT=bench/results where the raw log and the chart are written
+ *   OUT=<this directory>/results  where the raw log and the chart are written
  *
  * It writes three things and prints the fourth:
  *
@@ -65,7 +65,7 @@ declare const process: {
  */
 const SEEDS: readonly string[] = Array.from({ length: 20 }, (_, i) => `ablation-${i + 1}`);
 
-const OUT = process.env.OUT ?? "bench/results";
+const OUT = process.env.OUT ?? `${import.meta.dirname}/results`;
 const SEED_COUNT = Math.max(1, Math.min(SEEDS.length, Number(process.env.SEEDS ?? SEEDS.length)));
 const GAP_MS = Number(process.env.GAP_MS ?? 6000);
 
