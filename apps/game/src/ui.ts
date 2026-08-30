@@ -41,6 +41,7 @@
  */
 
 import type { PilotView } from "@semaphore/protocol";
+import type { Fader, StationAudio } from "./audio/index.js";
 import type { SessionClient } from "./net/sessionClient.js";
 import type { StationModel } from "./render/station.js";
 import {
@@ -308,6 +309,16 @@ export function renderGate(root: HTMLElement): void {
 /** Everything the console needs to drive PILOT's half of the session. */
 export interface ShellDeps {
   readonly client: SessionClient;
+  /**
+   * The station's sound.
+   *
+   * Driven from here rather than from `main.ts` because the console is where
+   * the launch click lands (an `AudioContext` needs a gesture) and where the
+   * subtitle is written. Firing the cue on the same line that writes the text
+   * is what keeps doc 06 section 11's promise that every cue has a text
+   * equivalent: they cannot drift if they are one statement apart.
+   */
+  readonly audio: StationAudio;
   /** Called after PILOT acts, so the caller can put the answer in the log. */
   readonly onNote: (line: string) => void;
 }
@@ -392,6 +403,19 @@ const PILOT_KEYS: readonly (readonly [string, string])[] = [
   ["E", "lean in and study what you are standing at"],
   ["M", "step back and see the whole station"],
   ["F", "fullscreen"],
+] as const;
+
+/**
+ * The three faders, and the split doc 06 section 11 asks for.
+ *
+ * Mechanisms are separate from music for a reason that is not preference: the
+ * `AUDIBLE` channel carries puzzle information, so a player has to be able to
+ * turn the score down without turning the answer down with it.
+ */
+const MIX_SLIDERS: readonly (readonly [Fader, string])[] = [
+  ["master", "Master volume"],
+  ["music", "Music volume"],
+  ["sfx", "Mechanism volume"],
 ] as const;
 
 /** The session lengths, and what each one is, for the button's tooltip. */
@@ -498,6 +522,11 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
     const button = el("button", { type: "button" }, mode);
     button.title = blurb;
     button.addEventListener("click", () => {
+      // The gesture. Every browser refuses an AudioContext that was not opened
+      // by a click, and refuses it silently, so this is where the station's
+      // sound comes up: the one click that is guaranteed to happen before
+      // there is anything to hear.
+      deps.audio.start();
       // Practice is a difficulty, not a mode: doc 02 section 7 makes it the
       // untimed preset of a full session rather than a shorter one.
       const body =
@@ -521,6 +550,41 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   viewport.append(launch);
 
   const audible = el("p", { class: "audible", "aria-live": "polite" });
+
+  /**
+   * The mix: mute, master, music and mechanisms.
+   *
+   * Beside the audible strip rather than in a settings menu, because this is
+   * the one strip on the page that is already about sound, and because the
+   * detents in Chamber II are a puzzle mechanism rather than a flourish: a
+   * player who cannot hear them needs the mechanisms louder, and needs to find
+   * that control without leaving the room they are counting in.
+   */
+  const mixer = el("div", { class: "mixer" });
+  const mute = el("button", { type: "button", class: "mute" }, "Mute");
+  mute.setAttribute("aria-pressed", "false");
+  mute.addEventListener("click", () => {
+    const muted = !deps.audio.mix.muted;
+    deps.audio.setMix({ muted });
+    mute.textContent = muted ? "Unmute" : "Mute";
+    mute.setAttribute("aria-pressed", String(muted));
+  });
+  mixer.append(mute);
+  for (const [key, label] of MIX_SLIDERS) {
+    const slider = el("input", {
+      type: "range",
+      min: "0",
+      max: "100",
+      value: String(Math.round(deps.audio.mix[key] * 100)),
+      class: `mix mix-${key}`,
+      "aria-label": label,
+      title: label,
+    });
+    slider.addEventListener("input", () => {
+      deps.audio.setMix({ [key]: Number(slider.value) / 100 });
+    });
+    mixer.append(slider);
+  }
 
   const underdeck = el("div", { class: "underdeck" });
 
@@ -563,7 +627,7 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   );
 
   underdeck.append(station.section, controls.section);
-  left.append(viewport, audible, underdeck);
+  left.append(viewport, audible, mixer, underdeck);
 
   // ---- Right: KEEPER's surface, and the one surface they share. -----------
   const right = el("aside", { class: "bay bay-right" });
@@ -653,7 +717,11 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
 
       paintFloors(floorList, view);
       paintGauge();
+      // The subtitle and the sound, one line apart, from one frame. Doc 06
+      // section 11 requires every cue to have a text equivalent; keeping them
+      // adjacent is what stops that being a promise somebody has to remember.
       audible.textContent = view ? (roomPlan(view)?.sound ?? "") : "";
+      deps.audio.update(view, model.chamberTimerMs);
 
       for (const { entry, button } of actionButtons) button.hidden = !entry.when(view ?? null);
 

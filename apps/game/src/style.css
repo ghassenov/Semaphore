@@ -554,6 +554,54 @@ body {
   outline-color: color-mix(in srgb, var(--iron) 40%, transparent);
 }
 
+/* ----------------------------------------------------------------- mixer -- */
+
+/*
+ * The mix, under the audible strip.
+ *
+ * Pearl, because it belongs to the strip above it and that strip is the
+ * AUDIBLE channel: a thing both parties perceive. It takes no channel colour
+ * of its own, since a volume control is not a fact about the station.
+ */
+.mixer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+
+.mixer .mute {
+  flex: 0 0 auto;
+  padding: 0.24rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--pearl) 45%, transparent);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--pearl);
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.mixer .mute:hover,
+.mixer .mute:focus-visible {
+  border-color: var(--pearl);
+}
+
+.mixer .mute[aria-pressed="true"] {
+  border-color: var(--pearl);
+  background: color-mix(in srgb, var(--pearl) 16%, transparent);
+}
+
+.mixer input[type="range"] {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 1rem;
+  accent-color: var(--pearl);
+  cursor: pointer;
+}
+
 /* -------------------------------------------------------------- controls -- */
 
 .controls .panel-body {

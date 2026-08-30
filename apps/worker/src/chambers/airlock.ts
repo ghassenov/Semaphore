@@ -15,7 +15,15 @@
  * to get the proof machinery correct before Chamber II's 384.
  */
 
-import { audible, hidden, shared, tactile, visual, type Tagged } from "@semaphore/protocol";
+import {
+  audible,
+  hidden,
+  shared,
+  tactile,
+  visual,
+  type Cue,
+  type Tagged,
+} from "@semaphore/protocol";
 import type { Rng } from "@semaphore/seed";
 import { AIRLOCK_GLYPHS, type GlyphId } from "./glyphs.js";
 
@@ -143,13 +151,19 @@ export function correctAction(state: AirlockState): string | null {
   return isSolved(state) ? null : correctLever(state.params);
 }
 
-/** The sound the last pull made, heard by both parties through the wall. */
-function lastSound(state: AirlockState): string | null {
+/**
+ * The sound the last pull made, heard by both parties through the wall.
+ *
+ * The cue and the subtitle come out of the same branch on purpose. Doc 06
+ * section 11 requires every audio cue to have a text equivalent, and the only
+ * way to guarantee that is to make it impossible to add one without the other.
+ */
+function lastSound(state: AirlockState): { readonly cue: Cue; readonly text: string } | null {
   const last = state.pulled.at(-1);
   if (!last) return null;
   return last === correctLever(state.params)
-    ? "a deep clunk, then bolts running back"
-    : "a hard hiss of venting air";
+    ? { cue: "clunk", text: "a deep clunk, then bolts running back" }
+    : { cue: "hiss", text: "a hard hiss of venting air" };
 }
 
 /**
@@ -167,7 +181,9 @@ export function facts(state: AirlockState) {
     /** Where the levers are. KEEPER needs this to name one. */
     leverPositions: tactile(LEVER_POSITIONS),
     /** Both hear the last pull: a hiss, or the bolts running back. */
-    lastSound: audible(lastSound(state)),
+    lastSound: audible(lastSound(state)?.text ?? null),
+    /** The same event, as the cue the client synthesises. */
+    lastCue: audible(lastSound(state)?.cue ?? null),
     /** Both know what has been tried. */
     pulled: shared(state.pulled),
     /** Both see the door. */
