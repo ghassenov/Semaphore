@@ -680,6 +680,42 @@ export function nearestFixture(plan: RoomPlan, pilotX: number, pilotZ: number): 
  */
 export const BODY_RADIUS = 0.42;
 
+/**
+ * The strip of every room that KEEPER's body stands in, room-local.
+ *
+ * KEEPER is drawn *in the east wall* of whatever room the pair is in - it is
+ * not on the floor with PILOT, it is behind the panelling, reaching in. That
+ * placement is made once, in `stage.ts`, and until this constant existed no
+ * room plan knew about it: the Archive put a four-and-a-half-metre rack of
+ * tape reels at x 3.65 and KEEPER's alcove stands at x 3.2 to 4.0, so the two
+ * largest objects in the room occupied the same space and interpenetrated.
+ *
+ * Reserved rather than merely documented, because it is invisible in the pure
+ * layer: a room plan is written in its own coordinates and has no reason to
+ * suspect that something it never declared is already standing there.
+ */
+export const KEEPER_ALCOVE = {
+  /** How far the alcove reaches in from the east wall, in metres. */
+  depth: 0.8,
+  /** Half its run along the wall, centred on the room's z axis. */
+  reach: 1.1,
+} as const;
+
+/** KEEPER's alcove as a room-local box, for placement and for the check. */
+export function keeperAlcove(size: RoomSize): {
+  x0: number;
+  x1: number;
+  z0: number;
+  z1: number;
+} {
+  return {
+    x0: size.width / 2 - KEEPER_ALCOVE.depth,
+    x1: size.width / 2,
+    z0: -KEEPER_ALCOVE.reach,
+    z1: KEEPER_ALCOVE.reach,
+  };
+}
+
 /** How much floor a fixture takes up, by kind, in metres of radius. */
 const FIXTURE_RADIUS: Readonly<Record<FixtureKind, number>> = {
   lever: 0.4,
@@ -1167,26 +1203,40 @@ export const ARCHIVE_PLAN: RoomPlan = {
   dressing: [
     // One rack, on the east wall. The west wall is the way out, and a rack of
     // reels standing in the doorway is how the first pass of this room looked.
+    // Two short racks on the east wall rather than one long one, because the
+    // middle of that wall is KEEPER's alcove (`keeperAlcove`) and a 4.6m rack
+    // ran straight through the body.
     {
       kind: "shelf",
-      at: { x: ROOM_SIZES.archive.width / 2 - 0.35, y: 0, z: 0.1 },
+      at: { x: ROOM_SIZES.archive.width / 2 - 0.35, y: 0, z: 2.4 },
       facing: -Math.PI / 2,
-      length: 4.6,
+      length: 1.6,
     },
     {
+      kind: "shelf",
+      at: { x: ROOM_SIZES.archive.width / 2 - 0.35, y: 0, z: -2.4 },
+      facing: -Math.PI / 2,
+      length: 1.6,
+    },
+    // Outboard of the monitor, which is four metres wide: at 2.5 they buried
+    // 0.4m of themselves in its housing on each side.
+    {
       kind: "cabinet",
-      at: { x: -2.5, y: 0, z: -ROOM_SIZES.archive.depth / 2 + 0.45 },
+      at: { x: -3.05, y: 0, z: -ROOM_SIZES.archive.depth / 2 + 0.45 },
       length: 1.8,
     },
     {
       kind: "cabinet",
-      at: { x: 2.5, y: 0, z: -ROOM_SIZES.archive.depth / 2 + 0.45 },
+      at: { x: 3.05, y: 0, z: -ROOM_SIZES.archive.depth / 2 + 0.45 },
       length: 1.8,
     },
     { kind: "bulb", at: { x: 0, y: ROOM_SIZES.archive.height, z: -0.6 }, height: 0.75 },
     { kind: "cable", at: { x: 2.1, y: ROOM_SIZES.archive.height, z: 1.6 }, length: 1.1 },
     { kind: "puddle", at: { x: -0.5, y: 0, z: 1.9 }, length: 2.4 },
-    ...beams(ROOM_SIZES.archive, 3),
+    // **No beams.** The room is 3.2m tall and the monitor is 2.9m of that, so
+    // a beam under the ceiling is a girder drawn straight across the screen -
+    // in the one room whose whole content is that screen. The bulb on its flex
+    // is this room's ceiling instead.
   ],
   accent: "shared",
   sound: null,

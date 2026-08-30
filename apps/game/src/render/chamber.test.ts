@@ -35,6 +35,7 @@ import {
   roomTitle,
   spread,
   type RoomPlan,
+  keeperAlcove,
 } from "./chamber.js";
 import { GLYPH_IDS } from "./glyphs.js";
 
@@ -205,19 +206,54 @@ describe("what a room contains", () => {
   });
 
   it("stands no piece of dressing inside a fixture", () => {
-    // Overlap is not a crash, it is a room that looks assembled by accident:
-    // the Archive had its crates standing inside its racks.
+    /*
+     * Measured against real extents rather than a radius, and against *every*
+     * fixture rather than only the ones near the floor.
+     *
+     * The first version of this check did neither, and it passed a room where
+     * two card cabinets were buried four hundred millimetres into the monitor's
+     * housing on each side. It skipped the monitor because it sits at
+     * eye height, and it compared centre points, so two wide things whose
+     * centres were far apart still overlapped.
+     */
+    const FIXTURE_WIDTH: Readonly<Record<string, number>> = {
+      monitor: 4,
+      door: 3.2,
+      crate: 0.9,
+      console: 1,
+      beacon: 1.2,
+    };
     for (const plan of allPlans()) {
       for (const item of plan.dressing) {
-        // Only the pieces of dressing that stand on the floor and take up
-        // room. A crate is a *fixture*, not dressing, so it is on the other
-        // side of this comparison already.
         if (item.kind !== "cabinet" && item.kind !== "shelf") continue;
+        const yaw = item.facing ?? 0;
+        const run = (item.length ?? 0) / 2;
+        // No comfort margin: this asks whether two things are *inside* each
+        // other, which is a defect, rather than whether they are close, which
+        // is a composition choice and not this test's business.
+        const halfX = Math.abs(Math.cos(yaw)) * run;
+        const halfZ = Math.abs(Math.sin(yaw)) * run;
         for (const fixture of plan.fixtures) {
-          if (fixture.at.y > 1.4) continue;
-          const apart = Math.hypot(item.at.x - fixture.at.x, item.at.z - fixture.at.z);
-          expect(apart, `${plan.id}: ${item.kind} stands in ${fixture.id}`).toBeGreaterThan(0.8);
+          const other = (FIXTURE_WIDTH[fixture.kind] ?? 0.6) / 2;
+          const gapX = Math.abs(item.at.x - fixture.at.x) - (halfX + other);
+          const gapZ = Math.abs(item.at.z - fixture.at.z) - (halfZ + other);
+          expect(gapX > 0 || gapZ > 0, `${plan.id}: ${item.kind} overlaps ${fixture.id}`).toBe(
+            true,
+          );
         }
+      }
+    }
+  });
+
+  it("draws no beam across a monitor", () => {
+    // The Archive is 3.2m tall and its monitor is 2.9m of that, so a beam under
+    // the ceiling lands straight across the screen - in the one room whose
+    // entire content is that screen.
+    for (const plan of allPlans()) {
+      const monitor = plan.fixtures.find((fixture) => fixture.kind === "monitor");
+      if (monitor === undefined) continue;
+      for (const item of plan.dressing) {
+        expect(item.kind, `${plan.id} puts a beam over its monitor`).not.toBe("beam");
       }
     }
   });
@@ -546,6 +582,36 @@ describe("the layout helpers", () => {
       expect(size.width, `${id} has no width`).toBeGreaterThan(0);
       expect(size.depth, `${id} has no depth`).toBeGreaterThan(0);
       expect(size.height, `${id} has no height`).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("KEEPER's alcove", () => {
+  it("is left clear in every room", () => {
+    /*
+     * KEEPER stands in the east wall of whatever room the pair is in, and a
+     * room plan has no way to know that: it is written in its own coordinates
+     * and nothing in it declares the alcove. So the Archive stood a 4.6m rack
+     * of tape reels exactly where KEEPER's body is, and the two largest things
+     * in the room drew through each other.
+     */
+    for (const plan of allPlans()) {
+      const box = keeperAlcove(plan.size);
+      for (const item of plan.dressing) {
+        // Only what stands on the floor and has bulk. A cable or a bulb hangs
+        // from the ceiling above the alcove, which is where they belong.
+        if (item.kind !== "shelf" && item.kind !== "cabinet" && item.kind !== "locker") continue;
+        const yaw = item.facing ?? 0;
+        const run = (item.length ?? 0) / 2;
+        const halfX = Math.abs(Math.cos(yaw)) * run + 0.25;
+        const halfZ = Math.abs(Math.sin(yaw)) * run + 0.25;
+        const clear =
+          item.at.x + halfX <= box.x0 ||
+          item.at.x - halfX >= box.x1 ||
+          item.at.z + halfZ <= box.z0 ||
+          item.at.z - halfZ >= box.z1;
+        expect(clear, `${plan.id}: ${item.kind} stands in KEEPER's alcove`).toBe(true);
+      }
     }
   });
 });
