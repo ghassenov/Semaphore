@@ -140,7 +140,11 @@ export async function startStation(
 
   // The engine and the scene together, in one chunk, off the critical path.
   const { createStage } = await import("./stage.js");
-  const stage = createStage(parent, model);
+  // The stage owns where PILOT's body is, so it is the only thing that knows
+  // when the room on screen changes without the session changing.
+  const stage = createStage(parent, model, () => {
+    onChange(model);
+  });
 
   // The viewport is a flexible box in a responsive console, so its size is not
   // a constant anybody can be told once. A `ResizeObserver` is the only thing
