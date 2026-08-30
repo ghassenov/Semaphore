@@ -198,9 +198,11 @@ export async function renderReplay(root: HTMLElement, sessionId: string): Promis
 
   // Chamber boundaries first, underneath everything, because they are the
   // frame the two tracks are read against rather than a thing that happened.
-  for (const boundary of replay.chambers) {
-    if (boundary.kind !== "enter") continue;
-    line("replay-boundary", `M ${String(x(boundary.t))} 0 V ${String(H)}`);
+  const entered = replay.chambers.filter((boundary) => boundary.kind === "enter");
+  const labels: { name: SVGTextElement; room: number; short: string }[] = [];
+  for (const [index, boundary] of entered.entries()) {
+    const at = x(boundary.t);
+    line("replay-boundary", `M ${String(at)} 0 V ${String(H)}`);
     const name = document.createElementNS("http://www.w3.org/2000/svg", "text");
     name.setAttribute("class", "replay-room");
     // A label near the end of the axis runs off it: the last chamber is
@@ -208,12 +210,22 @@ export async function renderReplay(root: HTMLElement, sessionId: string): Promis
     // "CHAMBER III - THE CONCORD LOCK" was cut to "THE CONCORD LOC". Past
     // three quarters across, hang the name off the boundary to the left
     // instead of to the right; it still reads against the same line.
-    const late = x(boundary.t) > W * 0.75;
-    name.setAttribute("x", String(x(boundary.t) + (late ? -6 : 6)));
+    const late = at > W * 0.75;
+    name.setAttribute("x", String(at + (late ? -6 : 6)));
     name.setAttribute("y", "12");
     if (late) name.setAttribute("text-anchor", "end");
     name.textContent = CHAMBER_NAMES[boundary.chamber];
     svg.append(name);
+
+    // How much room this name has before it reaches its neighbour's. Measured
+    // and applied once the SVG is in the document, below.
+    const neighbour = late ? entered[index - 1] : entered[index + 1];
+    const edge = neighbour ? x(neighbour.t) : late ? 0 : W;
+    labels.push({
+      name,
+      room: Math.abs(edge - at) - 10,
+      short: (CHAMBER_NAMES[boundary.chamber].split(" - ")[0] ?? "").trim(),
+    });
   }
 
   // PILOT, amber, on top. Only this party ever sees the room.
@@ -261,6 +273,32 @@ export async function renderReplay(root: HTMLElement, sessionId: string): Promis
     line("replay-concord", points);
   }
   main.append(svg);
+
+  /*
+   * Make every chamber name fit the band it was written in, by **measuring**.
+   *
+   * The right-hand overflow handled above was only half the problem. A chamber
+   * cleared quickly is a narrow band, and its name simply ran into the name of
+   * the chamber after it: the Airlock and the Signal Room printed on top of
+   * each other as "CHAMBER 0HAMBERE IAI-RLOHEK SIGNAL ROOM", which is the same
+   * text-over-text defect this project has now produced in four places.
+   *
+   * `getComputedTextLength` rather than a character count, because this app's
+   * own rule is that a caption is measured and never estimated. **After
+   * `main.append(svg)`, not before**: the measurement is a layout question, and
+   * an SVG text node that is not yet in the document answers it with zero -
+   * which is silently "it fits", and was how the first attempt at this fix
+   * changed nothing at all.
+   *
+   * A name that will not fit falls back to its number, and one that still will
+   * not fit is dropped. The boundary line stays either way, so a band is never
+   * lost, only its caption.
+   */
+  for (const { name, room, short } of labels) {
+    if (name.getComputedTextLength() <= room) continue;
+    name.textContent = short;
+    if (name.getComputedTextLength() > room) name.remove();
+  }
 
   // ---- The scrubber. A native range input, deliberately.
   //
