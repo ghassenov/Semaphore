@@ -1110,9 +1110,25 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
      */
     teachOnArrival = true;
     deps.audio.start();
-    void deps.client.post("start", { difficulty: "practice", mode: "full" }).then((response) => {
-      deps.onNote(`start practice: ${response.text}`);
-    });
+    /*
+     * `begin_shift` first, then `start`.
+     *
+     * Beginning the shift is normally the agent's move, and `start` refuses
+     * without it - `E_NO_SESSION: Your shift has not started`. So the first
+     * version of this button did nothing at all for a real visitor, and the
+     * check that said otherwise had called `begin_shift` over HTTP beforehand,
+     * which is a path nobody arriving at the page ever takes.
+     *
+     * A demonstration may open its own door. It is a practice run whose whole
+     * purpose is to show somebody the game before they have an agent pointed
+     * at it, and it says so on the button.
+     */
+    void deps.client
+      .post("begin_shift", { designation: "KEEPER" })
+      .then(() => deps.client.post("start", { difficulty: "practice", mode: "full" }))
+      .then((response) => {
+        deps.onNote(`show me how it works: ${response.text}`);
+      });
   });
   sheet.append(
     showMe,

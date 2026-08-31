@@ -1181,12 +1181,13 @@ body::after {
   height: 100%;
   padding: 0.5rem 0;
   /*
-   * Scrolled only when it truly cannot fit. The slip and the tool text are
-   * both allowed to shrink first, so a normal window shows the whole argument
-   * without a scrollbar down the middle of it.
+   * **Never scrolls.** A scrollbar down the middle of a landing page is a
+   * confession that the layout does not fit, and this one only ever overflowed
+   * by about forty pixels. The halves shrink instead: the tool text and the
+   * slip are both illustrations, and an illustration may be small.
    */
-  overflow-y: auto;
-  gap: 2.5rem;
+  overflow: hidden;
+  gap: 2.2rem;
 }
 
 /* Compact in the landing's band: this is an illustration, not a document. */
@@ -1197,8 +1198,17 @@ body::after {
 }
 
 .split-field .slip {
-  padding: 0.8rem 0.9rem;
-  font-size: 0.82rem;
+  padding: 0.7rem 0.85rem;
+  font-size: 0.8rem;
+}
+
+.split-field .half {
+  gap: 0.4rem;
+  padding: 0.4rem;
+}
+
+.split-field .half-note {
+  font-size: 0.78rem;
 }
 
 /* The stamp is flourish; it is the first thing to go when the band is tight. */
@@ -1209,12 +1219,12 @@ body::after {
 }
 
 .split-field .slip .prompt {
-  font-size: 0.8rem;
-  line-height: 1.42;
+  font-size: 0.78rem;
+  line-height: 1.38;
 }
 
 .split-field .half-plate {
-  min-height: 5rem;
+  min-height: 4.4rem;
 }
 
 .split-field .half {
@@ -1363,13 +1373,13 @@ body::after {
 }
 
 .launch-claim {
-  margin: 0 0 1rem;
+  margin: 0 0 0.6rem;
   color: var(--mist);
   font-size: 0.94rem;
 }
 
 .launch-go {
-  margin: 1.1rem 0 0.55rem;
+  margin: 0.7rem 0 0.5rem;
   color: var(--pearl);
   font-family: var(--mono);
   font-size: 0.69rem;
