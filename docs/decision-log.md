@@ -2245,3 +2245,66 @@ document. The instrument was right and the page was wrong. The proof now waits
 for the landing screen to be gone before measuring, polling for the element
 rather than sleeping a hand-typed duration - the same lesson as D-056, arriving
 at a different band.
+
+---
+
+### D-067 The camera was compounding its own drift
+
+**2026-08-31.** Found by playing, in the first two minutes, by the person who
+owns the interface: *"when i press e then immediatly move after the camera is
+super bugged and out of the map and when i keep pressing a button a long time it
+is also out of the map."* Both reproduced literally on the first try. This is
+the fifth time the instrument has been a person walking around rather than a
+test, and the sixth thing it has found that 735 passing tests could not.
+
+**Two faults, and they multiplied.**
+
+`frame()` keyed the camera transition on the shot's **coordinates**. A room shot
+leans toward PILOT, so its eye moves every frame anybody is walking - and every
+one of those frames therefore read as a brand new shot. `shotAt` reset sixty
+times a second, the easing sat permanently at zero, and the camera never
+arrived anywhere. The follow, which is the whole reason `roomShot` takes a
+`follow` argument, has never once worked.
+
+On its own that would have been a camera that simply does not move. What made it
+leave the building is the second fault: the idle drift is added straight into
+`camera.position` at the end of each frame, and a restarting transition took its
+starting point from `camera.position`. So each frame began from a position that
+already had a drift on it and then had another added. **The drift compounded
+instead of oscillating**, at 0.22 metres a frame, which is roughly thirteen
+metres a second. Hold a movement key for two seconds and you are outside the
+station looking at the sea. Press `E` and then move and the runaway starts from
+a lean-in eye, which is why that one ends up inside the geometry.
+
+The fix is one idea in two places. **The transition is keyed on the shot's
+identity** - which room, which fixture, the wide shot - and the shot itself is
+updated every frame, so a follow tracks continuously without being mistaken for
+a new shot. And **`baseEye` holds the position with no drift on it**, which is
+what a transition starts from; `camera.position` is that plus the drift, and the
+drift is never an input to anything.
+
+**The general rule, and it is the one worth carrying:** *a value the render loop
+writes into a live object every frame must never be read back as a starting
+point.* It is a feedback loop with no damping term, and the symptom is not a
+wrong value - it is a value that leaves the world.
+
+**The regression check is in the browser proof, and it was verified to fail
+without the fix.** `data-settled` is the assertion because it is the exact thing
+that was false: a transition that restarts every frame never settles. It is read
+*while the movement key is still down*, because continuous tracking is not a
+transition. Re-introducing the coordinate in the key takes the tour from 27 of 27
+to 26 of 27.
+
+*And a check written beside it was deleted as written and kept as measured.* It
+claimed the camera was "still framing the same room" and read the room name off
+the rail - which passed happily through the run where the camera was four
+hundred metres outside the building. It measures that a held movement key does
+not trip the edge-triggered door transit, which is worth asserting, so it says
+that instead. A metric that does not separate the thing it names is not evidence
+for it (D-040's rule, arriving in a new place).
+
+*One stale fact found on the way.* `NEXT-STEPS.md` told the next person that the
+worker's "route names are the tool names". They are not, for the read-only half:
+`get_status` is `GET /status`, `describe_chamber` is `/describe`, `read_manual`
+is `/manual?section=`. Corrected there, because the handoff is trusted and a
+trusted handoff that is wrong costs more than no handoff.
