@@ -49,19 +49,19 @@
  */
 const GROUND = {
   /** Beyond the building. The clear colour, and the deepest shadow there is. */
-  abyss: 0x04060c,
+  abyss: 0x03040a,
   /** The page, and the sea outside the windows. */
-  ink: 0x090d17,
+  ink: 0x080b14,
   /** Stone in shadow. */
-  slate: 0x111725,
+  slate: 0x0f1420,
   /** Stone, unlit. The station's base note. */
-  stone: 0x1a2233,
+  stone: 0x18202f,
   /** Stone catching light. */
-  ash: 0x2a3446,
+  ash: 0x28334a,
   /** Structural metal: frames, rails, the grate. */
-  iron: 0x4c5a70,
+  iron: 0x55637d,
   /** Distant haze, and the console's quietest text. */
-  mist: 0x97a5bb,
+  mist: 0xa3b1c7,
 } as const;
 
 /**
@@ -92,9 +92,9 @@ const MATERIAL = {
  * orange.
  */
 const LAMP = {
-  lampDeep: 0x6e4a22,
-  lamp: 0xe8b26a,
-  lampBright: 0xffe6c0,
+  lampDeep: 0x7a3a06,
+  lamp: 0xff9d2e,
+  lampBright: 0xffd9a3,
 } as const;
 
 /**
@@ -108,9 +108,9 @@ const LAMP = {
  * they meet.
  */
 const TIDE = {
-  tideDeep: 0x263a63,
-  tide: 0x8aa9e0,
-  tideBright: 0xd3e1fa,
+  tideDeep: 0x0a3f5e,
+  tide: 0x3fd0e8,
+  tideBright: 0xa8f0ff,
 } as const;
 
 /**
@@ -122,8 +122,8 @@ const TIDE = {
  * before its shape marker is read.
  */
 const PEARL = {
-  pearl: 0xede7dc,
-  pearlDim: 0x8e9299,
+  pearl: 0xf2efe9,
+  pearlDim: 0x97a0ab,
 } as const;
 
 /** Penalties, and nothing else. Never used to carry information. */
