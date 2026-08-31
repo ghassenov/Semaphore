@@ -2132,3 +2132,116 @@ so cyan fell on brass and the hazard chevrons came back green, in a palette
 whose test forbids green so that success cannot be signalled with one. A lit
 surface is not a palette entry. Moving the hue to a blue fixed it, and only the
 frame could have said so.
+
+---
+
+### D-066 The web layer is rebuilt, and the start button did nothing
+
+**2026-08-31.** Item 1 of the handoff, from a fresh session: redesign the web
+page completely, and fix the bugs in it. The station itself is untouched -
+`render/` has not been opened.
+
+**The worst thing on the page was not a design problem.** Picking a session
+length did nothing at all. `start` answers `E_NO_SESSION: Your shift has not
+started` until the agent has called `begin_shift`, and the landing card sent
+that refusal to `onNote`, which writes to the activity log, which lives inside a
+*closed drawer*. So a visitor clicked `full`, nothing whatsoever moved, and the
+only conclusion available to them was that the page was broken. Every judge who
+opened this without an agent already pointed at it met that. It survived because
+no test drives the page's own buttons and the browser proof calls `begin_shift`
+over HTTP first, which is a path nobody arriving at the page ever takes.
+
+The choice is remembered now, the step says what it is waiting for and why, and
+the shift starts by itself when the agent opens the door. Beside it is a second
+path that opens its own door - a demonstration is allowed to, and the button
+says so.
+
+**Then the composition.** The landing screen *was the console*, with a card laid
+over the viewport, and four separate defects came out of that one fact. It
+inherited a rail reading `CONNECTING`, an ambiguity gauge with no session behind
+it, seven tab stubs and three audio faders, all live, above the first sentence
+about what the page is. It inherited the deck, which has a definite height and
+clips rather than scrolls, so opening the ablation - never-cut - cut the bottom
+off the chart and the requisition slip together. And it inherited the console's
+breakpoints, which is most of why 430px was not merely unpolished but broken.
+
+It is its own surface now, laid over everything, with its own scroll. The
+console keeps its measured size underneath the whole time, because the camera
+frames against the viewport's shape and a console hidden with `display: none`
+comes back at zero by zero.
+
+**A previous pass made the page the split and it was right about the idea.**
+What it got wrong was that every element then had to live in one of two
+arbitrary columns, and the two halves of the graphic carrying the entire pitch
+were two hundred pixels out of vertical alignment with each other. *A comparison
+whose two sides do not line up is not a comparison; it is two unrelated
+illustrations.* So the split is the **graphic** - one full-bleed band, warm
+field against cold, a lit seam with the mark on it - and the rest of the page is
+a reading column. The two halves are `subgrid` rows of one grid, so the captions
+share a line, the payloads share a row and the notes share a baseline whatever
+either of them contains. That is structural rather than tuned, which is the
+whole point: it cannot drift back out.
+
+**Three bugs the split-into-modules found on its own.**
+
+The requisition slip was on the gate screen **twice** - `promptCard()` called
+directly and again inside the graphic that embeds it. D-062 made it one builder
+to stop two copies drifting; nothing stopped one page rendering the builder
+twice.
+
+`.note`, `.eyebrow` and `.lede` were declared inside sections that the redesign
+replaced, and each is used by a surface that was not being redesigned. The
+replay viewer lost its type entirely. **A type role more than one surface uses is
+declared once, globally**, and they are now.
+
+And **CSS resolves ties by source order**, which cost two rounds: a narrow-window
+block written next to the rule it was *about* sat six hundred lines above the
+rule it was overriding, so the proof graphic never stacked on a phone and the
+skip hint never cleared the foot. Overrides go below what they override, and the
+comment in the file now says so.
+
+**The tour found three more, and none of them was in a test.** The ending strip
+owns the top edge of the viewport and the rail is laid over the same pixels, so
+"the whole shift is on the station's log" printed straight through
+SEMAPHORE - ESCAPED - AMBIGUITY. The caption band owns the bottom edge and the
+mixer is laid over that, so "COLD AIR, AND THE SOUND OF THE SEA" lost its second
+half behind the faders on the last frame of the game. And the caption's own side
+padding did not clear the tab rails, so THE DOOR IS OPEN was missing its first
+letter behind ACCESS. All three are the same shape - **two absolutely positioned
+bands over one viewport have to be told which edge each one owns** - which this
+file already recorded once and which recurred anyway because the rule was
+written about two of the bands and there are five.
+
+The skip hint stopped being pinned to an edge three other things share and moved
+under the line it skips, where it belongs and where it cannot collide with
+anything.
+
+**The console chrome had never had a composition pass and it showed.** The two
+tab rails were four rounded chips floating down each side with three tenths of a
+rem between them; they are one framed rail with hairlines between members now.
+A drawer pinned `top` *and* `bottom` was full height, so a five-line keyboard
+legend opened a panel with six hundred pixels of empty box over the room - the
+room being the thing the player is trying to look at. It takes what it needs.
+The mix was four controls drifting along the foot and is a housing.
+
+**Nothing in the design law moved.** The channel hues are untouched, so the
+colourblind guarantee D-061 measured is untouched. The palette is the same
+twenty colours and `check-palette.mjs` passed on every commit of this work,
+including its rule that no hex may be written into a rule - everything new is a
+token, a `color-mix` against one, or a white/black percentage. No asset file was
+added. Puzzle-critical values are still canvas-only.
+
+**Result.** 735 tests, typecheck, lint, format and both builds green. **25 of 25
+browser checks** on Chrome 152 against live servers, and the frames read. Entry
+39.0KB gzipped of a 400KB budget, up from 30.4KB, all of it stylesheet; Three.js
+is still a chunk the gate screen never fetches. The start flow was verified the
+only way it could be: a length chosen with no agent, then `begin_shift` called
+from outside the page, and the shift opened itself into the Airlock.
+
+*One thing worth keeping.* The browser proof's slip check failed after the
+split, correctly, and for a reason no amount of looking at the design would have
+found: there are two slips on the page and the console's is first in the
+document. The instrument was right and the page was wrong. The proof now waits
+for the landing screen to be gone before measuring, polling for the element
+rather than sleeping a hand-typed duration - the same lesson as D-056, arriving
+at a different band.

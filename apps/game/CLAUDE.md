@@ -8,7 +8,7 @@ The client. It renders PILOT's world in real-time 3D and hosts the WebMCP tool d
 
 - **The client never possesses the solution.** It renders `projectForPilot` frames pushed over the WebSocket and nothing else. No `HIDDEN` field, no puzzle answer, and no server-side derivation ever ships to the browser. If a feature seems to need one, the feature is wrong.
 - **Puzzle-critical visuals render to the canvas, never to DOM.** There must be no text node holding a glyph, a gauge reading, or a cipher offset. In 3D those captions are **label sprites inside the WebGL canvas** (`render/kit.ts`), which is the same rule with a different mechanism, not a relaxation of it. The one deliberate exception is the accessibility mirror, which ships behind an explicit toggle and is documented as a trade-off.
-- **The console is DOM and the room is the canvas, and a panel moves out only after it is checked against that rule one at a time** (D-036). A readout may be DOM for exactly three reasons: it is public copy, it is something KEEPER can obtain for itself, or it is `SHARED`/`AUDIBLE` by construction. `ui.ts`'s header carries the audit; extend it rather than reasoning afresh. The caption band over the viewport is covered by it: phase copy, derived from `view.phase`, which the rail already prints.
+- **The console is DOM and the room is the canvas, and a panel moves out only after it is checked against that rule one at a time** (D-036). A readout may be DOM for exactly three reasons: it is public copy, it is something KEEPER can obtain for itself, or it is `SHARED`/`AUDIBLE` by construction. `ui/console.ts`'s header carries the audit; extend it rather than reasoning afresh. The caption band over the viewport is covered by it: phase copy, derived from `view.phase`, which the rail already prints.
 - **A glyph's name is KEEPER's half of the split and never appears on PILOT's side.** A lever captioned "spiral" deletes the chamber, because reading a label aloud is not describing a shape. Fixtures carry a lever's position or a key's number - what KEEPER can be told to act on - and wear the glyph as a drawing. `chamber.test.ts` asserts no caption anywhere contains a glyph id.
 
 ### WebMCP
@@ -67,6 +67,30 @@ The client. It renders PILOT's world in real-time 3D and hosts the WebMCP tool d
 
 ### The console
 
+- **`src/ui/` has its own [CLAUDE.md](src/ui/CLAUDE.md)** (D-066). The DOM is
+  three surfaces built from one set of parts: `parts.ts`, `landing.ts`,
+  `console.ts`. The rules that matter outside that directory are the four below.
+- **The landing screen is a surface laid over the console, never a card inside
+  the deck** (D-066). As a card it inherited a rail reading `CONNECTING`, a live
+  ambiguity gauge with no session, seven tab stubs and three faders above the
+  first sentence about what the page is - and it inherited the deck's definite
+  height, which clips, so opening the never-cut ablation chart cut the bottom off
+  the chart and the requisition slip together.
+- **The console is never hidden with `display: none`.** The camera frames
+  against the viewport's measured shape, so a hidden console comes back at zero
+  by zero and frames the first room against nothing. Whatever covers it, covers
+  it.
+- **Two absolutely positioned bands over one viewport have to be told which edge
+  each one owns.** There are five - the rail, the ending strip, the caption band,
+  the foot and the story - and a band that is merely told "top" or "bottom" is
+  printed through whichever of the others shares it. This has now produced four
+  separate defects across three renderers, every one of them visible in a frame
+  and none of them in a test.
+- **A CSS override goes below what it overrides.** Source order breaks ties, so a
+  narrow-window rule written next to the rule it is *about* rather than below the
+  rule it *changes* silently does nothing. It cost two rounds in one session
+  (D-066): the proof graphic never stacked on a phone and the skip hint never
+  cleared the foot, both green in every check.
 - **The room is the page, and a drawer never pushes it** (D-052). The camera frames against the viewport's measured shape, so a panel that squeezed the viewport would re-frame the shot every time somebody opened one. Panels overlay the deck from the two edges: PILOT's west, KEEPER's east, one open per edge, Escape closes them. The viewport carries no aspect of its own and does not need one - `camera.ts` fits the room against whatever it is handed.
 - **A CSS grid column defaults to `auto`, which floors at its content's min-content width.** The console is a grid; its rail is a flex row of nowrap parts, so with no `grid-template-columns` the rail sized itself to its contents and took the page with it - a horizontal scrollbar and the east tab rail off the edge of the window, the moment a room name got eight characters longer (D-054). `min-width: 0` on the shrinkable child cannot help, because the column has already grown to give it room.
 - **`display: flex` beats the user agent's `[hidden]`.** Anything here that sets its own display needs an explicit `[hidden] { display: none }`, or a panel hidden in script stays on screen. The first build of the drawers came up with both of them open and empty.
@@ -131,4 +155,5 @@ The client. It renders PILOT's world in real-time 3D and hosts the WebMCP tool d
 | 2026-08-30 | Ahmed Saad | The doors were put in the actual openings and PILOT can walk back through one (D-053 to D-055). Rules added: a door stands in a hole and the corridor moves when it cannot, walking back is a camera feature, a side-wall caption separates only vertically, and dressing may move without acquiring state. |
 | 2026-08-30 | Ahmed Saad | Rules added from the second and third playthroughs (D-046 to D-048): hidden means gone, a room shot stands one room, KEEPER's alcove is reserved, nothing hangs in front of a screen, a phase with no facts is not a phase with no room, low is not zero, and the three separate scars behind how a caption is built and sized. |
 | 2026-08-30 | Ahmed Saad | The starter prompt card became a requisition slip and phase 4 closed (D-062): rules added that it is built once and rendered twice, and that a panel which opens itself must hand the room back. |
+| 2026-08-31 | Ahmed Saad | The web layer was redesigned and `ui.ts` split into `src/ui/` (D-066), which has its own CLAUDE.md. New console rules: the landing screen is a surface rather than a card, the console is never `display: none`, every absolutely positioned band must own an edge, and an override goes below what it overrides. |
 | 2026-08-30 | Ahmed Saad | The judge path, the replay viewer and the accessibility layer landed (D-056 to D-061). New Access section: the mirror as the sanctioned DOM exception, contrast derived rather than declared, motion read per frame, one monitor picture across three surfaces, why the replay's URL is a query, and that a prop is not an error. The tour rule now names `data-settled` instead of a copied constant. |
