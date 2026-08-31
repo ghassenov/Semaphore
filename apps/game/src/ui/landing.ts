@@ -25,11 +25,27 @@
  * A player told the controls first learns a control scheme; a player shown the
  * asymmetry first learns why there is a second player, which is the only thing
  * here that looking at the screen does not tell them.
+ *
+ * ## D-069: an editorial redesign, on top of the structural one
+ *
+ * D-066 fixed what was broken - the landing screen inheriting console chrome,
+ * the start flow failing silently, the slip appearing twice. This pass is
+ * about what was merely correct: a display typeface (`--display`, D-068) for
+ * the headline and the running heads, scroll-driven reveals rather than
+ * everything arriving at once, a light that leans toward the pointer the way
+ * every lamp in the station already does, and a small bounded tilt on the
+ * three things a reader is actually choosing between. `heroBlock` and
+ * `whyAndKey` are shared between this screen and the gate for the same reason
+ * `promptCard` is one function in `parts.ts`: two copies of a composition are
+ * two copies that will drift, and this project has paid for that twice
+ * already (D-062, D-066).
  */
 
 import { CHAMBER_NAMES } from "@semaphore/protocol";
 import type { StationAudio } from "../audio/index.js";
 import { startChamberFrom, type SessionClient } from "../net/sessionClient.js";
+import { wireReveals } from "./reveal.js";
+import { wirePointerLight, wireTilt } from "./motion.js";
 import {
   ATTRACT_AFTER_MS,
   CHROME_FLAG,
@@ -38,9 +54,11 @@ import {
   copyButton,
   el,
   ghostScreen,
+  kicker,
   legendRow,
   panel,
   promptCard,
+  sectionRule,
   splitProof,
   wordmark,
 } from "./parts.js";
@@ -115,6 +133,70 @@ export interface LandingHandle {
 }
 
 /**
+ * Identity, then the thesis, then the lede: the block every entry surface
+ * opens with.
+ *
+ * A shared builder rather than two copies for the reason every shared builder
+ * in this directory exists (D-062, D-066): the landing screen and the gate
+ * describe the same game, and a paragraph that only one of them remembers to
+ * update is a paragraph that starts describing a different one.
+ *
+ * The thesis carries one italic clause in the display face - "the same room"
+ * - which is the actual asymmetry the sentence turns on. Setting the whole
+ * sentence in one weight buries the word that matters in nine others that
+ * don't; the emphasis is typographic, not decorative, because it is doing the
+ * job a spoken sentence does with stress and this one cannot rely on being
+ * read aloud.
+ */
+function heroBlock(): HTMLElement {
+  const head = el("header", { class: "landing-head" });
+  head.append(wordmark("large"), kicker("", "A COOPERATIVE ESCAPE GAME, BUILT ON WEBMCP"));
+  const thesis = el("h1", { class: "landing-thesis" });
+  thesis.append(
+    "An escape room for a human and an agent who cannot see ",
+    el("em", { class: "thesis-em" }, "the same room."),
+  );
+  head.append(
+    thesis,
+    el(
+      "p",
+      { class: "landing-lede" },
+      "You see the station and can touch almost none of it. Your agent holds the manual, " +
+        "can reach every mechanism behind the walls, and cannot see. Neither of you gets " +
+        "out alone.",
+    ),
+  );
+  return head;
+}
+
+/**
+ * The ablation, folded, and the colour key: the two things every entry
+ * surface closes on.
+ *
+ * `open` is the one difference between the two callers. The landing screen
+ * folds it, because a visitor who has already decided to play should not
+ * have to get past the argument for playing; the gate opens it, because for
+ * some judges this screen is the entire submission and the never-cut chart
+ * should not cost them a click to see (doc 07 section 6).
+ */
+function whyAndKey(open: boolean): { why: HTMLElement; key: HTMLElement } {
+  const why = el("details", { class: "why", "data-reveal": "" });
+  if (open) why.setAttribute("open", "");
+  why.append(
+    el("summary", {}, "Why does this need two of you? We measured it."),
+    ablationChart(true),
+  );
+
+  const key = el("footer", { class: "landing-key", "data-reveal": "" });
+  key.append(
+    el("p", { class: "landing-key-title" }, "WHO PERCEIVES WHAT"),
+    legendRow(),
+    el("p", { class: "note" }, "Every marked thing carries its shape as well as its colour."),
+  );
+  return { why, key };
+}
+
+/**
  * The landing screen.
  *
  * Returns a handle rather than mounting itself, so the console owns where it
@@ -127,23 +209,8 @@ export function renderLanding(deps: LandingDeps): LandingHandle {
   const sheet = el("main", { class: "landing-sheet" });
 
   // ---- Identity, thesis, proof. ------------------------------------------
-  const head = el("header", { class: "landing-head" });
-  head.append(
-    wordmark("large"),
-    el(
-      "h1",
-      { class: "landing-thesis" },
-      "An escape room for a human and an agent who cannot see the same room.",
-    ),
-    el(
-      "p",
-      { class: "landing-lede" },
-      "You see the station and can touch almost none of it. Your agent holds the manual, " +
-        "can reach every mechanism behind the walls, and cannot see. Neither of you gets " +
-        "out alone.",
-    ),
-  );
-  sheet.append(head, splitProof());
+  const head = heroBlock();
+  sheet.append(head, splitProof(), sectionRule());
 
   // A `?chamber=` deep link, read once. The page says so rather than opening
   // three chambers in without explaining why: a judge who lands here from a
@@ -166,14 +233,22 @@ export function renderLanding(deps: LandingDeps): LandingHandle {
   // buttons at the bottom of the other, and a sentence between them explaining
   // that the two were related. They are one procedure and they are drawn as
   // one now.
-  const start = el("section", { class: "start" });
-  start.append(el("h2", { class: "start-title" }, "Two things, and you are in"));
+  const start = el("section", { class: "start", "data-reveal": "" });
+  start.append(
+    kicker("", "HOW TO BEGIN"),
+    el("h2", { class: "start-title" }, "Two things, and you are in."),
+  );
 
   const stepOne = step(1, "Give your agent the prompt");
   // The slip, and this is the only call to `promptCard` on this screen. It used
   // to appear here *and* inside the proof graphic, so the single most important
   // element in the project was on the page twice.
-  stepOne.body.append(promptCard());
+  const slip = promptCard();
+  // The bounded pointer tilt (`wireTilt`, below) reads this attribute; it is
+  // inert without the listener, so marking it here costs nothing on the copy
+  // of this card that lives in the console's drawer instead.
+  slip.setAttribute("data-tilt", "");
+  stepOne.body.append(slip);
 
   const stepTwo = step(2, "Pick a length");
   const modes = el("div", { class: "modes" });
@@ -224,7 +299,7 @@ export function renderLanding(deps: LandingDeps): LandingHandle {
   }
 
   for (const choice of BEGIN_MODES) {
-    const button = el("button", { type: "button", class: "mode" });
+    const button = el("button", { type: "button", class: "mode", "data-tilt": "" });
     button.append(
       el("span", { class: "mode-name" }, choice.name),
       el("span", { class: "mode-cost" }, choice.cost),
@@ -252,7 +327,7 @@ export function renderLanding(deps: LandingDeps): LandingHandle {
    * the page calls `begin_shift` itself - which is normally the agent's move,
    * and it says so on the button rather than pretending otherwise.
    */
-  const solo = el("button", { type: "button", class: "solo" });
+  const solo = el("button", { type: "button", class: "solo", "data-tilt": "" });
   solo.append(
     el("span", { class: "solo-name" }, "Look around without an agent"),
     el(
@@ -321,24 +396,18 @@ export function renderLanding(deps: LandingDeps): LandingHandle {
     waiting.querySelector(".waiting-acts")?.append(again, change);
   }
 
-  // ---- Why two of you. The ablation, folded but reachable. ---------------
-  const why = el("details", { class: "why" });
-  why.append(
-    el("summary", {}, "Why does this need two of you? We measured it."),
-    ablationChart(true),
-  );
-  sheet.append(why);
-
-  const key = el("footer", { class: "landing-key" });
-  key.append(
-    el("p", { class: "landing-key-title" }, "WHO PERCEIVES WHAT"),
-    legendRow(),
-    el("p", { class: "note" }, "Every marked thing carries its shape as well as its colour."),
-  );
-  sheet.append(key);
+  // ---- Why two of you, and the key. ---------------------------------------
+  const { why, key } = whyAndKey(false);
+  sheet.append(sectionRule(), why, key);
 
   scroll.append(sheet);
   landing.append(scroll);
+
+  // ---- The two cursor-driven touches: a light on the hero, a tilt on the
+  //      three cards a reader is actually choosing between. -----------------
+  const disposeLight = wirePointerLight(head);
+  const disposeTilt = wireTilt(start);
+  const disposeReveals = wireReveals(landing);
 
   // ---- Attract mode, over the whole screen. ------------------------------
   //
@@ -424,6 +493,9 @@ export function renderLanding(deps: LandingDeps): LandingHandle {
     dispose(): void {
       globalThis.clearTimeout(idleTimer);
       stopAttract();
+      disposeLight();
+      disposeTilt();
+      disposeReveals();
       for (const event of ["keydown", "pointerdown", "pointermove"] as const) {
         globalThis.removeEventListener(event, restartIdle);
       }
@@ -465,26 +537,14 @@ export function renderGate(root: HTMLElement): void {
   const scroll = el("div", { class: "landing-scroll" });
   const sheet = el("main", { class: "landing-sheet" });
 
-  const head = el("header", { class: "landing-head" });
-  head.append(
-    wordmark("large"),
-    el(
-      "h1",
-      { class: "landing-thesis" },
-      "An escape room for a human and an agent who cannot see the same room.",
-    ),
-    el(
-      "p",
-      { class: "landing-lede" },
-      "You see the station and can touch almost none of it. Your agent holds the manual, " +
-        "can reach every mechanism behind the walls, and cannot see. Neither of you gets " +
-        "out alone.",
-    ),
-  );
-  sheet.append(head, splitProof());
+  const head = heroBlock();
+  sheet.append(head, splitProof(), sectionRule());
 
-  const start = el("section", { class: "start" });
-  start.append(el("h2", { class: "start-title" }, "Two things, and you are in"));
+  const start = el("section", { class: "start", "data-reveal": "" });
+  start.append(
+    kicker("", "HOW TO BEGIN"),
+    el("h2", { class: "start-title" }, "Two things, and you are in."),
+  );
 
   // The problem, as the first step of a procedure rather than as a headline.
   const stepOne = step(1, "Get into a browser that can reach the station");
@@ -527,13 +587,13 @@ export function renderGate(root: HTMLElement): void {
   stepTwo.body.append(promptCard());
 
   start.append(stepOne.section, stepTwo.section);
-  sheet.append(start);
+  sheet.append(start, sectionRule());
 
   // SPECTATE. Until this existed the screen described a game without ever
   // showing one. Behind a button rather than autoplaying: this screen is read,
   // not watched, and a canvas that starts moving under a paragraph somebody is
   // reading is what attract mode is for on the screen that is watched.
-  const watch = el("section", { class: "watch" });
+  const watch = el("section", { class: "watch", "data-reveal": "" });
   const screen = ghostScreen();
   screen.element.hidden = true;
   const spectate = el("button", { type: "button", class: "spectate" }, "SPECTATE");
@@ -545,7 +605,8 @@ export function renderGate(root: HTMLElement): void {
     else screen.play();
   });
   watch.append(
-    el("h2", { class: "start-title" }, "Or watch a shift, right here"),
+    kicker("", "OR WATCH IT HAPPEN"),
+    el("h2", { class: "start-title" }, "A shift, right here."),
     el(
       "p",
       { class: "landing-lede" },
@@ -557,23 +618,16 @@ export function renderGate(root: HTMLElement): void {
   );
   sheet.append(watch);
 
-  const why = el("details", { class: "why" });
-  why.setAttribute("open", "");
-  why.append(
-    el("summary", {}, "Why does this need two of you? We measured it."),
-    ablationChart(true),
-  );
-  sheet.append(why);
-
-  const key = el("footer", { class: "landing-key" });
-  key.append(
-    el("p", { class: "landing-key-title" }, "WHO PERCEIVES WHAT"),
-    legendRow(),
-    el("p", { class: "note" }, "Every marked thing carries its shape as well as its colour."),
-  );
-  sheet.append(key);
+  const { why, key } = whyAndKey(true);
+  sheet.append(why, key);
 
   scroll.append(sheet);
   gate.append(scroll);
   root.append(gate);
+
+  wirePointerLight(head);
+  wireTilt(start);
+  // No disposer kept: the gate is the terminal state of this document, and
+  // nothing ever tears it down to replace it with something else.
+  wireReveals(gate);
 }
