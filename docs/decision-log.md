@@ -2081,3 +2081,54 @@ the drift the script exists to prevent, arriving through the one door it had
 left open. They are `color-mix` against tokens now, pure light and shadow are
 `white` and `black` percentages so they cannot become a twenty-first colour by
 the back door, and the script fails on any hex written into a rule.
+
+---
+
+### D-065 The page is the split, and the tutorial holds the wheel
+
+**2026-08-31.** Three rounds of "this is not a redesign" before the note landed,
+and it was right each time. Two passes changed the paint - ground colours by a
+few points, type by a pixel and a half, then vivid channel hues and a floating
+HUD - and left the landing screen's composition exactly where it had always
+been: a centred column on black with a panel in it illustrating the asymmetry.
+
+**So the page became the asymmetry.** Divided down the middle, the left field
+lamplight and the right tidewater, a lit seam between them, and the words that
+belong to both sitting across it. The halves lost their boxes: the page behind
+them is already the division, and drawing a panel around each was drawing the
+same line twice. *The lesson is that a redesign is a change of composition. A
+change of palette on a fixed composition is a reskin, and calling it the other
+thing does not make it one.*
+
+The requisition slip moved out of a drawer that opened itself and into the cold
+half - the most literal possible illustration of "what your agent gets". A copy
+button was tried there first and was worse than either arrangement: a judge
+could take the prompt without reading it, and the fallback line went off screen
+with the text. The browser proof failed on exactly that, which is what it is
+for.
+
+**The guided shift did not hold the wheel.** Reported as "completely broken",
+and it was: the player kept every key while the tour was speaking, so `WASD`
+walked the body out from under a camera framing it, `M` yanked to the wide shot
+mid-sentence, and `Q` walked out of the Airlock entirely - after which every
+remaining step named a fixture the room no longer contained and the camera
+simply stopped. A tutorial that can be steered off what it is teaching is not
+one. Three more went with it: typing into the shared notepad advanced the tour
+and skipped the opening, because both listen on `globalThis`; the spotlight was
+measured once, so a drawer opening left it pointing at nothing; and a step
+pointed at a shut drawer, making the lesson "look at this word".
+
+**And the replay was a chart, not a replay.** Two tracks of tick marks and an
+ambiguity trace say when and how much; they cannot say what happened. It now
+carries the session as a list of what was done, in the two channel colours,
+with the wasted-call metric shown in words where it applies. The list follows
+the playhead and clicking a line seeks to it: the chart is how you find a
+moment and the list is how you read one, so they are on screen together or
+neither is much use.
+
+*One thing a test could not have caught.* The first vivid tidewater was a cyan,
+and the Blind Panel is lit through its own practical in the channel's colour -
+so cyan fell on brass and the hazard chevrons came back green, in a palette
+whose test forbids green so that success cannot be signalled with one. A lit
+surface is not a palette entry. Moving the hue to a blue fixed it, and only the
+frame could have said so.
