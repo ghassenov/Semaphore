@@ -2308,3 +2308,113 @@ worker's "route names are the tool names". They are not, for the read-only half:
 `get_status` is `GET /status`, `describe_chamber` is `/describe`, `read_manual`
 is `/manual?section=`. Corrected there, because the handoff is trusted and a
 trusted handoff that is wrong costs more than no handoff.
+
+---
+
+### D-068 One typeface, deliberately
+
+**2026-08-31.** Asked for directly, mid-session, after the constraint was
+stated: "forget about the 3 constraints" - no asset files, no webfonts, no
+images. The three are load-bearing for different reasons and were weighed
+separately rather than dropped as a set.
+
+**Images stayed off, for a reason that is not taste.** There is no way to
+source photography or artwork in this environment with rights clean enough to
+ship under MIT - no image-generation tool, no licensed stock access, and
+downloading an arbitrary image off the web and redistributing it in a public
+hackathon submission is a real liability, not a style choice. So the ceiling
+this pass raises is typographic, not photographic: light, motion, composition
+and one real typeface, which is also closer to what the "editorial poster"
+direction (D-069) actually wanted.
+
+**Fonts came back, once, for the landing screen's display type only.**
+Fraunces, a variable typeface, SIL Open Font License 1.1. Self-hosted in
+`apps/game/public/fonts/` as two `.woff2` files (the upright weight axis and
+one italic cut) plus the licence text beside them, `font-display: swap`, and
+one `--display` custom property so nothing structural - a control, a label, an
+identifier - can quietly start depending on it. `LICENSE` carries the
+carve-out this reintroduces, in the same place and the same voice D-044's
+carve-out used to live, because that section exists precisely so this decision
+would have to be written down rather than slipped in.
+
+**What stayed exactly as it was.** No puzzle-critical value, no gameplay
+geometry, no game texture depends on the font; removing the two files leaves
+every fallback stack this project already had. `check-palette.mjs` and the
+twenty-colour lock are untouched - this was never a colour question. And it is
+real network weight the project's own performance target should know about:
+roughly 150KB combined, fetched once and cached, behind `swap` so it never
+blocks the headline from rendering - but it is not the zero the client's
+`no asset requests for media` law used to guarantee, and the in-app-browser
+spike (item 4, `NEXT-STEPS.md`) should note it when it runs.
+
+---
+
+### D-069 The landing screen, made to be looked at
+
+**2026-08-31.** Asked for directly, after D-066: the structural redesign fixed
+what was broken, and this pass is the one that makes the result something a
+judge would call beautiful rather than merely correct. Three concrete
+directions were put to the person who owns the interface with ASCII previews
+rather than guessed at - cinematic (the live station as the hero background),
+editorial (a designed poster), interactive-proof (the split graphic reacting
+to the cursor) - because this project has already burned three sessions on
+exactly this ambiguity (D-063 to D-065) and a fourth pass built on a guess
+would have been the same mistake with better paint. **Editorial** was chosen.
+
+**One typeface (D-068) and four signature moments**, also chosen from a menu
+rather than assumed: scroll-driven reveals, a cursor-reactive light, redrawn
+SVG motifs, and custom micro-interactions on the things a reader is actually
+choosing between.
+
+- **Scroll reveals** (`ui/reveal.ts`). One `IntersectionObserver`, every
+  `[data-reveal]` element gets `.is-revealed` the first time it crosses in and
+  never loses it again - a reveal is an entrance, not a toggle. Under
+  `prefers-reduced-motion`, or with no `IntersectionObserver` at all, every
+  element is marked visible synchronously and nothing is ever observed:
+  verified against real `getComputedStyle().opacity`, not only the class, with
+  no scroll performed at all.
+- **The pointer light** (`ui/motion.ts`, `wirePointerLight`). Two custom
+  properties written on `pointermove`, confined to the hero; everything about
+  what the light actually looks like is `style.css`'s decision, which is the
+  same split `wireReveals` keeps. The first pass measured as *functioning* -
+  the coordinates genuinely tracked the pointer - and *invisible*: a single
+  10% ring at 38rem read as nothing against the existing hero gradients. It is
+  two rings now, a dense inner one and a faint outer one, verified by cropping
+  the frame with and without a simulated pointer over the headline.
+- **Redrawn motifs** (`sectionRule`, `parts.ts`). A rule between sections that
+  grows from its centre and fades the split lamp up inside it on scroll,
+  rather than a divider that was simply always there.
+- **Bounded tilt** (`wireTilt`, `ui/motion.ts`). A five-degree lean toward the
+  pointer on the three things a reader chooses between - the session-length
+  cards, the "look around" offer, the requisition slip - one delegated
+  listener per page rather than one per card. The slip's tilt rule is shared
+  with the copy of the same card that lives in the console's drawer
+  (`promptCard`, one builder, D-062): the custom properties it reads are unset
+  there, so the rule is a no-op on that copy rather than a second rule to keep
+  in step.
+- **Typography.** `--display` (Fraunces) on the headline, the start section's
+  subhead and its step numerals; one italic clause in the thesis - "the same
+  room" - carrying the actual asymmetry the sentence turns on, which is doing
+  with weight and slant what a spoken reading would do with stress.
+
+**`heroBlock` and `whyAndKey` are shared between the landing screen and the
+gate**, extracted rather than duplicated a third time, for the reason every
+shared builder in `parts.ts` exists: this project has paid twice already
+(D-062, D-066) for a composition existing as two copies that quietly stopped
+agreeing.
+
+**Nothing here touches the design law.** The channel hues, the twenty-colour
+lock, `check-palette.mjs`, the canvas-only rule for puzzle-critical values -
+none of it was in scope and none of it moved. The 3D station was never opened.
+
+**Verified, not asserted.** Both cursor effects were checked with a simulated
+pointer over CDP and their actual custom-property values read back, not just
+"the code looks right" - the light's first version passed that check and was
+still invisible, which is exactly why the check has to read pixels as well as
+state. `wireReveals`, `wirePointerLight` and `wireTilt` each have unit tests
+for their two branches (reduced-motion / coarse-pointer inert, otherwise
+wired-and-disposed); what a real intersection or a real drag does on a real
+screen is, as this file's own rule says, the browser tour's job, and the tour
+stayed at 27 of 27 through every step of this pass. 747 tests, entry 40.5KB
+gzipped of a 400KB budget (up from 39.0KB - the two new TypeScript modules,
+not the fonts, which are not part of the JS bundle at all).
