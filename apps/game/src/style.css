@@ -2007,13 +2007,75 @@ button[hidden] {
  * KEEPER could reach. A reader who has played will recognise the rows without
  * a legend, and one who has not is told by the labels.
  */
+/*
+ * Two columns, filling the window.
+ *
+ * It used to be one narrow stack: a small monitor, a thin band of tick marks,
+ * and the transcript pushed off the bottom of the screen. A replay is read by
+ * moving between the chart and the list - the chart is how you find a moment
+ * and the list is how you read one - so they have to be on screen together or
+ * neither is much use.
+ */
 .replay {
-  max-width: 68rem;
-  margin: 0 auto;
-  padding: 2.5rem 1.5rem 4rem;
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap);
+  display: grid;
+  grid-template-areas:
+    "head head"
+    "screen log"
+    "track log";
+  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 1.1rem 1.6rem;
+  align-content: start;
+  height: 100dvh;
+  padding: 2rem 2.2rem;
+}
+
+.replay-head {
+  grid-area: head;
+}
+
+.replay > .replay-screen {
+  grid-area: screen;
+}
+
+.replay > svg,
+.replay > .replay-scrub,
+.replay > .replay-readout {
+  grid-area: track;
+}
+
+.replay > .replay-scrub {
+  align-self: end;
+  margin-bottom: 1.9rem;
+}
+
+.replay > .replay-readout {
+  align-self: end;
+}
+
+.replay > .replay-log {
+  grid-area: log;
+  max-height: none;
+  margin: 0;
+}
+
+.replay > .replay-share {
+  grid-area: head;
+  justify-self: end;
+  align-self: start;
+}
+
+@media (max-width: 62rem) {
+  .replay {
+    grid-template-areas:
+      "head"
+      "screen"
+      "track"
+      "log";
+    grid-template-rows: auto auto auto minmax(12rem, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
 }
 
 .replay-head h1 {
@@ -2738,4 +2800,87 @@ button[hidden] {
 .foot .audible:empty {
   border-color: transparent;
   outline-color: transparent;
+}
+
+/* ------------------------------------------------------- replay transcript -- */
+
+/*
+ * The session as a list of things that were done.
+ *
+ * The two tracks above say when and how much; they cannot say what happened,
+ * and a viewer looking at a row of tick marks has no way to find out. This is
+ * the same events in the two colours the whole game is coded in, and the chart
+ * and the list drive each other: the chart is how you find an interesting
+ * moment and this is how you read one.
+ */
+.replay-log {
+  max-height: 22rem;
+  margin: 1.2rem 0 0;
+  padding: 0;
+  overflow-y: auto;
+  border: var(--edge);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--ink) 70%, transparent);
+  list-style: none;
+}
+
+.replay-entry {
+  display: grid;
+  grid-template-columns: 4.2rem 1fr auto;
+  gap: 0.9rem;
+  align-items: baseline;
+  padding: 0.42rem 0.9rem;
+  border-left: 2px solid transparent;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  /* Everything ahead of the playhead is dimmed rather than hidden, so the
+     length of what is still to come stays visible while it is read. */
+  opacity: 0.35;
+  cursor: pointer;
+  transition:
+    opacity 200ms ease,
+    background 200ms ease;
+}
+
+.replay-entry.past {
+  opacity: 1;
+}
+
+.replay-entry:hover {
+  background: color-mix(in srgb, var(--stone) 70%, transparent);
+}
+
+/* The line the playhead is standing on. */
+.replay-entry.now {
+  background: color-mix(in srgb, var(--stone) 90%, transparent);
+}
+
+.replay-entry.keeper {
+  border-left-color: color-mix(in srgb, var(--tide) 60%, transparent);
+}
+
+.replay-entry.pilot {
+  border-left-color: color-mix(in srgb, var(--lamp) 60%, transparent);
+}
+
+.replay-entry.bad .replay-what {
+  color: var(--alarm);
+}
+
+.replay-when {
+  color: var(--iron);
+}
+
+.replay-entry.keeper .replay-what {
+  color: var(--tide);
+}
+
+.replay-entry.pilot .replay-what {
+  color: var(--lamp);
+}
+
+.replay-note {
+  color: var(--mist);
+  font-size: 0.7rem;
+  text-align: right;
 }
