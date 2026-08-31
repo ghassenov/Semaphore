@@ -943,13 +943,17 @@ export function createStage(
     // they ended up: the lamp resolves what is near them, the camera leans
     // toward them, and the lean-in frames whatever they are standing at.
     const acrossKeys =
-      (held.has("d") || held.has("arrowright") ? 1 : 0) -
-      (held.has("a") || held.has("arrowleft") ? 1 : 0);
+      // Frozen while something else is driving the camera. Read once, so every
+      // control below agrees about whether the player is holding the wheel.
+      (model.locked ? 0 : 1) *
+      ((held.has("d") || held.has("arrowright") ? 1 : 0) -
+        (held.has("a") || held.has("arrowleft") ? 1 : 0));
     // Toward the back wall is away from the camera, which is negative z, so
     // `w` and the up arrow walk into the room.
     const intoKeys =
-      (held.has("s") || held.has("arrowdown") ? 1 : 0) -
-      (held.has("w") || held.has("arrowup") ? 1 : 0);
+      (model.locked ? 0 : 1) *
+      ((held.has("s") || held.has("arrowdown") ? 1 : 0) -
+        (held.has("w") || held.has("arrowup") ? 1 : 0));
     const pace = (deltaMs / 1000) * WALK_SPEED;
     walk = Math.max(0, Math.min(1, walk + acrossKeys * pace));
     walkZ = Math.max(0, Math.min(1, walkZ + intoKeys * pace));
@@ -983,12 +987,12 @@ export function createStage(
     // it as though the pair were standing in a chamber, and the first thing
     // anybody saw of the game was a black rectangle. One value now, read from
     // the shot that will actually be used.
-    const asked = held.has("m") || now < walkUntil;
+    const asked = (held.has("m") && !model.locked) || now < walkUntil;
 
     // Lean in: hold E near a mechanism and the camera goes and looks at it.
     // The one camera move the human drives, and the reason a glyph is a thing
     // you can describe rather than a thing you can merely see.
-    const wantsLean = held.has("e") && !asked;
+    const wantsLean = held.has("e") && !asked && !model.locked;
     leaning =
       wantsLean && plan !== null && standing !== null
         ? nearestFixture(plan, pilotAt.x - standing.x, pilotAt.z - standing.z)
@@ -1008,7 +1012,7 @@ export function createStage(
      * Edge-triggered, so leaning on the key crosses one threshold rather than
      * every threshold between here and the Airlock.
      */
-    const going = held.has("q");
+    const going = held.has("q") && !model.locked;
     const doorTo =
       going && !wasGoing && plan !== null && standing !== null && floor !== null
         ? doorAhead(mode, floor, here, plan, pilotAt.x - standing.x, pilotAt.z - standing.z)
@@ -1029,8 +1033,45 @@ export function createStage(
       return;
     }
 
+    /*
+     * The guided shift's camera, which outranks everything except a lean.
+     *
+     * The tour is pure and names a fixture; only the stage can turn that into a
+     * position, because only the stage knows where the room is standing. A
+     * `focus` naming a fixture the current room does not contain resolves to
+     * nothing and the camera carries on as it was - which is what should happen
+     * when the tour is talking about the Airlock and the pair have walked out
+     * of it.
+     */
+    const guided = model.focus;
+    let guidedAt: { x: number; y: number; z: number } | null = null;
+    let guidedWide = false;
+    if (guided !== null && standing !== null) {
+      if (guided.kind === "wide") {
+        guidedWide = true;
+      } else if (guided.kind === "pilot") {
+        guidedAt = { x: pilotAt.x, y: 1.2, z: pilotAt.z };
+      } else {
+        const target = plan?.fixtures.find((fixture) => fixture.id === guided.id);
+        if (target) {
+          guidedAt = {
+            x: standing.x + target.at.x,
+            y: target.at.y,
+            z: standing.z + target.at.z,
+          };
+        }
+      }
+    }
+
     let shot: Shot;
-    if (leaning !== null && standing !== null) {
+    if (guidedAt !== null && standing !== null) {
+      shot = inspectShot(guidedAt, aspect(), {
+        centre: standing,
+        size: plan?.size ?? footprintOf(floor ?? "airlock"),
+      });
+    } else if (guidedWide) {
+      shot = shotFor(mode, view?.phase ?? "ENTRY", floor, true, aspect(), pilotAt);
+    } else if (leaning !== null && standing !== null) {
       shot = inspectShot(
         {
           x: standing.x + leaning.at.x,
@@ -1043,7 +1084,7 @@ export function createStage(
     } else {
       shot = shotFor(mode, view?.phase ?? "ENTRY", floor, asked, aspect(), pilotAt);
     }
-    const wide = shot.floor === null && leaning === null;
+    const wide = shot.floor === null && leaning === null && guidedAt === null;
 
     // Keyed on the shot, not the request: the walk between rooms is a wide
     // shot, and standing only one room's walls up during it would show the

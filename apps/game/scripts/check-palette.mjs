@@ -84,6 +84,35 @@ for (const property of declared.keys()) {
   }
 }
 
+/*
+ * And every colour written straight into a rule, which the two passes above
+ * cannot see at all.
+ *
+ * They compare *declarations*: `--name: #rrggbb;` on one side against
+ * `palette.ts` on the other. A colour written inline - inside a gradient, a
+ * shadow, a border - is not a declaration, so it was never checked, and twenty
+ * of them had accumulated. Eleven carried a hue the palette does not contain,
+ * and when the ground was retuned they silently stayed at the old values: the
+ * panels kept the previous palette's blue while everything around them moved.
+ * That is precisely the failure this script was written to prevent, arriving
+ * through the one door it had left open.
+ *
+ * The fix in the stylesheet is `color-mix` against a token, which is also the
+ * better way to write a translucent surface. Pure light and shadow are written
+ * as `white` and `black` percentages for the same reason: they are not hues and
+ * must not become a twenty-first colour by the back door.
+ */
+const inline = [];
+for (const [index, line] of readFileSync(join(root, "src", "style.css"), "utf8")
+  .split("\n")
+  .entries()) {
+  if (/^\s*--[a-z0-9-]+:\s*#[0-9a-f]{6}\s*;/i.test(line)) continue;
+  for (const [hex] of line.matchAll(/#[0-9a-f]{3,8}\b/gi)) {
+    inline.push(`  style.css:${String(index + 1)} writes ${hex} inline; use a token or color-mix`);
+  }
+}
+problems.push(...inline);
+
 if (problems.length > 0) {
   console.error(`palette: the stylesheet and the palette disagree.\n${problems.join("\n")}`);
   process.exit(1);

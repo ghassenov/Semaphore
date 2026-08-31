@@ -55,10 +55,13 @@ import {
 } from "./render/hud.js";
 import { roomPlan, roomTitle } from "./render/chamber.js";
 import { FLOOR_NAMES, activeFloor, stationFloors, type FloorId } from "./render/floors.js";
-import { CHANNEL_MARKER } from "./render/palette.js";
+import { CHANNEL, CHANNEL_MARKER, hex } from "./render/palette.js";
 import { describeRoom } from "./render/mirror.js";
 import { TAIL_MS } from "./render/ghost.js";
+import { GLYPHS, glyphCanvas } from "./render/glyphs.js";
 import { paintMonitor } from "./render/monitor.js";
+import { createTour, type TourHandle } from "./tutorial/tour.js";
+import { ENDING, OPENING, playStory, type StoryHandle } from "./story.js";
 import type { GhostTrack } from "@semaphore/protocol";
 
 const STARTER_PROMPT =
@@ -68,8 +71,96 @@ const STARTER_PROMPT =
 
 const CHROME_FLAG = "chrome://flags/#enable-webmcp-testing";
 
+/**
+ * What KEEPER is told about the lever PILOT is looking at, near enough.
+ *
+ * Lifted in shape from `views.ts`'s own `describeChamber`, not invented: the
+ * landing screen's whole job is to show the split honestly, and a prettier
+ * sentence than the agent really gets would be a sales pitch for a different
+ * game. The one thing it may not contain is the glyph's name, for exactly the
+ * reason the game may not: naming it is PILOT's half of the work.
+ */
+const KEEPER_SIDE = [
+  "THE AIRLOCK. Three levers on the far wall:",
+  "lever_a down, lever_b upright, lever_c upright.",
+  "You cannot see what is lit above them. PILOT can. Ask.",
+].join(" ");
+
 /** How many segments the ambiguity gauge in the rail is divided into. */
 const GAUGE_SEGMENTS = 12;
+
+/**
+ * The two halves of the game, side by side, on the screen that has to sell it.
+ *
+ * This is the thesis as a picture rather than as a paragraph: the *same* lever,
+ * rendered the two ways the two players receive it. The left is drawn with the
+ * game's own `glyphCanvas`, so it is the actual mark from the actual chamber
+ * and not an illustration of one; the right is the shape of text the agent
+ * actually gets.
+ *
+ * **The glyph is a canvas and it is never named.** Both are the same rule the
+ * chambers run on: a text node holding a glyph is one an agent with page access
+ * can scrape, and a lever captioned "spiral" deletes the puzzle. Here that rule
+ * is also the argument - the point being made is that this shape only becomes
+ * words if a person makes them.
+ */
+function heroSplit(): HTMLElement {
+  const split = el("div", { class: "split" });
+  split.classList.add("split-field");
+
+  const seen = el("figure", { class: "half half-pilot" });
+  seen.append(el("figcaption", { class: "half-who" }, "WHAT YOU SEE"));
+  const plate = el("div", { class: "half-plate" });
+  const mark = glyphCanvas(GLYPHS.spiral ?? [], 7);
+  // Tinted to PILOT's own channel, the same way `kit.glyphPlane` tints it in
+  // the station. `glyphCanvas` draws white on purpose so the caller decides
+  // the channel, and leaving it white here would have said "both of you can
+  // see this" on the one graphic whose entire argument is that only one of
+  // you can. `source-in` keeps the mark's shape and replaces its colour.
+  const ink = mark.getContext("2d");
+  if (ink) {
+    ink.globalCompositeOperation = "source-in";
+    ink.fillStyle = hex(CHANNEL.pilot.key);
+    ink.fillRect(0, 0, mark.width, mark.height);
+  }
+  mark.className = "half-glyph";
+  mark.setAttribute("role", "img");
+  mark.setAttribute("aria-label", "a mark on a plate, which only you can see");
+  plate.append(mark);
+  seen.append(
+    plate,
+    el("p", { class: "half-note" }, "A mark above one lever. You will have to put it into words."),
+  );
+
+  const told = el("figure", { class: "half half-keeper" });
+  told.append(el("figcaption", { class: "half-who" }, "WHAT YOUR AGENT GETS"));
+  told.append(
+    el("div", { class: "half-tool" }, KEEPER_SIDE),
+    el(
+      "p",
+      { class: "half-note" },
+      "Every lever feels the same. It can pull them. It cannot look.",
+    ),
+  );
+  /*
+   * And the requisition slip itself, in the half of the page it belongs to.
+   *
+   * The slip is what doc 04 section 2 calls the element that makes an agent
+   * engage at all, and it used to be carried by a drawer that opened itself on
+   * load. On a landing screen that is now the split, a panel standing over the
+   * right third talks over the argument - but a *copy* button in its place was
+   * worse than either: a judge could take the prompt without ever reading it,
+   * and the fallback line that tells them what to do when their agent says
+   * nothing went off screen with it.
+   *
+   * So the slip moves into the cold half rather than out of the page. It is
+   * the most literal possible illustration of "what your agent gets".
+   */
+  told.append(promptCard());
+
+  split.append(seen, el("div", { class: "split-seam" }, "AND"), told);
+  return split;
+}
 
 /** Build one element, with text and attributes, in one call. */
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -453,7 +544,20 @@ export function renderGate(root: HTMLElement): void {
   mark.append(words);
   hero.append(
     mark,
-    el("h1", {}, "This browser cannot reach the station."),
+    /*
+     * The pitch first, the problem second.
+     *
+     * This screen used to open with "This browser cannot reach the station",
+     * which is the most important sentence on it for somebody who came here to
+     * play and the least important for somebody who came here to judge. Doc 07
+     * section 6 is explicit that for some judges this screen *is* the
+     * submission, and a submission should not lead with an error.
+     *
+     * The split graphic below makes the same argument the landing screen makes,
+     * from the same code, so the two screens agree about what the game is
+     * without either of them describing it twice.
+     */
+    el("h1", {}, "An escape room for a human and an agent who cannot see the same room."),
     el(
       "p",
       { class: "lede" },
@@ -469,7 +573,21 @@ export function renderGate(root: HTMLElement): void {
         "the draft. Two do.",
     ),
   );
+  hero.append(heroSplit());
   main.append(hero);
+
+  // Then the problem, marked as the aside it is rather than as the headline.
+  const blocked = el("section", { class: "blocked" });
+  blocked.append(
+    el("h2", {}, "This browser cannot reach the station"),
+    el(
+      "p",
+      {},
+      "The agent plays through tools this page registers, and that needs a browser " +
+        "implementing the WebMCP draft. Two do, and either takes a minute.",
+    ),
+  );
+  main.append(blocked);
 
   const routes = el("div", { class: "routes" });
 
@@ -788,6 +906,13 @@ function edge(side: "left" | "right"): {
       body.append(section);
 
       const button = el("button", { type: "button", class: "tab" }, label);
+      // A stable handle for anything that needs to point at this tab from
+      // outside the console. The guided shift spotlights two of them, and a
+      // class name would be a promise that a styling change is free to break.
+      button.dataset.tab = label
+        .toLowerCase()
+        .replace(/[^a-z]+/g, "-")
+        .replace(/^your-/, "");
       button.setAttribute("aria-expanded", "false");
       button.addEventListener("click", () => {
         // Clicking the open tab closes it, so the room can always be got back
@@ -893,15 +1018,47 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   viewport.append(fullscreen);
 
   // The start card, over the room, until there is a session.
+  // Bound below, once the tour is mounted. The landing card is built before
+  // the tour is, and a button that does nothing for one frame is better than
+  // reordering the shell around a tutorial.
+  let teach: (() => void) | null = null;
+  /**
+   * Whether the landing screen asked for the tour before there was a room.
+   *
+   * The tour's beats are about the Airlock's levers, so running it on the
+   * landing screen played a lesson over an empty page: the copy arrived, the
+   * camera had nothing to fly to, and the game the tutorial was describing was
+   * not on screen at all. "Show me how it works" now *starts* a practice shift
+   * and the tour opens when the room does.
+   */
+  let teachOnArrival = false;
+
   const launch = el("div", { class: "launch" });
-  launch.append(el("h3", {}, "Start the shift"));
+  const sheet = el("div", { class: "launch-card" });
+  launch.append(sheet);
+
+  // The identity, then the thesis, then the proof of the thesis. In that order
+  // because somebody who has just arrived does not yet know what this is, and
+  // the old card opened with three unlabelled buttons in an empty room.
+  const badge = el("div", { class: "launch-badge" });
+  badge.append(lampMark(34), el("p", { class: "launch-name" }, "SEMAPHORE"));
+  sheet.append(
+    badge,
+    el(
+      "h3",
+      { class: "launch-thesis" },
+      "An escape room for a human and an agent who cannot see the same room.",
+    ),
+    heroSplit(),
+    el("p", { class: "launch-claim" }, "Neither of you gets out alone. That is measurable."),
+  );
   // A `?chamber=` deep link, read once. The card says so rather than opening
   // three chambers in without explaining why: a judge who lands here from a
   // link should know they are being shown the middle of a session, and a
   // player who arrives by accident should know why the airlock is missing.
   const deepLink = startChamberFrom(globalThis.location.search);
   if (deepLink) {
-    launch.append(
+    sheet.append(
       el(
         "p",
         { class: "note deep-link" },
@@ -935,12 +1092,52 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
     });
     modes.append(button);
   }
-  launch.append(
+  const showMe = el("button", { type: "button", class: "launch-teach" }, "Show me how it works");
+  showMe.addEventListener("click", () => {
+    if (launch.hidden) {
+      // Already in a room: just play it.
+      teach?.();
+      return;
+    }
+    /*
+     * On the landing screen there is no room yet, and every beat after the
+     * first is about a lever in the Airlock. Running it here played a lesson
+     * over an empty page.
+     *
+     * So this opens a practice shift and the tour follows the room in. Practice
+     * is the right length to be shown things in: untimed, so nothing is running
+     * out while somebody reads.
+     */
+    teachOnArrival = true;
+    deps.audio.start();
+    /*
+     * `begin_shift` first, then `start`.
+     *
+     * Beginning the shift is normally the agent's move, and `start` refuses
+     * without it - `E_NO_SESSION: Your shift has not started`. So the first
+     * version of this button did nothing at all for a real visitor, and the
+     * check that said otherwise had called `begin_shift` over HTTP beforehand,
+     * which is a path nobody arriving at the page ever takes.
+     *
+     * A demonstration may open its own door. It is a practice run whose whole
+     * purpose is to show somebody the game before they have an agent pointed
+     * at it, and it says so on the button.
+     */
+    void deps.client
+      .post("begin_shift", { designation: "KEEPER" })
+      .then(() => deps.client.post("start", { difficulty: "practice", mode: "full" }))
+      .then((response) => {
+        deps.onNote(`show me how it works: ${response.text}`);
+      });
+  });
+  sheet.append(
+    showMe,
+    el("p", { class: "launch-go" }, "START THE SHIFT"),
     modes,
     el(
       "p",
       { class: "note" },
-      "Your agent opens the door. Paste it the prompt on the right first.",
+      "Your agent opens the door. Give it the prompt above, then pick a length.",
     ),
   );
 
@@ -953,7 +1150,7 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   // who has already decided should not have to scroll past it.
   const why = el("details", { class: "why" });
   why.append(el("summary", {}, "Why does this need two of you?"), ablationChart());
-  launch.append(why);
+  sheet.append(why);
 
   // Attract mode: after twenty seconds of nothing, the start card starts
   // playing a shift (doc 08 phase 4).
@@ -1243,7 +1440,16 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   // Once, though. It is opened here and never reopened, so a player who closes
   // it has closed it: the room is the page (D-052), and a panel that kept
   // coming back would be the console arguing with them.
-  east.open("Your agent");
+  /*
+   * The prompt drawer no longer opens itself.
+   *
+   * It used to, on the grounds that it was the most important element on the
+   * landing screen - true when that screen was a small card in an empty room.
+   * The landing is now the split itself, and a panel standing over its right
+   * third talks over the argument the page is making. The prompt has moved
+   * into the cold half instead, which is where it belongs: the starter prompt
+   * *is* what the agent gets.
+   */
   /** Whether the opening slip has already given the room back. */
   let handedOver = false;
 
@@ -1285,12 +1491,74 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   /** The manifest as it was last painted, so a surviving tool does not re-animate. */
   let shownTools: readonly string[] = [];
 
+  /*
+   * The guided shift, mounted over the deck.
+   *
+   * It is created eagerly and drawn lazily: nothing is on screen until it
+   * starts, so a session that never asks for it pays one detached element. The
+   * model is handed over rather than a callback, because the one thing it needs
+   * to do to the world outside itself is move the camera, and the camera is
+   * read off the model every frame like everything else.
+   */
+  let tour: TourHandle | null = null;
+  let offered = false;
+  /*
+   * The two sequences that bracket a shift, each played once.
+   *
+   * Keyed on the phase arriving rather than on a timer, so the opening lands
+   * when the pair actually reach a room and the ending lands when the door is
+   * actually open. `told` is what keeps a re-render from replaying either.
+   */
+  let story: StoryHandle | null = null;
+  const told = new Set<string>();
+  // The landing card's own way in, bound once the tour exists.
+  teach = () => tour?.start();
+
   return {
     stage: viewport,
     notepadHost,
     archiveHost,
 
     update(model: StationModel) {
+      tour ??= createTour(deck, model);
+      /*
+       * Offer it once, when the pair first reach a room.
+       *
+       * Not on the landing screen: the tour's third beat is about a mark above
+       * one of the Airlock's levers, and a tour that describes a room nobody is
+       * standing in is a slideshow. Not on every visit either - autoplaying
+       * anything is a cost imposed on somebody who did not ask for it, so it
+       * runs on a first visit and then only when asked.
+       */
+      const nowPhase = model.view?.phase ?? null;
+      if (nowPhase === "IN_CHAMBER" && !told.has("opening")) {
+        told.add("opening");
+        story = playStory(deck, OPENING);
+      }
+      if (nowPhase === "ESCAPED" && !told.has("ending")) {
+        told.add("ending");
+        story = playStory(deck, ENDING);
+      }
+      // The tour waits for the opening to have had its say, so the two are
+      // never on screen together telling the player two different things.
+      if (teachOnArrival && nowPhase === "IN_CHAMBER") {
+        teachOnArrival = false;
+        offered = true;
+        const asked = tour;
+        globalThis.setTimeout(() => {
+          story?.stop();
+          asked.start();
+        }, 900);
+      }
+      if (!offered && nowPhase === "IN_CHAMBER") {
+        offered = true;
+        if (!tour.seen()) {
+          globalThis.setTimeout(() => {
+            story?.stop();
+            tour?.start();
+          }, 8600);
+        }
+      }
       const view = model.view;
       const remaining = view?.remainingMs ?? model.state?.remainingMs ?? null;
       const phase = view?.phase ?? model.state?.phase ?? null;

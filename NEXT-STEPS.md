@@ -10,7 +10,7 @@ It answers three questions and only three: where the repo is right now, what to 
 
 | | |
 |---|---|
-| **Last updated** | 2026-08-30, Ahmed Saad |
+| **Last updated** | 2026-08-31, Ahmed Saad |
 | **Branch** | `feat/judge-path-replay-access`, off `main` at `84bbcb0` |
 | **Pipeline** | Green: **726 tests**, typecheck, lint, format, both `vite build`s plus the bundle budget and the palette check |
 | **Sound** | **Built and heard** (D-050, D-051). Listened to on a real machine on 2026-08-30 and signed off. Plan phase 5.2 in full: eight mechanism cues, the ambience bed, four timer-keyed tension layers, a behind-the-wall thump per KEEPER tool call, and a mix with a mute. Plus **a warm unresolved theme** on top, always on, which is a deliberate departure from doc 06's chiptune direction (D-051). All synthesised in `apps/game/src/audio/`; still no asset file of any kind. `PilotView` gained `seq`, without which the detents cannot repeat. |
@@ -68,11 +68,84 @@ It answers three questions and only three: where the repo is right now, what to 
 
 ---
 
+> **The interface is the open question.** Three passes were called a redesign
+> and the person who owns it says none of them was. Item 1 below is a full
+> redesign from a fresh session, and it is the first thing to pick up.
+
+## What landed on 2026-08-31
+
+The three review findings on the teammate's work are fixed: `deep_linked` now
+reaches D1 (it was recorded on the session and died at the persistence
+boundary, so the flag protected nothing), the replay's chamber labels measure
+themselves, and the fullscreen button is out from under the tab rail. The page
+no longer scrolls on a window that fits it: the console had a definite row plan
+but only a `min-height`, so `minmax(0, 1fr)` had no space to divide and the deck
+sized itself to the canvas's drawing buffer.
+
+Then the redesign (D-063, D-064): a landing screen and a gate screen that lead
+with the thesis and prove it with the split graphic, the ground palette retuned
+and the type lifted, real elevation on every surface, **a guided first shift in
+two layers**, and **told sequences opening and closing a shift**.
+
+**Two things to know before touching the visuals.** The channel hues are
+information and carry a measured colourblind guarantee - retuning them retunes
+the legend. And `check-palette.mjs` now fails on any hex written into a rule,
+not only on a token declaration, because twenty inline colours had accumulated
+behind the old check and eleven of them silently kept the previous palette.
+
 ## Do this next
+
+### 1. Redesign the website and the UI/UX completely, from a fresh session [start here]
+
+**This is the top of the list and it wants a new Claude Code session**, because
+the context that produced the current interface is the same context that kept
+mistaking a reskin for a redesign. Three passes were called a redesign and none
+of them was one: the first moved ground colours by a few points and type by a
+pixel and a half, the second made the channel hues vivid and floated the HUD,
+the third divided the landing page down the middle. The palette and the
+composition changed. **The interface is still not good**, and the person who
+owns it says so plainly.
+
+*Read [docs/decision-log.md](docs/decision-log.md) D-063 to D-065 before
+touching anything, and treat them as a record of what was tried rather than as
+a design to preserve.* Nothing in the current UI is load-bearing except the
+things listed below.
+
+**What is genuinely fixed and must survive any redesign.** These are laws, not
+preferences, and every one of them has a test:
+
+- **Puzzle-critical values render to the canvas, never to DOM.** A text node
+  holding a glyph, a gauge reading or a cipher offset is one an agent with page
+  access can scrape, and KEEPER not being able to see is the whole game. The
+  accessibility mirror is the single sanctioned exception (D-061).
+- **The two channel hues carry information**: warm is "only PILOT perceives
+  this", cold is "only KEEPER", pearl is both. A Vienot dichromat test measures
+  their separation under all three colourblindnesses with a floor of 40. Change
+  them and you are changing the legend and that guarantee together.
+- **The palette is locked at twenty colours** and `scripts/check-palette.mjs`
+  fails the build on any hex written into a rule, not only on a token
+  declaration. Adding a twenty-first is a decision-log entry.
+- **No asset files and no network requests for media** (D-044). The repository
+  is MIT throughout because of it.
+- **The starter prompt card must be whole and on screen before a shift starts.**
+  The browser proof asserts it, and it caught a version of this where the prompt
+  was copyable but not readable.
+
+**What to be suspicious of.** The console chrome, the drawers and the tab rails
+have never had a composition pass of their own - they inherited tokens. The
+landing screen's split fits its band by a two-pixel margin at 1920x942 and has
+been checked at no other size. Every tuned constant in the renderer was set
+against one desktop window.
+
+**And look at frames.** Eleven defects in three sittings (D-046 to D-048) were
+each invisible to the test suite and each already present in a captured
+screenshot nobody had opened. The tour writes eleven of them in about a minute.
+
+
 
 In order. Each item ends somewhere the pipeline is green and the repo is committable.
 
-### 0. What this session closed, so nobody re-does it
+### Already closed, so nobody re-does it
 
 Doc 08 **phase 4 (the judge path), phase 6 (accessibility) and phase 7.2 (the
 replay viewer)** are built and verified in Chrome (D-056 to D-062). **Phase 4 is
@@ -99,7 +172,7 @@ checkout. Before trusting any browser run: `ss -ltnp | grep -E ':(5173|8787|9222
 kill what is there, and start Vite with `--strictPort` so it cannot quietly
 land on 5175.
 
-### 1. Keep playing and fixing, and play it properly this time
+### 2. Keep playing and fixing, and play it properly this time
 
 **Still the item to pick up first.** Five sittings have now produced sixteen
 defects that 700 passing tests did not see (D-046 to D-049, D-054), and the rate
@@ -206,7 +279,7 @@ confirmed is the narrow thing Chamber II depends on: whether eight detents at
 That one is a playtest question rather than a listening one - see item 2 - and
 `MECH` on the mixer is the fader to reach for if they are hard to pick out.
 
-### 2a. Decide what captions do in a narrow window [measured, not fixed]
+### 2b. Decide what captions do in a narrow window [measured, not fixed]
 
 Two separate crowding problems, both from the same cause: a caption is a fixed
 fraction of the **viewport height** by construction (`CAPTION_SCREEN`), so a
@@ -229,7 +302,7 @@ Both want the same decision: whether a caption should shrink with the window, or
 whether a bank should thin out, or whether the rail should drop a part. Do not
 guess at it - the numbers above are cheap to re-measure.
 
-### 2. Playtest with humans [needs people]
+### 3. Playtest with humans [needs people]
 
 The thing item 1 cannot do: item 1 is one person who knows where everything is,
 and that person cannot be surprised by the game. Doc 08 section 0.1
@@ -249,7 +322,7 @@ the camera always stands to the south and sees every one of them nearly edge-on 
 or is the hazard paint on the floor doing all of the work? And does a ladder up a
 wall actually make a room read as tall?
 
-### 3. Run the spike in ChatGPT's in-app browser, and meet a real model [needs a human]
+### 4. Run the spike in ChatGPT's in-app browser, and meet a real model [needs a human]
 
 Unchanged, and the rework adds one thing to check: **WebGL performance in the
 in-app browser on a phone.** The renderer is deliberately cheap - four lights,
@@ -261,7 +334,7 @@ Two spike rows still decide things: `crossorigin.delegation`, which flips
 `ARCHIVE_ORIGIN`, and `declarative.agentinvoked`, which the notepad's per-line
 authorship depends on.
 
-### 4. Bring doc 06 section 11 in line with what the client actually plays
+### 5. Bring doc 06 section 11 in line with what the client actually plays
 
 Sound is **built, heard and signed off** (D-050, D-051), so phase 5.2 is closed
 and this is the paperwork it leaves behind.
@@ -279,7 +352,7 @@ first and the pulse second** - the cues, the bed and the ducking carry the
 `AUDIBLE` channel and none of that may be cut, and the theme is the station's
 character.
 
-### 5. Decide what to do about the two things the ablation found
+### 6. Decide what to do about the two things the ablation found
 
 Numbers and reasoning in D-040. Neither is a bug, which is why both are a
 decision rather than a task. **Chamber II falls off a cliff at a slow agent
@@ -288,13 +361,13 @@ rhythm** (4.00 of four at 4s, 3.80 at 6s, 2.00 at 9s), and **the Signal Room's
 until doc 11 sections 6 and 7 carry measured round trips; then re-run both the
 ablation and the benchmark.
 
-### 6. Deploy the archive origin as its own Pages project
+### 7. Deploy the archive origin as its own Pages project
 
 The code is done and proved locally; the second Cloudflare Pages project and its
 preview-deploy wiring are not. `VITE_ARCHIVE_ORIGIN` and the worker's
 `ALLOWED_ORIGINS` are the only two settings involved.
 
-### 7. Point a model at the benchmark [blocked on step 3]
+### 8. Point a model at the benchmark [blocked on step 4]
 
 The harness, the suite, the partner axis and the report all exist and run in
 seconds with zero tokens. Budget the tokens before running, not after.

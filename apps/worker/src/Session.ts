@@ -494,8 +494,8 @@ export class Session {
           `INSERT INTO sessions
              (session_id, seed, designation, difficulty, mode, outcome,
               chambers_cleared, started_at_ms, ended_at_ms, median_latency_ms,
-              stamina_window_ms, log_gzip)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              stamina_window_ms, deep_linked, log_gzip)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           session.sessionId,
@@ -509,6 +509,16 @@ export class Session {
           Date.now(),
           percentile(session.observedLatencyMs, 50),
           staminaWindowMs(session.observedLatencyMs),
+          // Whether this session was handed its chambers by `?chamber=N`.
+          //
+          // Carried into the row rather than left on the session, because the
+          // reducer's own reason for recording it is that "the benchmark's
+          // corpus, the ablation and any future leaderboard all read finished
+          // sessions out of D1" - and until this column existed none of them
+          // could see it. `chambers_cleared` above counts the CHAMBER_SOLVED
+          // events the fast-forward raises, so without this a demonstration
+          // is indistinguishable from a run that was actually played.
+          session.deepLinked ? 1 : 0,
           gzipped,
         )
         .run();

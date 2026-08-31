@@ -49,19 +49,19 @@
  */
 const GROUND = {
   /** Beyond the building. The clear colour, and the deepest shadow there is. */
-  abyss: 0x05070a,
+  abyss: 0x03040a,
   /** The page, and the sea outside the windows. */
-  ink: 0x0b0f14,
+  ink: 0x080b14,
   /** Stone in shadow. */
-  slate: 0x141a22,
+  slate: 0x0f1420,
   /** Stone, unlit. The station's base note. */
-  stone: 0x1f2831,
+  stone: 0x18202f,
   /** Stone catching light. */
-  ash: 0x2e3a45,
+  ash: 0x28334a,
   /** Structural metal: frames, rails, the grate. */
-  iron: 0x4c5a66,
+  iron: 0x55637d,
   /** Distant haze, and the console's quietest text. */
-  mist: 0x7c8a99,
+  mist: 0xa3b1c7,
 } as const;
 
 /**
@@ -75,11 +75,11 @@ const GROUND = {
  * against its housing.
  */
 const MATERIAL = {
-  brass: 0xb8873c,
-  copper: 0x8c5a3c,
-  rust: 0x5e3b2c,
+  brass: 0xc9954a,
+  copper: 0x9a6242,
+  rust: 0x6b4230,
   /** A dead screen, and the water when nothing is lighting it. */
-  glass: 0x0e1a20,
+  glass: 0x0d1a24,
 } as const;
 
 /**
@@ -92,9 +92,9 @@ const MATERIAL = {
  * orange.
  */
 const LAMP = {
-  lampDeep: 0x6e4a22,
-  lamp: 0xe8b26a,
-  lampBright: 0xffe6c0,
+  lampDeep: 0x7a3a06,
+  lamp: 0xff9d2e,
+  lampBright: 0xffd9a3,
 } as const;
 
 /**
@@ -108,9 +108,9 @@ const LAMP = {
  * they meet.
  */
 const TIDE = {
-  tideDeep: 0x263a63,
-  tide: 0x8aa9e0,
-  tideBright: 0xd3e1fa,
+  tideDeep: 0x0d3a7a,
+  tide: 0x4aa8ff,
+  tideBright: 0xb9dcff,
 } as const;
 
 /**
@@ -122,8 +122,8 @@ const TIDE = {
  * before its shape marker is read.
  */
 const PEARL = {
-  pearl: 0xede7dc,
-  pearlDim: 0x8e9299,
+  pearl: 0xf2efe9,
+  pearlDim: 0x97a0ab,
 } as const;
 
 /** Penalties, and nothing else. Never used to carry information. */
