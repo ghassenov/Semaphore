@@ -34,39 +34,70 @@
 
 :root {
   /* The ground: cold, near-neutral, deliberately dull. */
-  --abyss: #05070a;
-  --ink: #0b0f14;
-  --slate: #141a22;
-  --stone: #1f2831;
-  --ash: #2e3a45;
-  --iron: #4c5a66;
-  --mist: #7c8a99;
+  --abyss: #03040a;
+  --ink: #080b14;
+  --slate: #0f1420;
+  --stone: #18202f;
+  --ash: #28334a;
+  --iron: #55637d;
+  --mist: #a3b1c7;
 
   /* What the station is built and furnished from. Never a fact. */
-  --brass: #b8873c;
-  --copper: #8c5a3c;
-  --rust: #5e3b2c;
-  --glass: #0e1a20;
+  --brass: #c9954a;
+  --copper: #9a6242;
+  --rust: #6b4230;
+  --glass: #0d1a24;
 
   /* PILOT's channel: lamplight. Only the human perceives this. */
-  --lamp-deep: #6e4a22;
-  --lamp: #e8b26a;
-  --lamp-bright: #ffe6c0;
+  --lamp-deep: #7a3a06;
+  --lamp: #ff9d2e;
+  --lamp-bright: #ffd9a3;
 
   /* KEEPER's channel: tidewater. Only the agent perceives this. */
-  --tide-deep: #263a63;
-  --tide: #8aa9e0;
-  --tide-bright: #d3e1fa;
+  --tide-deep: #0d3a7a;
+  --tide: #4aa8ff;
+  --tide-bright: #b9dcff;
 
   /* Shared: pearl. Both parties perceive it. */
-  --pearl: #ede7dc;
-  --pearl-dim: #8e9299;
+  --pearl: #f2efe9;
+  --pearl-dim: #97a0ab;
 
   /* Penalties, and nothing else. Never used to carry information. */
   --alarm: #e05a4f;
 
   --gap: 0.85rem;
-  --radius: 3px;
+  /*
+   * How wide the two tab rails are.
+   *
+   * Authoritative rather than descriptive: `.tabs` is set to it, so anything
+   * that has to stand clear of a rail can measure against one number instead
+   * of guessing at what vertical text plus padding came out to. The fullscreen
+   * button is the reason - it sat in the same corner as the east rail, under
+   * it, and lost its last letter in every frame the tour has ever written.
+   */
+  --rail-width: 1.85rem;
+  /*
+   * Panels and cards. Lifted from 3px, which is the radius of a piece of test
+   * equipment: sharp corners plus hairline borders everywhere is most of why
+   * this console read as an instrument harness rather than as a made thing.
+   */
+  --radius: 9px;
+  /* Inputs, chips and anything small enough that 9px would look like a pill. */
+  --radius-sm: 4px;
+
+  /*
+   * Elevation, as three steps rather than as a shadow written per rule.
+   *
+   * The console used to separate surfaces with hairline borders alone, which
+   * gives a flat diagram of panels rather than a stack of them. A lit top edge
+   * and a shadow underneath is how a real panel reads, and having the three
+   * steps named is what keeps them consistent once more than one rule wants
+   * one.
+   */
+  --sheen: inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+  --lift-1: 0 1px 2px color-mix(in srgb, black 40%, transparent);
+  --lift-2: 0 6px 18px -8px color-mix(in srgb, black 70%, transparent);
+  --lift-3: 0 22px 50px -18px color-mix(in srgb, black 82%, transparent);
   --edge: 1px solid color-mix(in srgb, var(--iron) 42%, transparent);
 
   --ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
@@ -86,7 +117,16 @@ body {
 
 body {
   margin: 0;
-  padding: var(--gap);
+  /*
+   * No padding, and no frame.
+   *
+   * The console used to be a card with a margin, inside a page, inside a
+   * window - three nested rectangles before you reach the room. The room is
+   * the thing; it now runs to the edge of the glass and the rail, the tabs and
+   * the foot float on top of it. That is the single largest change to how this
+   * looks, and it is a change to the arrangement rather than to the paint.
+   */
+  padding: 0;
   /*
    * Three layers, and the point of all three is depth.
    *
@@ -98,8 +138,17 @@ body {
    * that is.
    */
   background:
-    radial-gradient(120% 80% at 50% -15%, #16202e 0%, transparent 62%),
-    radial-gradient(90% 70% at 18% 108%, #1a1712 0%, transparent 58%), var(--abyss);
+    radial-gradient(
+      120% 80% at 50% -15%,
+      color-mix(in srgb, var(--tide-deep) 45%, var(--abyss)) 0%,
+      transparent 62%
+    ),
+    radial-gradient(
+      90% 70% at 18% 108%,
+      color-mix(in srgb, var(--lamp-deep) 30%, var(--abyss)) 0%,
+      transparent 58%
+    ),
+    var(--abyss);
   background-attachment: fixed;
   color: var(--pearl);
   font: 400 15px/1.55 var(--ui);
@@ -150,8 +199,15 @@ body::after {
  * would re-frame the shot every time somebody opened one.
  */
 .console {
+  /* A positioning context: the rail and the foot are laid over the deck. */
+  position: relative;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  /*
+   * One row. The rail and the foot are positioned over the deck rather than
+   * given rows of their own, so the room is the full height of the window and
+   * the readouts sit on it the way a HUD does.
+   */
+  grid-template-rows: minmax(0, 1fr);
   /*
    * One column that is allowed to be narrower than its contents.
    *
@@ -165,10 +221,27 @@ body::after {
    * already grown to give it some.
    */
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--gap);
-  max-width: 108rem;
-  min-height: calc(100vh - var(--gap) * 2);
-  margin: 0 auto;
+  gap: 0;
+  max-width: none;
+  /*
+   * A **definite** height, not a floor, and that is the whole of why the page
+   * used to scroll on a window that could show all of it.
+   *
+   * `minmax(0, 1fr)` can only divide space that exists. With `min-height`
+   * alone the container's height is `auto`, so the middle row sized itself to
+   * its content instead - and its content is a canvas styled `height: 100%`
+   * against an indefinite parent, which falls back to the intrinsic size of
+   * its drawing buffer. The deck therefore asked for the buffer's height, the
+   * container grew to give it, and the page gained sixty-four pixels of
+   * scroll that nothing on it needed.
+   *
+   * `dvh` rather than `vh` because the small-viewport unit is the one that is
+   * correct while a mobile browser's chrome is on screen, and ChatGPT's
+   * in-app browser is on the target list.
+   */
+  height: 100vh;
+  height: 100dvh;
+  margin: 0;
 }
 
 /* The stage. Everything in here is positioned against it. */
@@ -178,6 +251,7 @@ body::after {
   align-items: center;
   justify-content: center;
   min-height: 0;
+  overflow: hidden;
 }
 
 /* ------------------------------------------------------------------ tabs -- */
@@ -191,8 +265,10 @@ body::after {
  */
 .tabs {
   position: absolute;
-  top: 0;
+  top: 50%;
   z-index: 3;
+  width: var(--rail-width);
+  transform: translateY(-50%);
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
@@ -208,7 +284,7 @@ body::after {
 }
 
 .tab {
-  padding: 0.85rem 0.3rem;
+  padding: 1.05rem 0.36rem;
   border: var(--edge);
   border-radius: var(--radius);
   background: linear-gradient(
@@ -218,7 +294,7 @@ body::after {
   );
   color: var(--mist);
   font-family: var(--mono);
-  font-size: 0.58rem;
+  font-size: 0.67rem;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -267,8 +343,13 @@ body::after {
 
 .drawer {
   position: absolute;
-  top: 0;
-  bottom: 0;
+  /*
+   * Clear of the rail and the foot, which are now laid over the deck rather
+   * than given rows of their own. Without this the drawer opened underneath
+   * the clock and the ambiguity meter and the two sets of words overlapped.
+   */
+  top: 3.2rem;
+  bottom: 3.4rem;
   z-index: 2;
   display: flex;
   width: 20rem;
@@ -283,8 +364,8 @@ body::after {
     var(--ink) 70%
   );
   box-shadow:
-    inset 0 1px 0 #ffffff10,
-    0 24px 60px -20px #000000d0;
+    inset 0 1px 0 color-mix(in srgb, white 6%, transparent),
+    0 24px 60px -20px color-mix(in srgb, black 82%, transparent);
   animation: drawer-in 220ms cubic-bezier(0.22, 0.8, 0.3, 1) both;
 }
 
@@ -373,9 +454,25 @@ body::after {
  * controls and can be as small as it can be used at.
  */
 .foot {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 5;
   display: flex;
-  align-items: stretch;
+  align-items: end;
   gap: var(--gap);
+  padding: 0 1.4rem 1rem;
+  background: linear-gradient(
+    0deg,
+    color-mix(in srgb, var(--abyss) 88%, transparent) 0%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+.foot > * {
+  pointer-events: auto;
 }
 
 .foot .audible {
@@ -433,14 +530,33 @@ body::after {
 /* ------------------------------------------------------------------ rail -- */
 
 .rail {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 5;
   display: flex;
   align-items: center;
   gap: 1.1rem;
-  padding: 0.55rem 0.95rem;
-  border: var(--edge);
-  border-radius: var(--radius);
-  background: linear-gradient(180deg, var(--slate), var(--ink));
-  box-shadow: inset 0 1px 0 #ffffff12;
+  padding: 0.9rem 1.5rem;
+  /*
+   * No box, and no border.
+   *
+   * A readout on a HUD is legible because of what is behind it, and what is
+   * behind this is a dark room. A gradient that fades out downward is all it
+   * needs, and it leaves the top of the room visible through it instead of
+   * cutting a bar off the top of the frame.
+   */
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--abyss) 90%, transparent) 0%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+.rail > * {
+  pointer-events: auto;
 }
 
 .rail .mark {
@@ -448,9 +564,19 @@ body::after {
   align-items: center;
   gap: 0.55rem;
   color: var(--pearl);
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.3em;
+  /*
+   * Mono, like every other structural label in the client.
+   *
+   * The split between the two faces is now a rule rather than a habit:
+   * anything that names a thing - the station, the room, a panel, a step -
+   * is set in mono, and sans is kept for prose somebody has to read a
+   * sentence of. It is the difference between a readout and a paragraph, and
+   * having it be a difference is most of what gives the chrome a voice.
+   */
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.34em;
   white-space: nowrap;
 }
 
@@ -458,10 +584,11 @@ body::after {
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  color: var(--pearl);
-  font-size: 0.85rem;
+  color: var(--lamp);
+  font-family: var(--mono);
+  font-size: 0.88rem;
   font-weight: 500;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.28em;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -512,7 +639,7 @@ body::after {
 
 .gauge-label {
   color: var(--mist);
-  font-size: 0.6rem;
+  font-size: 0.69rem;
   letter-spacing: 0.2em;
 }
 
@@ -537,7 +664,7 @@ body::after {
   min-width: 8ch;
   color: var(--brass);
   font-family: var(--mono);
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.06em;
 }
@@ -547,10 +674,8 @@ body::after {
 .panel {
   border: var(--edge);
   border-radius: var(--radius);
-  background: linear-gradient(180deg, #151b24, #0e131a);
-  box-shadow:
-    inset 0 1px 0 #ffffff0e,
-    0 1px 0 #00000050;
+  background: linear-gradient(180deg, var(--stone), var(--ink));
+  box-shadow: var(--sheen), var(--lift-2);
 }
 
 .panel h2 {
@@ -559,10 +684,11 @@ body::after {
   justify-content: space-between;
   gap: 0.5rem;
   margin: 0;
-  padding: 0.45rem 0.75rem;
+  padding: 0.6rem 0.9rem;
   border-bottom: var(--edge);
   color: var(--mist);
-  font-size: 0.6rem;
+  font-family: var(--mono);
+  font-size: 0.69rem;
   font-weight: 600;
   letter-spacing: 0.22em;
   text-transform: uppercase;
@@ -586,14 +712,14 @@ body::after {
 .panel p {
   margin: 0 0 0.55rem;
   color: var(--pearl-dim);
-  font-size: 0.78rem;
+  font-size: 0.87rem;
 }
 
 /* The quiet aside under a panel's contents: what the thing is for. */
 .panel .note {
   margin-top: 0.55rem;
   color: color-mix(in srgb, var(--mist) 62%, transparent);
-  font-size: 0.68rem;
+  font-size: 0.77rem;
   line-height: 1.45;
 }
 
@@ -632,10 +758,16 @@ body::after {
   overflow: hidden;
   border: var(--edge);
   border-radius: var(--radius);
-  background: radial-gradient(120% 100% at 50% 0%, #0d141d 0%, var(--abyss) 70%), var(--abyss);
+  background:
+    radial-gradient(
+      120% 100% at 50% 0%,
+      color-mix(in srgb, var(--slate) 72%, var(--abyss)) 0%,
+      var(--abyss) 70%
+    ),
+    var(--abyss);
   box-shadow:
-    inset 0 0 0 1px #ffffff08,
-    inset 0 30px 60px -30px #000000c0;
+    inset 0 0 0 1px color-mix(in srgb, white 3%, transparent),
+    inset 0 30px 60px -30px color-mix(in srgb, black 75%, transparent);
 }
 
 .viewport-canvas {
@@ -653,11 +785,28 @@ body::after {
  */
 .fullscreen {
   position: absolute;
-  top: 0.6rem;
+  top: 3.2rem;
+  /*
+   * Clear of the east tab rail, which stands in this same corner at a higher
+   * stacking level. At `0.6rem` the button ran underneath it and lost its last
+   * letter to "YOUR AGENT" - visible in every frame the tour has ever written.
+   * Raising the button over the rail instead would only trade a clipped word
+   * for a covered tab, so it moves inboard by the rail's width.
+   */
+  /*
+   * Below the rail, not beside it.
+   *
+   * When the rail was a bar in a grid row, moving inboard by the rail's width
+   * was enough. The rail is now a full-width HUD band lying over the top of the
+   * deck at a higher stacking level, so there is no "beside" any more: the
+   * button ran under the clock and lost its last letter again. It drops to the
+   * same inset the drawers use, which is the line everything else clears the
+   * rail by.
+   */
   right: 0.6rem;
   z-index: 2;
   padding: 0.3rem 0.6rem;
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   letter-spacing: 0.1em;
   opacity: 0;
   transition: opacity 200ms ease;
@@ -704,7 +853,7 @@ body::after {
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 0.74rem;
+  font-size: 0.83rem;
 }
 
 /*
@@ -735,10 +884,10 @@ body::after {
   padding: 0.1rem 0.4rem;
   border: 1px solid color-mix(in srgb, var(--lamp-deep) 90%, transparent);
   border-radius: 2px;
-  background: #17110a;
+  background: color-mix(in srgb, var(--lamp-deep) 26%, var(--abyss));
   color: var(--lamp);
   font-family: var(--mono);
-  font-size: 0.68rem;
+  font-size: 0.77rem;
   white-space: nowrap;
 }
 
@@ -763,7 +912,7 @@ body::after {
   flex-direction: column;
   gap: 0.3rem;
   padding: 2.5rem 1.4rem 1.3rem;
-  background: linear-gradient(transparent, #05070ae0 55%);
+  background: linear-gradient(transparent, color-mix(in srgb, var(--abyss) 88%, transparent) 55%);
   opacity: 0;
   pointer-events: none;
   transition: opacity 420ms ease;
@@ -784,7 +933,7 @@ body::after {
 .viewport-instruction {
   margin: 0;
   color: var(--mist);
-  font-size: 0.78rem;
+  font-size: 0.87rem;
   letter-spacing: 0.1em;
 }
 
@@ -817,7 +966,11 @@ body::after {
   justify-content: center;
   padding: 1.5rem;
   overflow: hidden;
-  background: radial-gradient(120% 90% at 50% 45%, #05070ac4 0%, #05070aee 70%);
+  background: radial-gradient(
+    120% 90% at 50% 45%,
+    color-mix(in srgb, var(--abyss) 77%, transparent) 0%,
+    color-mix(in srgb, var(--abyss) 93%, transparent) 70%
+  );
   backdrop-filter: blur(2px);
   text-align: center;
   animation: veil 900ms ease both;
@@ -862,22 +1015,375 @@ body::after {
 }
 
 /* Everything readable rides above the veil and the beam. */
-.launch > * {
+/*
+ * The sheet: the landing screen's one column, and the only thing on the page
+ * that is allowed to be a document rather than an instrument.
+ *
+ * It scrolls **inside itself** rather than growing the page. The console is a
+ * deck sized to the viewport, and a landing card that pushed past it put a
+ * scrollbar on a window that could already show everything.
+ */
+/*
+ * The landing screen **is** the split.
+ *
+ * Every version of this page until now was a centred column on black with a
+ * panel in it that illustrated the asymmetry. This is the asymmetry: the page
+ * is divided, the left half is lamplight and the right half is tidewater, and
+ * the words that belong to both sit across the seam between them. The thing
+ * the game is about is the first thing the layout does, before a sentence has
+ * been read.
+ */
+.launch-card {
   position: relative;
   z-index: 1;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 0;
+  align-content: stretch;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* The two fields, and the lit seam down the middle of them. */
+.launch-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--lamp-deep) 30%, transparent) 0%,
+    color-mix(in srgb, var(--lamp-deep) 8%, transparent) 44%,
+    transparent 50%,
+    color-mix(in srgb, var(--tide-deep) 12%, transparent) 56%,
+    color-mix(in srgb, var(--tide-deep) 42%, transparent) 100%
+  );
+  pointer-events: none;
+}
+
+.launch-card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    color-mix(in srgb, var(--pearl) 34%, transparent) 30%,
+    color-mix(in srgb, var(--pearl) 34%, transparent) 70%,
+    transparent
+  );
+  pointer-events: none;
+}
+
+.launch-card > * {
+  position: relative;
+  z-index: 1;
+  justify-self: center;
+}
+
+.launch-card > * {
+  flex: none;
   animation: rise 700ms cubic-bezier(0.22, 0.8, 0.3, 1) both;
 }
 
-.launch > :nth-child(1) {
-  animation-delay: 260ms;
+.launch-card > :nth-child(1) {
+  animation-delay: 180ms;
 }
 
-.launch > :nth-child(2) {
-  animation-delay: 400ms;
+.launch-card > :nth-child(2) {
+  animation-delay: 300ms;
 }
 
-.launch > :nth-child(3) {
+.launch-card > :nth-child(3) {
+  animation-delay: 420ms;
+}
+
+.launch-card > :nth-child(4) {
   animation-delay: 540ms;
+}
+
+.launch-card > :nth-child(5) {
+  animation-delay: 660ms;
+}
+
+/* The wordmark, at the size a name is allowed to be. */
+.launch-badge {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.launch-name {
+  margin: 0;
+  color: var(--pearl);
+  font-family: var(--mono);
+  font-size: 1.05rem;
+  font-weight: 500;
+  letter-spacing: 0.46em;
+  text-indent: 0.42em;
+}
+
+/*
+ * The thesis, in one sentence, at the largest type on the page.
+ *
+ * It is the sentence the whole submission is an argument for, so it is set
+ * like a headline rather than like a label: this screen used to open with the
+ * words "Start the shift" over three unnamed buttons, which tells somebody who
+ * has just arrived nothing at all about what they have arrived at.
+ */
+.launch-thesis {
+  max-width: 34rem;
+  margin: 0;
+  color: var(--pearl);
+  font-size: clamp(1.5rem, 3.4vw, 2.35rem);
+  font-weight: 300;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  text-wrap: balance;
+}
+
+/*
+ * The split, which is the game in one picture.
+ *
+ * Two halves of the same lever, lit the two ways the two players receive it:
+ * lamplight for the half only PILOT perceives, tidewater for the half only
+ * KEEPER is given. The channel colours are doing exactly the job they do
+ * everywhere else in the station, which is why the picture teaches the
+ * legend at the same time as it makes the argument.
+ */
+.split {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 0.7rem;
+  align-items: stretch;
+  width: 100%;
+}
+
+/*
+ * On the landing screen the halves have no boxes: the page behind them is
+ * already divided into the two fields, so drawing a panel around each is
+ * drawing the same line twice.
+ */
+.split-field {
+  align-items: center;
+  width: min(74rem, 100%);
+  /*
+   * The band the split lives in, and it may not spill out of it. The cold half
+   * is taller than the warm one now that it carries the requisition slip, and
+   * without this it painted over the line underneath it.
+   */
+  min-height: 0;
+  height: 100%;
+  padding: 0.5rem 0;
+  /*
+   * **Never scrolls.** A scrollbar down the middle of a landing page is a
+   * confession that the layout does not fit, and this one only ever overflowed
+   * by about forty pixels. The halves shrink instead: the tool text and the
+   * slip are both illustrations, and an illustration may be small.
+   */
+  overflow: hidden;
+  gap: 2.2rem;
+}
+
+/* Compact in the landing's band: this is an illustration, not a document. */
+.split-field .half-tool {
+  min-height: 0;
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
+.split-field .slip {
+  padding: 0.7rem 0.85rem;
+  font-size: 0.8rem;
+}
+
+.split-field .half {
+  gap: 0.4rem;
+  padding: 0.4rem;
+}
+
+.split-field .half-note {
+  font-size: 0.78rem;
+}
+
+/* The stamp is flourish; it is the first thing to go when the band is tight. */
+@media (max-height: 60rem) {
+  .split-field .stamp {
+    display: none;
+  }
+}
+
+.split-field .slip .prompt {
+  font-size: 0.78rem;
+  line-height: 1.38;
+}
+
+.split-field .half-plate {
+  min-height: 4.4rem;
+}
+
+.split-field .half {
+  justify-content: center;
+  border: none;
+  background: none;
+  box-shadow: none;
+}
+
+.split-field .half-plate {
+  background: none;
+}
+
+.split-field .half-tool {
+  border: 1px solid color-mix(in srgb, var(--tide) 26%, transparent);
+  background: color-mix(in srgb, var(--abyss) 55%, transparent);
+}
+
+.split-field .split-seam {
+  color: transparent;
+}
+
+.half {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0;
+  padding: 0.85rem 0.8rem;
+  border: var(--edge);
+  border-radius: var(--radius);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--slate) 82%, transparent),
+    var(--ink)
+  );
+  text-align: center;
+}
+
+.half-pilot {
+  border-color: color-mix(in srgb, var(--lamp) 34%, transparent);
+  box-shadow: inset 0 0 34px -18px var(--lamp);
+}
+
+.half-keeper {
+  border-color: color-mix(in srgb, var(--tide) 34%, transparent);
+  box-shadow: inset 0 0 34px -18px var(--tide);
+}
+
+.half-who {
+  order: -1;
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.24em;
+}
+
+.half-pilot .half-who {
+  color: var(--lamp);
+}
+
+.half-keeper .half-who {
+  color: var(--tide);
+}
+
+/* The plate a mark is drawn on, in the chamber and here. */
+.half-plate {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 6.4rem;
+  border-radius: var(--radius);
+  background: radial-gradient(
+    70% 70% at 50% 45%,
+    color-mix(in srgb, var(--lamp) 12%, transparent),
+    transparent 70%
+  );
+}
+
+.half-glyph {
+  image-rendering: pixelated;
+  filter: drop-shadow(0 0 12px color-mix(in srgb, var(--lamp) 40%, transparent));
+}
+
+/* What the agent is handed: a tool response, set as one. */
+.half-tool {
+  width: 100%;
+  min-height: 6.4rem;
+  padding: 0.6rem;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--abyss) 70%, transparent);
+  color: var(--tide);
+  font-family: var(--mono);
+  font-size: 0.71rem;
+  line-height: 1.6;
+  text-align: left;
+}
+
+.half-note {
+  margin: 0;
+  color: var(--mist);
+  font-size: 0.81rem;
+  line-height: 1.4;
+}
+
+/* The word between them, which is the whole of the design law. */
+.split-seam {
+  align-self: center;
+  color: var(--iron);
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.2em;
+}
+
+/*
+ * The gate's own notice, which is an aside rather than a headline.
+ *
+ * It sits under the pitch and is marked as a problem with a solution: a warm
+ * left edge, the same one every "you need to do something" surface in this
+ * client uses, rather than the alarm colour, because nothing has gone wrong.
+ */
+.blocked {
+  padding: 0.9rem 1.1rem;
+  border: var(--edge);
+  border-left: 2px solid color-mix(in srgb, var(--lamp) 70%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--slate) 55%, transparent);
+}
+
+.blocked h2 {
+  margin: 0 0 0.3rem;
+  color: var(--pearl);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.blocked p {
+  margin: 0;
+  color: var(--mist);
+  font-size: 0.94rem;
+  line-height: 1.5;
+}
+
+/* On the gate the split is a figure in a document, not a panel in a deck. */
+.gate .split {
+  margin-top: 0.4rem;
+}
+
+.launch-claim {
+  margin: 0 0 0.6rem;
+  color: var(--mist);
+  font-size: 0.94rem;
+}
+
+.launch-go {
+  margin: 0.7rem 0 0.5rem;
+  color: var(--pearl);
+  font-family: var(--mono);
+  font-size: 0.69rem;
+  letter-spacing: 0.3em;
 }
 
 @keyframes rise {
@@ -889,15 +1395,6 @@ body::after {
 
 .launch[hidden] {
   display: none;
-}
-
-.launch h3 {
-  margin: 0;
-  color: var(--pearl);
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.28em;
-  text-transform: uppercase;
 }
 
 .launch-modes {
@@ -946,7 +1443,7 @@ body::after {
   border-radius: 2px;
   color: var(--pearl);
   font-family: var(--mono);
-  font-size: 0.74rem;
+  font-size: 0.83rem;
   letter-spacing: 0.14em;
   text-align: center;
   text-transform: uppercase;
@@ -984,7 +1481,7 @@ body::after {
   background: transparent;
   color: var(--pearl);
   font-family: var(--mono);
-  font-size: 0.6rem;
+  font-size: 0.69rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   cursor: pointer;
@@ -1045,23 +1542,32 @@ body::after {
  * neutral, would quietly undo the one visual statement the control panel makes.
  */
 button {
-  padding: 0.45rem 0.8rem;
-  border: 1px solid var(--lamp-deep);
-  border-radius: 2px;
-  background: linear-gradient(180deg, #241a0f, #16100a);
+  padding: 0.55rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--lamp-deep) 90%, transparent);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--lamp-deep) 34%, var(--abyss)),
+    color-mix(in srgb, var(--lamp-deep) 15%, var(--abyss))
+  );
+  box-shadow: var(--sheen), var(--lift-1);
   color: var(--lamp);
   font: inherit;
-  font-size: 0.76rem;
+  font-size: 0.85rem;
+  font-weight: 500;
   letter-spacing: 0.06em;
   cursor: pointer;
   transition:
     border-color 160ms ease,
     color 160ms ease,
-    background 160ms ease;
+    transform 160ms cubic-bezier(0.22, 0.8, 0.3, 1),
+    box-shadow 200ms ease;
 }
 
 button:hover {
+  transform: translateY(-1px);
   border-color: var(--lamp);
+  box-shadow: var(--sheen), var(--lift-2);
   color: var(--lamp-bright);
 }
 
@@ -1071,7 +1577,9 @@ button:focus-visible {
 }
 
 button:active {
-  background: #0d0906;
+  transform: translateY(0);
+  box-shadow: inset 0 2px 6px color-mix(in srgb, black 55%, transparent);
+  background: color-mix(in srgb, var(--rust) 18%, var(--abyss));
 }
 
 button[hidden] {
@@ -1085,14 +1593,14 @@ button[hidden] {
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 0.76rem;
+  font-size: 0.85rem;
 }
 
 .panel li {
   display: flex;
   gap: 0.5rem;
   padding: 0.24rem 0;
-  border-bottom: 1px solid #ffffff09;
+  border-bottom: 1px solid color-mix(in srgb, white 3.5%, transparent);
   overflow-wrap: anywhere;
 }
 
@@ -1111,7 +1619,7 @@ button[hidden] {
 .panel ul:empty::after {
   content: attr(data-empty);
   color: color-mix(in srgb, var(--mist) 45%, transparent);
-  font-size: 0.7rem;
+  font-size: 0.79rem;
   letter-spacing: 0.14em;
 }
 
@@ -1119,7 +1627,7 @@ button[hidden] {
 .floors .floor {
   align-items: center;
   color: color-mix(in srgb, var(--mist) 55%, transparent);
-  font-size: 0.74rem;
+  font-size: 0.83rem;
   letter-spacing: 0.08em;
   transition: color 300ms ease;
 }
@@ -1159,14 +1667,14 @@ button[hidden] {
   align-items: baseline;
   color: var(--tide);
   font-family: var(--mono);
-  font-size: 0.74rem;
+  font-size: 0.83rem;
   letter-spacing: 0.02em;
   animation: stamp 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .manifest .tool .marker {
   color: var(--tide-deep);
-  font-size: 0.6rem;
+  font-size: 0.69rem;
 }
 
 @keyframes stamp {
@@ -1189,14 +1697,14 @@ button[hidden] {
 .log li {
   color: var(--pearl-dim);
   font-family: var(--mono);
-  font-size: 0.7rem;
+  font-size: 0.79rem;
 }
 
 /* The pad is the one surface both parties write to, so both colours appear. */
 .notes .who {
   width: 1.4ch;
   font-family: var(--mono);
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   opacity: 0.8;
 }
 
@@ -1235,12 +1743,12 @@ button[hidden] {
   align-items: center;
   padding: 0;
   border: 0;
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   letter-spacing: 0.1em;
 }
 
 .legend-row .marker {
-  font-size: 0.85rem;
+  font-size: 0.93rem;
   line-height: 1;
 }
 
@@ -1261,7 +1769,7 @@ button[hidden] {
   border-radius: 0 2px 2px 0;
   background: var(--ink);
   color: var(--pearl);
-  font-size: 0.76rem;
+  font-size: 0.85rem;
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1280,7 +1788,7 @@ button[hidden] {
   background: var(--ink);
   color: var(--pearl);
   font-family: var(--mono);
-  font-size: 0.76rem;
+  font-size: 0.85rem;
   overflow-wrap: anywhere;
 }
 
@@ -1303,7 +1811,7 @@ button[hidden] {
   background: var(--ink);
   color: var(--pearl);
   font: inherit;
-  font-size: 0.78rem;
+  font-size: 0.87rem;
   resize: vertical;
 }
 
@@ -1315,7 +1823,7 @@ button[hidden] {
 .notepad-host label {
   display: block;
   color: var(--mist);
-  font-size: 0.62rem;
+  font-size: 0.71rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
 }
@@ -1403,8 +1911,12 @@ button[hidden] {
   border: var(--edge);
   border-radius: var(--radius);
   background:
-    radial-gradient(90% 140% at 12% 0%, #17202c 0%, transparent 60%),
-    linear-gradient(180deg, #151b24, #0d1219);
+    radial-gradient(
+      90% 140% at 12% 0%,
+      color-mix(in srgb, var(--tide-deep) 34%, var(--abyss)) 0%,
+      transparent 60%
+    ),
+    linear-gradient(180deg, var(--stone), var(--ink));
 }
 
 .hero::before {
@@ -1460,7 +1972,7 @@ button[hidden] {
 .eyebrow {
   margin: 0;
   color: var(--pearl);
-  font-size: 0.72rem;
+  font-size: 0.81rem;
   font-weight: 600;
   letter-spacing: 0.34em;
 }
@@ -1468,7 +1980,7 @@ button[hidden] {
 .tagline {
   margin: 0;
   color: var(--mist);
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   letter-spacing: 0.16em;
 }
 
@@ -1517,7 +2029,7 @@ button[hidden] {
   grid-template-columns: 9.5rem minmax(0, 1fr) 4.5rem;
   gap: 0.7rem;
   align-items: center;
-  font-size: 0.76rem;
+  font-size: 0.85rem;
 }
 
 .ablation-row .who {
@@ -1545,7 +2057,7 @@ button[hidden] {
 .ablation-row .value {
   color: var(--pearl);
   font-family: var(--mono);
-  font-size: 0.74rem;
+  font-size: 0.83rem;
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
@@ -1579,7 +2091,7 @@ button[hidden] {
 
 .spectate {
   font-family: var(--mono);
-  font-size: 0.72rem;
+  font-size: 0.81rem;
   letter-spacing: 0.14em;
   padding: 0.45rem 1.1rem;
   color: var(--lamp);
@@ -1611,7 +2123,7 @@ button[hidden] {
 
 .why > summary {
   font-family: var(--mono);
-  font-size: 0.7rem;
+  font-size: 0.79rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--pearl-dim);
@@ -1636,13 +2148,75 @@ button[hidden] {
  * KEEPER could reach. A reader who has played will recognise the rows without
  * a legend, and one who has not is told by the labels.
  */
+/*
+ * Two columns, filling the window.
+ *
+ * It used to be one narrow stack: a small monitor, a thin band of tick marks,
+ * and the transcript pushed off the bottom of the screen. A replay is read by
+ * moving between the chart and the list - the chart is how you find a moment
+ * and the list is how you read one - so they have to be on screen together or
+ * neither is much use.
+ */
 .replay {
-  max-width: 68rem;
-  margin: 0 auto;
-  padding: 2.5rem 1.5rem 4rem;
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap);
+  display: grid;
+  grid-template-areas:
+    "head head"
+    "screen log"
+    "track log";
+  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 1.1rem 1.6rem;
+  align-content: start;
+  height: 100dvh;
+  padding: 2rem 2.2rem;
+}
+
+.replay-head {
+  grid-area: head;
+}
+
+.replay > .replay-screen {
+  grid-area: screen;
+}
+
+.replay > svg,
+.replay > .replay-scrub,
+.replay > .replay-readout {
+  grid-area: track;
+}
+
+.replay > .replay-scrub {
+  align-self: end;
+  margin-bottom: 1.9rem;
+}
+
+.replay > .replay-readout {
+  align-self: end;
+}
+
+.replay > .replay-log {
+  grid-area: log;
+  max-height: none;
+  margin: 0;
+}
+
+.replay > .replay-share {
+  grid-area: head;
+  justify-self: end;
+  align-self: start;
+}
+
+@media (max-width: 62rem) {
+  .replay {
+    grid-template-areas:
+      "head"
+      "screen"
+      "track"
+      "log";
+    grid-template-rows: auto auto auto minmax(12rem, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
 }
 
 .replay-head h1 {
@@ -1725,7 +2299,7 @@ button[hidden] {
 
 .replay-readout {
   font-family: var(--mono);
-  font-size: 0.78rem;
+  font-size: 0.87rem;
   letter-spacing: 0.08em;
   color: var(--mist);
   margin: 0;
@@ -1743,7 +2317,7 @@ button[hidden] {
 
 .replay-share code {
   font-family: var(--mono);
-  font-size: 0.72rem;
+  font-size: 0.81rem;
   color: var(--mist);
   background: var(--slate);
   border: var(--edge);
@@ -1781,7 +2355,11 @@ button[hidden] {
   gap: var(--gap);
   padding: 0.9rem 1.5rem 1.6rem;
   text-align: center;
-  background: linear-gradient(to bottom, #05070aee 0%, #05070a00 100%);
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--abyss) 93%, transparent) 0%,
+    transparent 100%
+  );
 }
 
 .ending[hidden] {
@@ -1806,7 +2384,7 @@ button[hidden] {
   width: 100%;
   text-align: left;
   font-family: var(--mono);
-  font-size: 0.72rem;
+  font-size: 0.81rem;
   letter-spacing: 0.1em;
   padding: 0.45rem 0.6rem;
   margin-bottom: 0.4rem;
@@ -1835,7 +2413,7 @@ button[hidden] {
 }
 
 .mirror {
-  font-size: 0.78rem;
+  font-size: 0.87rem;
   line-height: 1.5;
   color: var(--pearl);
   border-left: 2px solid var(--lamp-deep);
@@ -1979,10 +2557,11 @@ button[hidden] {
   /* Torn along the top and bottom, which is what makes it a slip rather than a
      box. A repeating cone gradient bites notches out of both edges; the border
      above stops at the same inset so the two do not disagree about the shape. */
+  /* `black` rather than a hex: a mask reads alpha, so the colour is not one. */
   mask-image:
-    repeating-conic-gradient(from -45deg at 50% 0, transparent 0deg 90deg, #000 90deg 180deg),
-    repeating-conic-gradient(from -45deg at 50% 100%, transparent 0deg 90deg, #000 90deg 180deg),
-    linear-gradient(#000, #000);
+    repeating-conic-gradient(from -45deg at 50% 0, transparent 0deg 90deg, black 90deg 180deg),
+    repeating-conic-gradient(from -45deg at 50% 100%, transparent 0deg 90deg, black 90deg 180deg),
+    linear-gradient(black, black);
   mask-size:
     9px 5px,
     9px 5px,
@@ -2005,7 +2584,7 @@ button[hidden] {
   padding-bottom: 0.45rem;
   border-bottom: 1px solid var(--slip-rule);
   font-family: var(--mono);
-  font-size: 0.62rem;
+  font-size: 0.71rem;
   letter-spacing: 0.18em;
   color: var(--lamp);
 }
@@ -2021,7 +2600,7 @@ button[hidden] {
   align-items: baseline;
   gap: 0.6rem;
   font-family: var(--mono);
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   letter-spacing: 0.14em;
 }
 
@@ -2038,7 +2617,7 @@ button[hidden] {
 
 .slip-heading {
   margin: 0.2rem 0 0;
-  font-size: 0.8rem;
+  font-size: 0.89rem;
   font-weight: 600;
   color: var(--pearl);
 }
@@ -2072,7 +2651,7 @@ button[hidden] {
   border: 1px solid color-mix(in srgb, var(--lamp) 40%, transparent);
   border-radius: 2px;
   font-family: var(--mono);
-  font-size: 0.62rem;
+  font-size: 0.71rem;
   letter-spacing: 0.22em;
   color: color-mix(in srgb, var(--lamp) 72%, transparent);
   /* Ink that did not take evenly, which is the whole of what makes a stamp
@@ -2093,7 +2672,7 @@ button[hidden] {
 }
 
 .gate .slip .prompt {
-  font-size: 0.86rem;
+  font-size: 0.94rem;
 }
 
 /* The copy button's confirmed state. A shape change as well as a colour one:
@@ -2102,4 +2681,361 @@ button[hidden] {
   color: var(--lamp-bright);
   border-color: color-mix(in srgb, var(--lamp) 70%, transparent);
   background: color-mix(in srgb, var(--lamp) 14%, transparent);
+}
+
+/* --------------------------------------------------------------- the tour -- */
+
+/*
+ * The guided shift.
+ *
+ * A dimming layer over the deck with a lit box on whichever console element the
+ * step names, and the copy in a card at the foot. It sits above the drawers so
+ * it can point at them, and below nothing.
+ */
+.tour {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  /*
+   * Barely there over the middle of the frame.
+   *
+   * The first setting took the room down to almost nothing, which is absurd
+   * for an overlay whose entire job is to talk about the room: the wide shot
+   * is already the dimmest thing this renderer draws, and dimming it again
+   * left the first beat describing a black rectangle. It only has to hold the
+   * card's contrast at the foot, so that is where the weight is.
+   */
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    color-mix(in srgb, var(--abyss) 18%, transparent) 55%,
+    color-mix(in srgb, var(--abyss) 72%, transparent) 100%
+  );
+  animation: veil 500ms ease both;
+}
+
+.tour[hidden] {
+  display: none;
+}
+
+/*
+ * The spotlight: a box that travels rather than a hole that appears.
+ *
+ * Moving light is what makes an eye follow instead of search, so it slides
+ * between the two elements the tour points at rather than cutting out and
+ * cutting in somewhere else.
+ */
+.tour-spot {
+  position: absolute;
+  border: 1px solid color-mix(in srgb, var(--lamp) 75%, transparent);
+  border-radius: var(--radius);
+  box-shadow:
+    0 0 0 9999px color-mix(in srgb, var(--abyss) 62%, transparent),
+    0 0 28px color-mix(in srgb, var(--lamp) 45%, transparent);
+  pointer-events: none;
+  transition:
+    left 420ms cubic-bezier(0.22, 0.8, 0.3, 1),
+    top 420ms cubic-bezier(0.22, 0.8, 0.3, 1),
+    width 420ms cubic-bezier(0.22, 0.8, 0.3, 1),
+    height 420ms cubic-bezier(0.22, 0.8, 0.3, 1);
+}
+
+.tour-spot[hidden] {
+  display: none;
+}
+
+/* The copy, at the foot, so it never stands on the thing it is about. */
+.tour-card {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: min(38rem, calc(100% - 4rem));
+  margin: 0 auto 1.6rem;
+  padding: 1.1rem 1.3rem;
+  border: var(--edge);
+  border-left: 2px solid var(--lamp);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, var(--stone), var(--ink));
+  box-shadow: var(--sheen), var(--lift-3);
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    opacity 380ms ease,
+    transform 380ms cubic-bezier(0.22, 0.8, 0.3, 1);
+}
+
+.tour-card.shown {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.tour-beat {
+  margin: 0 0 0.3rem;
+  color: var(--lamp);
+  font-family: var(--mono);
+  font-size: 0.67rem;
+  letter-spacing: 0.22em;
+}
+
+.tour-card h2 {
+  margin: 0 0 0.4rem;
+  color: var(--lamp);
+  font-family: var(--mono);
+  font-size: 1rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.tour-say {
+  margin: 0;
+  color: var(--mist);
+  font-size: 0.94rem;
+  line-height: 1.55;
+}
+
+.tour-controls {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  margin-top: 1rem;
+}
+
+.tour-dots {
+  display: flex;
+  flex: 1;
+  gap: 0.34rem;
+}
+
+.tour-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--iron);
+  transition: background 200ms ease;
+}
+
+.tour-dot.on {
+  background: var(--lamp);
+}
+
+/* Skip is a way out, not an invitation: it says so by being quiet. */
+.tour-skip {
+  border-color: transparent;
+  background: none;
+  box-shadow: none;
+  color: var(--mist);
+}
+
+.tour-skip:hover {
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--pearl);
+}
+
+.launch-teach {
+  border-color: color-mix(in srgb, var(--iron) 70%, transparent);
+  background: none;
+  color: var(--mist);
+}
+
+.launch-teach:hover {
+  border-color: var(--lamp);
+  color: var(--lamp);
+}
+
+/* ------------------------------------------------------------- the story -- */
+
+/*
+ * The opening and the ending, told over the station rather than in front of it.
+ *
+ * A vignette rather than a curtain: the room stays visible and lit underneath,
+ * because the lines are about the place the player is looking at. The weight is
+ * at the edges, which is where a frame darkens when something in the middle of
+ * it is being said.
+ */
+.story {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  display: grid;
+  /*
+   * The lower third, not the middle. Centred, the line lands across whatever
+   * the camera is pointed at - in the opening that is PILOT's body, which is
+   * the one thing the words are about.
+   */
+  place-items: end center;
+  padding-bottom: clamp(4rem, 22%, 11rem);
+  background: radial-gradient(
+    82% 72% at 50% 50%,
+    transparent 0%,
+    color-mix(in srgb, var(--abyss) 78%, transparent) 100%
+  );
+  opacity: 1;
+  transition: opacity 560ms ease;
+}
+
+.story.gone {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.story-line {
+  max-width: 30rem;
+  margin: 0;
+  color: var(--pearl);
+  font-size: clamp(1.2rem, 2.6vw, 1.8rem);
+  font-weight: 300;
+  line-height: 1.34;
+  letter-spacing: 0.015em;
+  text-align: center;
+  text-shadow: 0 2px 30px color-mix(in srgb, var(--abyss) 90%, transparent);
+  text-wrap: balance;
+}
+
+/*
+ * Each line rises into place rather than appearing.
+ *
+ * A line that cuts in reads as a subtitle track; a line that arrives reads as
+ * something being said. The class is removed and re-added between beats, with a
+ * forced reflow, or the browser coalesces the two changes and the second line
+ * has no entrance at all.
+ */
+.story-line.in {
+  animation: told 900ms cubic-bezier(0.22, 0.8, 0.3, 1) both;
+}
+
+@keyframes told {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+    transform: translateY(14px);
+  }
+}
+
+.story-hint {
+  position: absolute;
+  bottom: 1.4rem;
+  margin: 0;
+  color: var(--iron);
+  font-family: var(--mono);
+  font-size: 0.67rem;
+  letter-spacing: 0.2em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .story-line.in {
+    animation: none;
+  }
+}
+
+/*
+ * In the floating foot, an empty strip shows no box at all.
+ *
+ * The double rule is the `AUDIBLE` channel's legend marker and has to stay the
+ * moment the strip has something to say, so this takes the edges away rather
+ * than the element: it keeps its height, the foot never jumps, and a quiet
+ * chamber is not a wide empty rectangle laid across the bottom of the room.
+ */
+.foot .audible:empty {
+  border-color: transparent;
+  outline-color: transparent;
+}
+
+/* ------------------------------------------------------- replay transcript -- */
+
+/*
+ * The session as a list of things that were done.
+ *
+ * The two tracks above say when and how much; they cannot say what happened,
+ * and a viewer looking at a row of tick marks has no way to find out. This is
+ * the same events in the two colours the whole game is coded in, and the chart
+ * and the list drive each other: the chart is how you find an interesting
+ * moment and this is how you read one.
+ */
+.replay-log {
+  max-height: 22rem;
+  margin: 1.2rem 0 0;
+  padding: 0;
+  overflow-y: auto;
+  border: var(--edge);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--ink) 70%, transparent);
+  list-style: none;
+}
+
+.replay-entry {
+  display: grid;
+  grid-template-columns: 4.2rem 1fr auto;
+  gap: 0.9rem;
+  align-items: baseline;
+  padding: 0.42rem 0.9rem;
+  border-left: 2px solid transparent;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  /* Everything ahead of the playhead is dimmed rather than hidden, so the
+     length of what is still to come stays visible while it is read. */
+  opacity: 0.35;
+  cursor: pointer;
+  transition:
+    opacity 200ms ease,
+    background 200ms ease;
+}
+
+.replay-entry.past {
+  opacity: 1;
+}
+
+.replay-entry:hover {
+  background: color-mix(in srgb, var(--stone) 70%, transparent);
+}
+
+/* The line the playhead is standing on. */
+.replay-entry.now {
+  background: color-mix(in srgb, var(--stone) 90%, transparent);
+}
+
+.replay-entry.keeper {
+  border-left-color: color-mix(in srgb, var(--tide) 60%, transparent);
+}
+
+.replay-entry.pilot {
+  border-left-color: color-mix(in srgb, var(--lamp) 60%, transparent);
+}
+
+.replay-entry.bad .replay-what {
+  color: var(--alarm);
+}
+
+.replay-when {
+  color: var(--iron);
+}
+
+.replay-entry.keeper .replay-what {
+  color: var(--tide);
+}
+
+.replay-entry.pilot .replay-what {
+  color: var(--lamp);
+}
+
+.replay-note {
+  color: var(--mist);
+  font-size: 0.7rem;
+  text-align: right;
+}
+
+/* The one action in the cold half: the prompt the agent needs before it can play. */
+.half-hand {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.2rem;
+}
+
+/* The slip, standing in the cold half of the landing rather than in a drawer. */
+.split-field .slip {
+  width: 100%;
+  max-width: 26rem;
+  margin-top: 0.3rem;
 }

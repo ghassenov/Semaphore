@@ -13,6 +13,8 @@
  * settle and persist the session", not "does Cloudflare store bytes".
  */
 
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { timerFor, type PilotView, type SessionEvent } from "@semaphore/protocol";
 import { Session, type Env } from "./Session.js";
@@ -515,5 +517,71 @@ describe("the notepad routes", () => {
     const session = await sessionOver(storage, before);
     await get(session, "notes");
     expect(storage.raw.get("meta")).toEqual(before);
+  });
+});
+
+/**
+ * The corpus row is written by hand, so it can drift from the schema by hand.
+ *
+ * `deep_linked` is why this test exists. `?chamber=N` fast-forwards a fresh
+ * session so a judge can be shown a later room, and `skipTo` raises the same
+ * `CHAMBER_SOLVED` events a real solve does - so `chambers_cleared` counts
+ * them. The reducer records `deepLinked` precisely so that, in its own words,
+ * "the benchmark's corpus, the ablation and any future leaderboard" can tell a
+ * demonstration from a run. It never reached D1: no column, no field on
+ * `SessionStartEvent` so it was not recoverable from the log either, and no
+ * gate on the insert. The flag existed and protected nothing, and every test
+ * passed, because the only thing that could have noticed is the agreement
+ * between two files that nothing compared.
+ *
+ * Comparing them is cheap and catches the whole class rather than the one case.
+ */
+describe("the insert that writes a finished session", () => {
+  const here = import.meta.dirname;
+
+  /** Every column of `sessions`, in schema order, across all migrations. */
+  function schemaColumns(): string[] {
+    const dir = join(here, "..", "migrations");
+    const columns: string[] = [];
+    for (const file of readdirSync(dir).sort()) {
+      const sql = readFileSync(join(dir, file), "utf8").replace(/--[^\n]*/g, "");
+      const created = /CREATE TABLE[^(]*sessions\s*\(([\s\S]*?)\n\s*\)/i.exec(sql);
+      if (created) {
+        for (const line of created[1]!.split(",")) {
+          const name = line.trim().split(/\s+/)[0];
+          if (name) columns.push(name);
+        }
+      }
+      for (const added of sql.matchAll(/ALTER TABLE\s+sessions\s+ADD COLUMN\s+(\w+)/gi)) {
+        columns.push(added[1]!);
+      }
+    }
+    return columns;
+  }
+
+  /** The column list and placeholder count of the INSERT in `Session.ts`. */
+  function insertShape(): { columns: string[]; placeholders: number } {
+    const source = readFileSync(join(here, "Session.ts"), "utf8");
+    const statement = /INSERT INTO sessions([\s\S]*?)`/i.exec(source)?.[1] ?? "";
+    const columns = (/\(([\s\S]*?)\)\s*VALUES/i.exec(statement)?.[1] ?? "")
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean);
+    const values = /VALUES\s*\(([^)]*)\)/i.exec(statement)?.[1] ?? "";
+    return { columns, placeholders: values.split(",").filter((v) => v.trim() === "?").length };
+  }
+
+  it("names every column the schema has", () => {
+    expect([...insertShape().columns].sort()).toEqual([...schemaColumns()].sort());
+  });
+
+  it("binds one value per column", () => {
+    const { columns, placeholders } = insertShape();
+    expect(placeholders).toBe(columns.length);
+  });
+
+  it("carries deep_linked, which is what says a session was not earned", () => {
+    expect(schemaColumns()).toContain("deep_linked");
+    expect(insertShape().columns).toContain("deep_linked");
   });
 });
