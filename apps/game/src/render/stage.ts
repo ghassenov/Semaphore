@@ -943,13 +943,17 @@ export function createStage(
     // they ended up: the lamp resolves what is near them, the camera leans
     // toward them, and the lean-in frames whatever they are standing at.
     const acrossKeys =
-      (held.has("d") || held.has("arrowright") ? 1 : 0) -
-      (held.has("a") || held.has("arrowleft") ? 1 : 0);
+      // Frozen while something else is driving the camera. Read once, so every
+      // control below agrees about whether the player is holding the wheel.
+      (model.locked ? 0 : 1) *
+      ((held.has("d") || held.has("arrowright") ? 1 : 0) -
+        (held.has("a") || held.has("arrowleft") ? 1 : 0));
     // Toward the back wall is away from the camera, which is negative z, so
     // `w` and the up arrow walk into the room.
     const intoKeys =
-      (held.has("s") || held.has("arrowdown") ? 1 : 0) -
-      (held.has("w") || held.has("arrowup") ? 1 : 0);
+      (model.locked ? 0 : 1) *
+      ((held.has("s") || held.has("arrowdown") ? 1 : 0) -
+        (held.has("w") || held.has("arrowup") ? 1 : 0));
     const pace = (deltaMs / 1000) * WALK_SPEED;
     walk = Math.max(0, Math.min(1, walk + acrossKeys * pace));
     walkZ = Math.max(0, Math.min(1, walkZ + intoKeys * pace));
@@ -983,12 +987,12 @@ export function createStage(
     // it as though the pair were standing in a chamber, and the first thing
     // anybody saw of the game was a black rectangle. One value now, read from
     // the shot that will actually be used.
-    const asked = held.has("m") || now < walkUntil;
+    const asked = (held.has("m") && !model.locked) || now < walkUntil;
 
     // Lean in: hold E near a mechanism and the camera goes and looks at it.
     // The one camera move the human drives, and the reason a glyph is a thing
     // you can describe rather than a thing you can merely see.
-    const wantsLean = held.has("e") && !asked;
+    const wantsLean = held.has("e") && !asked && !model.locked;
     leaning =
       wantsLean && plan !== null && standing !== null
         ? nearestFixture(plan, pilotAt.x - standing.x, pilotAt.z - standing.z)
@@ -1008,7 +1012,7 @@ export function createStage(
      * Edge-triggered, so leaning on the key crosses one threshold rather than
      * every threshold between here and the Airlock.
      */
-    const going = held.has("q");
+    const going = held.has("q") && !model.locked;
     const doorTo =
       going && !wasGoing && plan !== null && standing !== null && floor !== null
         ? doorAhead(mode, floor, here, plan, pilotAt.x - standing.x, pilotAt.z - standing.z)
