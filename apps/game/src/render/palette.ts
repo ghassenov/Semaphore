@@ -108,9 +108,9 @@ const LAMP = {
  * they meet.
  */
 const TIDE = {
-  tideDeep: 0x0a3f5e,
-  tide: 0x3fd0e8,
-  tideBright: 0xa8f0ff,
+  tideDeep: 0x0d3a7a,
+  tide: 0x4aa8ff,
+  tideBright: 0xb9dcff,
 } as const;
 
 /**
