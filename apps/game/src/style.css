@@ -34,13 +34,13 @@
 
 :root {
   /* The ground: cold, near-neutral, deliberately dull. */
-  --abyss: #04060c;
-  --ink: #090d17;
-  --slate: #111725;
-  --stone: #1a2233;
-  --ash: #2a3446;
-  --iron: #4c5a70;
-  --mist: #97a5bb;
+  --abyss: #03040a;
+  --ink: #080b14;
+  --slate: #0f1420;
+  --stone: #18202f;
+  --ash: #28334a;
+  --iron: #55637d;
+  --mist: #a3b1c7;
 
   /* What the station is built and furnished from. Never a fact. */
   --brass: #c9954a;
@@ -49,18 +49,18 @@
   --glass: #0d1a24;
 
   /* PILOT's channel: lamplight. Only the human perceives this. */
-  --lamp-deep: #6e4a22;
-  --lamp: #e8b26a;
-  --lamp-bright: #ffe6c0;
+  --lamp-deep: #7a3a06;
+  --lamp: #ff9d2e;
+  --lamp-bright: #ffd9a3;
 
   /* KEEPER's channel: tidewater. Only the agent perceives this. */
-  --tide-deep: #263a63;
-  --tide: #8aa9e0;
-  --tide-bright: #d3e1fa;
+  --tide-deep: #0a3f5e;
+  --tide: #3fd0e8;
+  --tide-bright: #a8f0ff;
 
   /* Shared: pearl. Both parties perceive it. */
-  --pearl: #ede7dc;
-  --pearl-dim: #8e9299;
+  --pearl: #f2efe9;
+  --pearl-dim: #97a0ab;
 
   /* Penalties, and nothing else. Never used to carry information. */
   --alarm: #e05a4f;
@@ -117,7 +117,16 @@ body {
 
 body {
   margin: 0;
-  padding: var(--gap);
+  /*
+   * No padding, and no frame.
+   *
+   * The console used to be a card with a margin, inside a page, inside a
+   * window - three nested rectangles before you reach the room. The room is
+   * the thing; it now runs to the edge of the glass and the rail, the tabs and
+   * the foot float on top of it. That is the single largest change to how this
+   * looks, and it is a change to the arrangement rather than to the paint.
+   */
+  padding: 0;
   /*
    * Three layers, and the point of all three is depth.
    *
@@ -190,8 +199,15 @@ body::after {
  * would re-frame the shot every time somebody opened one.
  */
 .console {
+  /* A positioning context: the rail and the foot are laid over the deck. */
+  position: relative;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  /*
+   * One row. The rail and the foot are positioned over the deck rather than
+   * given rows of their own, so the room is the full height of the window and
+   * the readouts sit on it the way a HUD does.
+   */
+  grid-template-rows: minmax(0, 1fr);
   /*
    * One column that is allowed to be narrower than its contents.
    *
@@ -205,8 +221,8 @@ body::after {
    * already grown to give it some.
    */
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--gap);
-  max-width: 108rem;
+  gap: 0;
+  max-width: none;
   /*
    * A **definite** height, not a floor, and that is the whole of why the page
    * used to scroll on a window that could show all of it.
@@ -223,9 +239,9 @@ body::after {
    * correct while a mobile browser's chrome is on screen, and ChatGPT's
    * in-app browser is on the target list.
    */
-  height: calc(100vh - var(--gap) * 2);
-  height: calc(100dvh - var(--gap) * 2);
-  margin: 0 auto;
+  height: 100vh;
+  height: 100dvh;
+  margin: 0;
 }
 
 /* The stage. Everything in here is positioned against it. */
@@ -235,6 +251,7 @@ body::after {
   align-items: center;
   justify-content: center;
   min-height: 0;
+  overflow: hidden;
 }
 
 /* ------------------------------------------------------------------ tabs -- */
@@ -248,9 +265,10 @@ body::after {
  */
 .tabs {
   position: absolute;
-  top: 0;
+  top: 50%;
   z-index: 3;
   width: var(--rail-width);
+  transform: translateY(-50%);
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
@@ -325,8 +343,13 @@ body::after {
 
 .drawer {
   position: absolute;
-  top: 0;
-  bottom: 0;
+  /*
+   * Clear of the rail and the foot, which are now laid over the deck rather
+   * than given rows of their own. Without this the drawer opened underneath
+   * the clock and the ambiguity meter and the two sets of words overlapped.
+   */
+  top: 3.2rem;
+  bottom: 3.4rem;
   z-index: 2;
   display: flex;
   width: 20rem;
@@ -431,9 +454,25 @@ body::after {
  * controls and can be as small as it can be used at.
  */
 .foot {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 5;
   display: flex;
-  align-items: stretch;
+  align-items: end;
   gap: var(--gap);
+  padding: 0 1.4rem 1rem;
+  background: linear-gradient(
+    0deg,
+    color-mix(in srgb, var(--abyss) 88%, transparent) 0%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+.foot > * {
+  pointer-events: auto;
 }
 
 .foot .audible {
@@ -491,14 +530,33 @@ body::after {
 /* ------------------------------------------------------------------ rail -- */
 
 .rail {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 5;
   display: flex;
   align-items: center;
   gap: 1.1rem;
-  padding: 0.7rem 1.1rem;
-  border: var(--edge);
-  border-radius: var(--radius);
-  background: linear-gradient(180deg, var(--stone), var(--ink));
-  box-shadow: var(--sheen), var(--lift-2);
+  padding: 0.9rem 1.5rem;
+  /*
+   * No box, and no border.
+   *
+   * A readout on a HUD is legible because of what is behind it, and what is
+   * behind this is a dark room. A gradient that fades out downward is all it
+   * needs, and it leaves the top of the room visible through it instead of
+   * cutting a bar off the top of the frame.
+   */
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--abyss) 90%, transparent) 0%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+.rail > * {
+  pointer-events: auto;
 }
 
 .rail .mark {
@@ -2651,4 +2709,17 @@ button[hidden] {
   .story-line.in {
     animation: none;
   }
+}
+
+/*
+ * In the floating foot, an empty strip shows no box at all.
+ *
+ * The double rule is the `AUDIBLE` channel's legend marker and has to stay the
+ * moment the strip has something to say, so this takes the edges away rather
+ * than the element: it keeps its height, the foot never jumps, and a quiet
+ * chamber is not a wide empty rectangle laid across the bottom of the room.
+ */
+.foot .audible:empty {
+  border-color: transparent;
+  outline-color: transparent;
 }
