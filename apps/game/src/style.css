@@ -30,7 +30,38 @@
  * **The viewport owns its own aspect.** It is the one element that must never
  * be squeezed to fit a panel that grew by a line, because the camera frames
  * against its shape and a reflow re-frames the shot.
+ *
+ * **One typeface is a deliberate exception to "no asset files"** (D-068).
+ * Fraunces, self-hosted in `public/fonts/`, OFL-licensed and noted in
+ * `LICENSE`. It carries the landing screen's display type only - every
+ * structural label, every identifier and every fallback stack is still a
+ * system font, and nothing puzzle-critical or gameplay-bearing depends on it.
  */
+
+/*
+ * Fraunces, for display type only.
+ *
+ * One variable file for the upright weights (300 through 900, and the optical
+ * size axis that keeps it elegant at both a caption's size and a headline's)
+ * and one for the italic cut this page actually uses. `font-display: swap`
+ * because the system stack beneath it is a real typeface, not a blank line -
+ * a swap costs a reflow, never an invisible headline.
+ */
+@font-face {
+  font-family: "Fraunces";
+  font-style: normal;
+  font-weight: 300 900;
+  font-display: swap;
+  src: url("/fonts/fraunces-variable.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Fraunces";
+  font-style: italic;
+  font-weight: 300 900;
+  font-display: swap;
+  src: url("/fonts/fraunces-italic-variable.woff2") format("woff2");
+}
 
 :root {
   /* The ground: cold, near-neutral, deliberately dull. */
@@ -102,6 +133,10 @@
 
   --ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  /* Display type: the landing screen's headline, pull quotes and figure
+     numerals. Nowhere structural - a control, a label or an identifier is
+     always --ui or --mono, never this. */
+  --display: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
 
   color-scheme: dark;
 }
@@ -1237,24 +1272,28 @@ body::after {
 }
 
 /*
- * A staggered arrival. Each band a beat behind the one above it, so the page
- * assembles in the order it argues in rather than appearing all at once.
+ * The hero's own arrival, immediate rather than scroll-triggered.
+ *
+ * Everything below it uses `[data-reveal]` (`ui/reveal.ts`) and animates as
+ * the reader scrolls to it. The hero is the one thing guaranteed to be on
+ * screen the instant this page exists, so it gets a fixed, once-only entrance
+ * instead: the wordmark, then the kicker, then the headline and lede a beat
+ * behind, in the order a reader's eye actually lands on them.
  */
-.landing-sheet > * {
-  animation: band-in 560ms cubic-bezier(0.22, 0.75, 0.3, 1) both;
+.landing-head > * {
+  animation: band-in 620ms cubic-bezier(0.22, 0.75, 0.3, 1) both;
 }
-
-.landing-sheet > *:nth-child(1) {
-  animation-delay: 60ms;
+.landing-head > .wordmark {
+  animation-delay: 40ms;
 }
-.landing-sheet > *:nth-child(2) {
+.landing-head > .kicker {
   animation-delay: 160ms;
 }
-.landing-sheet > *:nth-child(3) {
-  animation-delay: 250ms;
+.landing-head > .landing-thesis {
+  animation-delay: 260ms;
 }
-.landing-sheet > *:nth-child(n + 4) {
-  animation-delay: 330ms;
+.landing-head > .landing-lede {
+  animation-delay: 420ms;
 }
 
 @keyframes band-in {
@@ -1262,6 +1301,107 @@ body::after {
     opacity: 0;
     transform: translateY(14px);
   }
+}
+
+/* ---- scroll reveals ---- */
+
+/*
+ * The generic reveal: a rise and a fade, gated on `.is-revealed`
+ * (`ui/reveal.ts`). Excludes `.rule`, which draws in sideways rather than
+ * rising - a horizontal divider that rose eighteen pixels would look like it
+ * was falling into place from the wrong direction.
+ */
+[data-reveal]:not(.rule) {
+  opacity: 0;
+  transform: translateY(22px);
+  transition:
+    opacity 640ms cubic-bezier(0.22, 0.75, 0.3, 1),
+    transform 640ms cubic-bezier(0.22, 0.75, 0.3, 1);
+}
+
+[data-reveal].is-revealed {
+  opacity: 1;
+  transform: none;
+}
+
+/*
+ * The rule between sections: the line draws in from its centre and the mark
+ * fades up inside it, like a beacon finding the page rather than a divider
+ * that was simply always there.
+ */
+.rule {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin: 0.4rem 0;
+}
+
+.rule-line {
+  flex: 1 1 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--iron) 55%, transparent) 30%,
+    color-mix(in srgb, var(--iron) 55%, transparent) 70%,
+    transparent
+  );
+  transform: scaleX(0);
+  transition: transform 900ms cubic-bezier(0.16, 0.8, 0.24, 1);
+}
+
+.rule-line:first-child {
+  transform-origin: right center;
+}
+.rule-line:last-child {
+  transform-origin: left center;
+}
+
+.rule-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transform: scale(0.7);
+  transition:
+    opacity 500ms ease 260ms,
+    transform 500ms cubic-bezier(0.3, 1.4, 0.4, 1) 260ms;
+}
+
+.rule.is-revealed .rule-line {
+  transform: scaleX(1);
+}
+.rule.is-revealed .rule-mark {
+  opacity: 0.85;
+  transform: scale(1);
+}
+
+/* ---- kickers: the small running head above a section ---- */
+
+.kicker {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--iron);
+}
+
+.kicker-n {
+  flex: none;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--lamp) 40%, transparent);
+  border-radius: var(--radius-sm);
+  color: var(--lamp);
+  letter-spacing: 0.08em;
+}
+
+.start > .kicker,
+.watch > .kicker {
+  grid-column: 1 / -1;
 }
 
 /* ---- identity, thesis ---- */
@@ -1288,10 +1428,64 @@ body::after {
   margin-bottom: 0.4rem;
 }
 
+.landing-head > .kicker {
+  grid-column: 1 / -1;
+  margin-bottom: -0.3rem;
+}
+
 @media (max-width: 60rem) {
   .landing-head {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/*
+ * The pointer light (`wirePointerLight`).
+ *
+ * `--light-x` / `--light-y` are written by JavaScript as the pointer moves;
+ * everything about what the light actually *looks like* is decided here. A
+ * radial gradient the width of PILOT's own lamp colour, at an opacity low
+ * enough to read as the room's own light finding the page rather than as a
+ * cursor effect - the station's whole information law is that a channel is a
+ * light, not a fill, and this is that law applied to type on a page instead
+ * of a mechanism in a room.
+ */
+.landing-head {
+  position: relative;
+  isolation: isolate;
+}
+
+.landing-head::before {
+  content: "";
+  position: absolute;
+  inset: -20% -10%;
+  z-index: -1;
+  /*
+   * Two rings rather than one: the inner one dense and small so the effect
+   * actually registers at a glance, the outer one wide and faint so it does
+   * not read as a spotlight with a hard edge. A single 10% ring at this size
+   * measured as functioning (the custom properties genuinely tracked the
+   * pointer) and reading as *nothing* - a light nobody can see is not
+   * atmosphere, it is a wasted listener.
+   */
+  background:
+    radial-gradient(
+      15rem circle at var(--light-x, 30%) var(--light-y, 20%),
+      color-mix(in srgb, var(--lamp) 20%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      36rem circle at var(--light-x, 30%) var(--light-y, 20%),
+      color-mix(in srgb, var(--lamp) 10%, transparent),
+      transparent 65%
+    );
+  opacity: 0;
+  transition: opacity 420ms ease;
+  pointer-events: none;
+}
+
+.landing-head.has-light::before {
+  opacity: 1;
 }
 
 .wordmark {
@@ -1338,14 +1532,28 @@ body::after {
  */
 .landing-thesis {
   margin: 0;
-  max-width: 24ch;
-  font-size: clamp(1.95rem, 4.1vw, 3.15rem);
-  font-weight: 300;
-  line-height: 1.06;
-  letter-spacing: -0.02em;
+  max-width: 21ch;
+  font-family: var(--display);
+  font-optical-sizing: auto;
+  font-size: clamp(2.35rem, 5.4vw, 4.4rem);
+  font-weight: 340;
+  line-height: 1.02;
+  letter-spacing: -0.01em;
   color: var(--pearl);
-  /* Two lit words at the end, which is where the argument actually is. */
   text-wrap: balance;
+}
+
+/*
+ * The one italic clause: "the same room", which is the actual asymmetry the
+ * sentence turns on. A serif italic at a slightly heavier weight than the
+ * roman around it, so the emphasis is legible as emphasis rather than as a
+ * font that happened to change - the typographic equivalent of the stress a
+ * spoken reading of this sentence would put here.
+ */
+.thesis-em {
+  font-style: italic;
+  font-weight: 480;
+  color: var(--lamp-bright);
 }
 
 .landing-lede {
@@ -1371,6 +1579,11 @@ body::after {
  * a line, the payloads share a row, and the notes share a baseline, whatever
  * either of them contains.
  */
+.proof-wrap {
+  display: grid;
+  gap: 0.9rem;
+}
+
 .proof {
   position: relative;
   isolation: isolate;
@@ -1596,10 +1809,13 @@ body::after {
 
 .start-title {
   grid-column: 1 / -1;
-  margin: 0;
-  font-size: clamp(1.25rem, 2.4vw, 1.6rem);
-  font-weight: 400;
-  letter-spacing: -0.01em;
+  margin: 0 0 0.3rem;
+  font-family: var(--display);
+  font-optical-sizing: auto;
+  font-style: italic;
+  font-size: clamp(1.5rem, 2.8vw, 2.1rem);
+  font-weight: 380;
+  letter-spacing: -0.005em;
   color: var(--pearl);
 }
 
@@ -1625,16 +1841,23 @@ body::after {
 
 .step-n {
   flex: none;
-  width: 1.7rem;
-  height: 1.7rem;
+  width: 2.1rem;
+  height: 2.1rem;
   display: grid;
   place-items: center;
   border-radius: 50%;
-  border: 1px solid color-mix(in srgb, var(--iron) 60%, transparent);
-  background: color-mix(in srgb, var(--stone) 70%, transparent);
-  font-family: var(--mono);
-  font-size: 0.8rem;
-  color: var(--mist);
+  border: 1px solid color-mix(in srgb, var(--lamp) 32%, transparent);
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--lamp-deep) 30%, var(--stone)),
+    var(--stone)
+  );
+  box-shadow: var(--sheen), var(--lift-1);
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 520;
+  font-size: 1.02rem;
+  color: var(--lamp-bright);
 }
 
 .step-head h3 {
@@ -1709,6 +1932,14 @@ body::after {
   color: var(--pearl);
   font: inherit;
   cursor: pointer;
+  /*
+   * The bounded tilt (`wireTilt`, `ui/motion.ts`): `--tilt-x` / `--tilt-y` are
+   * written on `pointermove` and reset to `0deg` on leave, so this is a no-op
+   * at rest and a small lean toward the pointer while it is over the card.
+   * `perspective` lives on the card rather than its parent so the tilt reads
+   * as the card itself lifting off the page, not the whole row skewing.
+   */
+  transform: perspective(900px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
   transition:
     transform 140ms ease,
     border-color 140ms ease,
@@ -1717,7 +1948,8 @@ body::after {
 
 .mode:hover,
 .mode:focus-visible {
-  transform: translateY(-1px);
+  transform: translateY(-2px) perspective(900px) rotateX(var(--tilt-x, 0deg))
+    rotateY(var(--tilt-y, 0deg));
   border-color: var(--lamp);
   box-shadow: var(--sheen), var(--lift-2);
 }
@@ -1783,9 +2015,11 @@ body::after {
   color: var(--pearl);
   font: inherit;
   cursor: pointer;
+  transform: perspective(900px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
   transition:
     border-color 140ms ease,
-    background 140ms ease;
+    background 140ms ease,
+    transform 140ms ease;
 }
 
 .solo:hover,
@@ -3226,6 +3460,17 @@ button[hidden] {
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--lamp) 8%, transparent),
     0 10px 34px color-mix(in srgb, var(--abyss) 80%, transparent);
+  /*
+   * The bounded tilt (`wireTilt`), only on the copy that opted in.
+   *
+   * `--tilt-x` / `--tilt-y` are unset - and therefore `0deg` via the `var()`
+   * fallback - on every copy of this card `wireTilt` was never pointed at,
+   * which is the one in the console's drawer. One rule serves both: the
+   * landing screen's slip tilts because its custom properties actually move,
+   * and the drawer's slip does not because nothing is writing to them.
+   */
+  transform: perspective(1000px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+  transition: transform 160ms ease;
   /* Torn along the top and bottom, which is what makes it a slip rather than a
      box. A repeating cone gradient bites notches out of both edges; the border
      above stops at the same inset so the two do not disagree about the shape. */

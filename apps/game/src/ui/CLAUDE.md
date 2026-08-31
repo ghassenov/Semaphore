@@ -45,7 +45,27 @@ The 3D room is not in here at all - it is `../render/`.
   before they have an agent pointed at it, and the button states it.
 - **The two screens before a session are built from the same parts in the same
   order.** They described different games once. The gate swaps only the step
-  that cannot be taken on it.
+  that cannot be taken on it. `heroBlock` and `whyAndKey` in `landing.ts` are
+  the shared compositions themselves, extracted rather than duplicated a third
+  time (D-069) for the same reason `parts.ts` exists at all.
+- **One typeface is a deliberate exception to "no asset files"** (D-068).
+  `--display` (Fraunces, self-hosted, OFL-licensed, noted in `LICENSE`) is the
+  landing screen's headline and running heads only. Nothing structural - a
+  control, a label, an identifier - may use it; those are always `--ui` or
+  `--mono`.
+- **A cursor effect that cannot be measured is not verified.** `wirePointerLight`
+  and `wireTilt` (`ui/motion.ts`) each shipped once believing "the code reads
+  the pointer correctly" was the whole test, and the light's first version
+  passed exactly that check while being genuinely invisible on screen - a 10%
+  ring measured as functioning and read as nothing. Check the rendered pixels,
+  not only the custom property.
+- **`ui/reveal.ts`'s scroll reveals and both of `ui/motion.ts`'s pointer
+  effects are inert under `prefers-reduced-motion`, and inert means
+  *synchronous*.** `wireReveals` marks every `[data-reveal]` element visible
+  immediately rather than deferring to an observer that would fire almost
+  immediately anyway - "almost immediately" is not the same guarantee, and the
+  difference is exactly the kind of thing that is invisible in a screenshot and
+  real to someone who asked for it.
 
 ## What may be a text node
 
@@ -58,4 +78,5 @@ which is both the design law and the argument the graphic is making.
 
 | Date | Author | What changed |
 |---|---|---|
+| 2026-08-31 | Ahmed Saad | The editorial pass (D-068, D-069). `reveal.ts` and `motion.ts` are new. `--display` (Fraunces) landed as the one deliberate asset exception; `heroBlock` and `whyAndKey` in `landing.ts` are now shared compositions. Rules added: shared builders, the typeface exception, verifying a cursor effect by pixels rather than by its custom property, and reduced-motion meaning synchronous rather than merely inert. |
 | 2026-08-31 | Ahmed Saad | Created with the web-layer redesign (D-066). `ui.ts` split into `parts.ts`, `landing.ts` and `console.ts`; the landing screen became a surface of its own and the start flow stopped failing silently. |

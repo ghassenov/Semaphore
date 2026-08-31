@@ -144,6 +144,42 @@ export function lampMark(size: number): SVGSVGElement {
  * `size` scales the whole lockup, so one call serves a landing screen and one
  * serves a rail.
  */
+
+/**
+ * A section's small running head: a figure number and a label, set the way a
+ * magazine folio runs above a section rather than as a UI heading.
+ *
+ * `index` is often empty, and an empty one renders no numeral box at all -
+ * only the proof graphic's "FIG. 01" and the figure it labels are actually
+ * numbered on this page; everything else is a plain small-caps label, and a
+ * page with three unrelated numbering schemes running at once (figures,
+ * sections, steps) reads as over-engineered rather than as designed.
+ */
+export function kicker(index: string, label: string): HTMLElement {
+  const line = el("p", { class: "kicker" });
+  if (index) line.append(el("span", { class: "kicker-n" }, index));
+  line.append(el("span", {}, label));
+  return line;
+}
+
+/**
+ * A rule between two sections, with the split lamp resting on it.
+ *
+ * It "draws" in on scroll (`data-reveal`): the line grows from its centre and
+ * the mark fades up inside it, which reads as the beacon finding the page
+ * rather than as a divider that was simply always there. Under
+ * `prefers-reduced-motion` `wireReveals` marks it revealed immediately, so the
+ * rule is always present - only the drawing-in is the part that is motion.
+ */
+export function sectionRule(): HTMLElement {
+  const rule = el("div", { class: "rule", "data-reveal": "" });
+  const line = el("span", { class: "rule-line" });
+  const mark = el("span", { class: "rule-mark" });
+  mark.append(lampMark(20));
+  rule.append(line, mark, el("span", { class: "rule-line" }));
+  return rule;
+}
+
 export function wordmark(size: "large" | "small"): HTMLElement {
   const lockup = el("div", { class: `wordmark wordmark-${size}` });
   lockup.append(lampMark(size === "large" ? 44 : 18));
@@ -336,7 +372,15 @@ export function legendRow(): HTMLElement {
  * what either of them contains.
  */
 export function splitProof(): HTMLElement {
+  // The kicker sits in the reading column; the band itself breaks out to the
+  // full width of the window (`.proof`'s own negative margins), so the two
+  // cannot share a grid - the kicker is a sibling above it, not a row inside
+  // it.
+  const wrap = el("div", { class: "proof-wrap", "data-reveal": "" });
+  wrap.append(kicker("FIG. 01", "THE SAME MOMENT, TWICE"));
+
   const proof = el("div", { class: "proof" });
+  wrap.append(proof);
 
   const seen = el("figure", { class: "proof-half proof-pilot" });
   seen.append(el("figcaption", { class: "proof-who" }, "WHAT YOU SEE"));
@@ -398,7 +442,7 @@ export function splitProof(): HTMLElement {
       "The same three levers, in the same room, at the same moment.",
     ),
   );
-  return proof;
+  return wrap;
 }
 
 /**
