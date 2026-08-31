@@ -1013,18 +1013,66 @@ body::after {
  * deck sized to the viewport, and a landing card that pushed past it put a
  * scrollbar on a window that could already show everything.
  */
+/*
+ * The landing screen **is** the split.
+ *
+ * Every version of this page until now was a centred column on black with a
+ * panel in it that illustrated the asymmetry. This is the asymmetry: the page
+ * is divided, the left half is lamplight and the right half is tidewater, and
+ * the words that belong to both sit across the seam between them. The thing
+ * the game is about is the first thing the layout does, before a sentence has
+ * been read.
+ */
 .launch-card {
   position: relative;
   z-index: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 1.05rem;
-  align-items: center;
-  width: min(46rem, 100%);
-  max-height: 100%;
-  padding: 0.4rem;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 0;
+  align-content: stretch;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* The two fields, and the lit seam down the middle of them. */
+.launch-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--lamp-deep) 30%, transparent) 0%,
+    color-mix(in srgb, var(--lamp-deep) 8%, transparent) 44%,
+    transparent 50%,
+    color-mix(in srgb, var(--tide-deep) 12%, transparent) 56%,
+    color-mix(in srgb, var(--tide-deep) 42%, transparent) 100%
+  );
+  pointer-events: none;
+}
+
+.launch-card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    color-mix(in srgb, var(--pearl) 34%, transparent) 30%,
+    color-mix(in srgb, var(--pearl) 34%, transparent) 70%,
+    transparent
+  );
+  pointer-events: none;
+}
+
+.launch-card > * {
+  position: relative;
+  z-index: 1;
+  justify-self: center;
 }
 
 .launch-card > * {
@@ -1104,6 +1152,46 @@ body::after {
   gap: 0.7rem;
   align-items: stretch;
   width: 100%;
+}
+
+/*
+ * On the landing screen the halves have no boxes: the page behind them is
+ * already divided into the two fields, so drawing a panel around each is
+ * drawing the same line twice.
+ */
+.split-field {
+  align-items: center;
+  width: min(74rem, 100%);
+  /*
+   * The band the split lives in, and it may not spill out of it. The cold half
+   * is taller than the warm one now that it carries the requisition slip, and
+   * without this it painted over the line underneath it.
+   */
+  min-height: 0;
+  height: 100%;
+  padding: 0.5rem 0;
+  overflow-y: auto;
+  gap: 2.5rem;
+}
+
+.split-field .half {
+  justify-content: center;
+  border: none;
+  background: none;
+  box-shadow: none;
+}
+
+.split-field .half-plate {
+  background: none;
+}
+
+.split-field .half-tool {
+  border: 1px solid color-mix(in srgb, var(--tide) 26%, transparent);
+  background: color-mix(in srgb, var(--abyss) 55%, transparent);
+}
+
+.split-field .split-seam {
+  color: transparent;
 }
 
 .half {
@@ -1232,13 +1320,13 @@ body::after {
 }
 
 .launch-claim {
-  margin: 0;
+  margin: 0 0 1rem;
   color: var(--mist);
   font-size: 0.94rem;
 }
 
 .launch-go {
-  margin: 0;
+  margin: 1.1rem 0 0.55rem;
   color: var(--pearl);
   font-family: var(--mono);
   font-size: 0.69rem;
@@ -2883,4 +2971,18 @@ button[hidden] {
   color: var(--mist);
   font-size: 0.7rem;
   text-align: right;
+}
+
+/* The one action in the cold half: the prompt the agent needs before it can play. */
+.half-hand {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.2rem;
+}
+
+/* The slip, standing in the cold half of the landing rather than in a drawer. */
+.split-field .slip {
+  width: 100%;
+  max-width: 26rem;
+  margin-top: 0.3rem;
 }

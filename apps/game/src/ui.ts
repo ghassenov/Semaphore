@@ -107,6 +107,7 @@ const GAUGE_SEGMENTS = 12;
  */
 function heroSplit(): HTMLElement {
   const split = el("div", { class: "split" });
+  split.classList.add("split-field");
 
   const seen = el("figure", { class: "half half-pilot" });
   seen.append(el("figcaption", { class: "half-who" }, "WHAT YOU SEE"));
@@ -142,6 +143,21 @@ function heroSplit(): HTMLElement {
       "Every lever feels the same. It can pull them. It cannot look.",
     ),
   );
+  /*
+   * And the requisition slip itself, in the half of the page it belongs to.
+   *
+   * The slip is what doc 04 section 2 calls the element that makes an agent
+   * engage at all, and it used to be carried by a drawer that opened itself on
+   * load. On a landing screen that is now the split, a panel standing over the
+   * right third talks over the argument - but a *copy* button in its place was
+   * worse than either: a judge could take the prompt without ever reading it,
+   * and the fallback line that tells them what to do when their agent says
+   * nothing went off screen with it.
+   *
+   * So the slip moves into the cold half rather than out of the page. It is
+   * the most literal possible illustration of "what your agent gets".
+   */
+  told.append(promptCard());
 
   split.append(seen, el("div", { class: "split-seam" }, "AND"), told);
   return split;
@@ -1078,7 +1094,7 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
     el(
       "p",
       { class: "note" },
-      "Your agent opens the door. Paste it the prompt from YOUR AGENT first.",
+      "Your agent opens the door. Give it the prompt above, then pick a length.",
     ),
   );
 
@@ -1381,7 +1397,16 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   // Once, though. It is opened here and never reopened, so a player who closes
   // it has closed it: the room is the page (D-052), and a panel that kept
   // coming back would be the console arguing with them.
-  east.open("Your agent");
+  /*
+   * The prompt drawer no longer opens itself.
+   *
+   * It used to, on the grounds that it was the most important element on the
+   * landing screen - true when that screen was a small card in an empty room.
+   * The landing is now the split itself, and a panel standing over its right
+   * third talks over the argument the page is making. The prompt has moved
+   * into the cold half instead, which is where it belongs: the starter prompt
+   * *is* what the agent gets.
+   */
   /** Whether the opening slip has already given the room back. */
   let handedOver = false;
 
