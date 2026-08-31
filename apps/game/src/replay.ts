@@ -317,6 +317,67 @@ export async function renderReplay(root: HTMLElement, sessionId: string): Promis
   const readout = el("p", { class: "replay-readout", "aria-live": "off" });
   main.append(scrub, readout);
 
+  /*
+   * The transcript, which is what makes this a replay rather than a chart.
+   *
+   * The two tracks and the ambiguity trace say *when* and *how much*; they
+   * cannot say what happened, and a viewer looking at a row of tick marks has
+   * no way to find out. This is the session as a list of things that were
+   * done, in order, in the two colours the whole game is coded in: cyan for
+   * what KEEPER called, amber for what PILOT did and heard.
+   *
+   * It follows the scrubber and the scrubber follows it. Clicking a line seeks
+   * to it, which is the reason to have both: the chart is how you find an
+   * interesting moment and the list is how you read one.
+   */
+  const transcript = el("ol", { class: "replay-log" });
+  type Entry = { t: number; row: HTMLElement };
+  const entries: Entry[] = [];
+
+  /** Every event on one axis, oldest first, whichever track it came from. */
+  const events = [
+    ...replay.calls.map((call) => ({
+      t: call.t,
+      side: "keeper" as const,
+      what: call.tool,
+      // The code is on the worker's row and not on the client's, so this says
+      // that the call failed rather than inventing a reason it did not receive.
+      note:
+        call.result === "error"
+          ? "refused"
+          : call.wasted
+            ? "told it nothing new"
+            : `${call.concordBits.toFixed(2)} bits left`,
+      bad: call.result === "error",
+    })),
+    ...replay.beats.map((beat) => ({
+      t: beat.t,
+      side: "pilot" as const,
+      what: beat.kind === "audible" ? beat.what : `${beat.what}`,
+      note: beat.count === undefined ? beat.kind : `${String(beat.count)} detents`,
+      bad: false,
+    })),
+  ].sort((a, b) => a.t - b.t);
+
+  for (const event of events) {
+    const row = el("li", { class: `replay-entry ${event.side}${event.bad ? " bad" : ""}` });
+    row.append(
+      el("span", { class: "replay-when" }, clock(event.t)),
+      el("span", { class: "replay-what" }, event.what),
+      el("span", { class: "replay-note" }, event.note),
+    );
+    row.addEventListener("click", () => {
+      scrub.value = String(event.t);
+      scrub.dispatchEvent(new Event("input"));
+    });
+    transcript.append(row);
+    entries.push({ t: event.t, row });
+  }
+  main.append(transcript);
+
+  /** The entry the playhead is on, so it is only scrolled to when it changes. */
+  let showing: HTMLElement | null = null;
+
   /** What was happening at `t`, in words, for the readout and the screen. */
   function at(t: number): void {
     paintMonitor(screen, replay.track, t);
@@ -330,6 +391,21 @@ export async function renderReplay(root: HTMLElement, sessionId: string): Promis
     readout.textContent = parts.join("   ");
     const head = svg.querySelector(".replay-playhead");
     head?.setAttribute("d", `M ${String(x(t))} 0 V ${String(H)}`);
+
+    // Everything up to the playhead is in the past; the newest of those is
+    // where the reader is. Scrolled into view only when it changes, so
+    // dragging the scrubber does not fight the list for the scroll position.
+    let live: HTMLElement | null = null;
+    for (const entry of entries) {
+      const past = entry.t <= t;
+      entry.row.classList.toggle("past", past);
+      if (past) live = entry.row;
+    }
+    for (const entry of entries) entry.row.classList.toggle("now", entry.row === live);
+    if (live !== null && live !== showing) {
+      showing = live;
+      live.scrollIntoView({ block: "nearest" });
+    }
   }
 
   line("replay-playhead", "M 0 0 V 0");

@@ -334,6 +334,20 @@ await send("Runtime.enable");
 await send("Log.enable");
 await send("WebMCP.enable");
 await send("Page.navigate", { url: `${GAME}/?seed=${SEED}` });
+/*
+ * Tell the page the guided shift has already been seen.
+ *
+ * It runs on a first visit and freezes PILOT's controls while it speaks, which
+ * is exactly what it is for and exactly what this file cannot have: the proof
+ * drives those controls, and the run where the tutorial arrived unannounced
+ * failed the two assertions about walking back through a door. This is not a
+ * first visit, and saying so is more honest than lengthening a sleep until the
+ * tour happens to be over.
+ *
+ * The tour has its own tests. What this file proves is the game underneath it.
+ */
+await evaluate(`localStorage.setItem("semaphore:tour-seen", "1")`);
+await send("Page.navigate", { url: `${GAME}/?seed=${SEED}` });
 await sleep(3500);
 
 /** The names on the game's own origin. */
