@@ -452,6 +452,23 @@ check(
 await post("begin_shift", { designation: "KEEPER" });
 await post("start", { difficulty: "practice", mode: "full" });
 await until((v) => v.chamber === "airlock", "the airlock");
+/*
+ * The landing screen hands the room over.
+ *
+ * It leaves on a transition and removes itself when that transition is done,
+ * so this waits for the element to be gone rather than sleeping for however
+ * long the animation currently runs. A hand-typed duration living in a
+ * different package from the animation is the same mistake the camera wait
+ * used to make: a number copied out of another module cannot hear it change.
+ *
+ * What is asserted is unchanged and just as strict - once the landing has
+ * gone, the only requisition slip left on the page is the one stowed in the
+ * closed YOUR AGENT drawer, and it must be measurably off screen.
+ */
+for (let i = 0; i < 60; i++) {
+  if (await evaluate<boolean>(`document.querySelector(".landing") === null`)) break;
+  await sleep(50);
+}
 check(
   "and it hands the room over once the shift starts",
   (await evaluate<number>(`document.querySelector(".slip")?.getBoundingClientRect().width ?? 0`)) <

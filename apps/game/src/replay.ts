@@ -34,6 +34,7 @@
 
 import { CHAMBER_NAMES, type ChamberId } from "@semaphore/protocol";
 import { paintMonitor } from "./render/monitor.js";
+import { wordmark } from "./ui/parts.js";
 
 /** The projection the worker's `/replay/:id` route returns. */
 interface Replay {
@@ -122,6 +123,33 @@ function clock(ms: number): string {
   return `${String(Math.floor(total / 60))}:${String(total % 60).padStart(2, "0")}`;
 }
 
+/**
+ * What a replay URL shows when there is nothing behind it.
+ *
+ * This is the state a *shared* link most often lands in - a session that was
+ * abandoned, or one whose row has gone - so it is the version of this page
+ * most likely to be somebody's first sight of the project. It used to be a
+ * headline in the top-left corner and a sentence in the top-right with ninety
+ * percent of the page empty and no way onward at all.
+ *
+ * It says what happened, and then it offers the thing the visitor actually
+ * came for.
+ */
+function deadEnd(why: string): HTMLElement {
+  const dead = el("section", { class: "replay-dead" });
+  dead.append(
+    wordmark("large"),
+    el("h1", {}, "There is no shift on this tape"),
+    // The worker's own message, which already explains that a session is
+    // written only when it escapes. Restating it underneath was the same
+    // sentence twice.
+    el("p", { class: "lede" }, why),
+  );
+  const back = el("a", { class: "spectate", href: "./" }, "PLAY A SHIFT INSTEAD");
+  dead.append(back);
+  return dead;
+}
+
 /** Mount the viewer for one session id. */
 export async function renderReplay(root: HTMLElement, sessionId: string): Promise<void> {
   root.replaceChildren();
@@ -134,25 +162,22 @@ export async function renderReplay(root: HTMLElement, sessionId: string): Promis
     const response = await fetch(`${origin}/replay/${encodeURIComponent(sessionId)}`);
     if (!response.ok) {
       const body = (await response.json()) as { message?: string };
-      main.append(
-        el("h1", {}, "Nothing to replay"),
-        el("p", { class: "lede" }, body.message ?? "That session could not be read."),
-      );
+      main.append(deadEnd(body.message ?? "That session could not be read."));
       return;
     }
     replay = (await response.json()) as Replay;
   } catch {
-    main.append(
-      el("h1", {}, "Nothing to replay"),
-      el("p", { class: "lede" }, "The station could not be reached."),
-    );
+    main.append(deadEnd("The station could not be reached from this page."));
     return;
   }
 
   // ---- Who, and how it went.
   const head = el("header", { class: "replay-head" });
+  // The mark, because a shared replay link is often somebody's first sight of
+  // the project and an unlabelled chart says nothing about what it is from.
   head.append(
-    el("p", { class: "eyebrow" }, "SEMAPHORE - SESSION REPLAY"),
+    wordmark("large"),
+    el("p", { class: "eyebrow" }, "SESSION REPLAY"),
     el("h1", {}, replay.designation || "UNNAMED"),
     el(
       "p",
