@@ -785,7 +785,7 @@ body::after {
  */
 .fullscreen {
   position: absolute;
-  top: 0.6rem;
+  top: 3.2rem;
   /*
    * Clear of the east tab rail, which stands in this same corner at a higher
    * stacking level. At `0.6rem` the button ran underneath it and lost its last
@@ -793,7 +793,17 @@ body::after {
    * Raising the button over the rail instead would only trade a clipped word
    * for a covered tab, so it moves inboard by the rail's width.
    */
-  right: calc(0.6rem + var(--rail-width));
+  /*
+   * Below the rail, not beside it.
+   *
+   * When the rail was a bar in a grid row, moving inboard by the rail's width
+   * was enough. The rail is now a full-width HUD band lying over the top of the
+   * deck at a higher stacking level, so there is no "beside" any more: the
+   * button ran under the clock and lost its last letter again. It drops to the
+   * same inset the drawers use, which is the line everything else clears the
+   * rail by.
+   */
+  right: 0.6rem;
   z-index: 2;
   padding: 0.3rem 0.6rem;
   font-size: 0.75rem;
@@ -1170,8 +1180,41 @@ body::after {
   min-height: 0;
   height: 100%;
   padding: 0.5rem 0;
+  /*
+   * Scrolled only when it truly cannot fit. The slip and the tool text are
+   * both allowed to shrink first, so a normal window shows the whole argument
+   * without a scrollbar down the middle of it.
+   */
   overflow-y: auto;
   gap: 2.5rem;
+}
+
+/* Compact in the landing's band: this is an illustration, not a document. */
+.split-field .half-tool {
+  min-height: 0;
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
+.split-field .slip {
+  padding: 0.8rem 0.9rem;
+  font-size: 0.82rem;
+}
+
+/* The stamp is flourish; it is the first thing to go when the band is tight. */
+@media (max-height: 60rem) {
+  .split-field .stamp {
+    display: none;
+  }
+}
+
+.split-field .slip .prompt {
+  font-size: 0.8rem;
+  line-height: 1.42;
+}
+
+.split-field .half-plate {
+  min-height: 5rem;
 }
 
 .split-field .half {
