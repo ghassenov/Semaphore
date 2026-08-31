@@ -78,6 +78,18 @@ The 3D room is not in here at all - it is `../render/`.
   louder than everything around it, something that says "this goes somewhere"
   - the one chevron on the page - and, where there is an obvious default, a
   badge saying so rather than three equally weighted options.
+- **A real number does not need to be softened, it needs a way in** (D-071).
+  The ambiguity gauge is `log2(|consistent worlds|)`, live, the Possible-Worlds
+  Proof's own unit (doc 03 section 6) - not a decorative stat, and the fix for
+  "I do not understand this" is never to hide the number. It is a `title`
+  tooltip, a durable paragraph in a panel, and a guided-shift beat, none of
+  which touch the rail's own layout, which has broken from added text before
+  (D-054).
+- **A HUD readout is marked for the tour with `data-tour`, a drawer tab with
+  `data-tab`; a class name is never a promise the tour is allowed to rely on**
+  (D-071). `plan.test.ts` enforces the shape, and it is the same "attribute,
+  not class" reasoning D-054 already gives for `data-tab` alone, extended
+  rather than loosened.
 
 ## What may be a text node
 
@@ -90,6 +102,7 @@ which is both the design law and the argument the graphic is making.
 
 | Date | Author | What changed |
 |---|---|---|
+| 2026-08-31 | Ahmed Saad | The ambiguity gauge got a way in (D-071): a `title` tooltip on the gauge, the room name and the clock, a durable paragraph in the Station panel, and a ninth guided-shift beat that spotlights the gauge via a new `data-tour` attribute (`plan.test.ts`'s selector rule now accepts it beside `data-tab`). |
 | 2026-08-31 | Ahmed Saad | Reported bugs fixed (D-070): the pointer light moved from `.landing-head` to `.landing` so it is not scoped to one box, and the session-length buttons became CTAs rather than information cards. Two worker crashes this session were traced to leftover test-tab sockets, not to this code. |
 | 2026-08-31 | Ahmed Saad | The editorial pass (D-068, D-069). `reveal.ts` and `motion.ts` are new. `--display` (Fraunces) landed as the one deliberate asset exception; `heroBlock` and `whyAndKey` in `landing.ts` are now shared compositions. Rules added: shared builders, the typeface exception, verifying a cursor effect by pixels rather than by its custom property, and reduced-motion meaning synchronous rather than merely inert. |
 | 2026-08-31 | Ahmed Saad | Created with the web-layer redesign (D-066). `ui.ts` split into `parts.ts`, `landing.ts` and `console.ts`; the landing screen became a surface of its own and the start flow stopped failing silently. |

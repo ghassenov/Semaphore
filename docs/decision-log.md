@@ -2480,3 +2480,63 @@ browser checks, entry 40.7KB gzipped of a 400KB budget.
 is a live WebSocket and a 2.5-second poll loop that outlives the script that
 opened it, unless the script closes its own target when it is done. Sixty of
 those took the worker down twice. Close what you open.
+
+---
+
+### D-071 The ambiguity gauge is a real number and had no way in
+
+**2026-08-31.** Asked for directly: "make the ambiguity score and everything
+more understandable and better." Checked what it actually measures before
+touching the copy, since the number is not decorative - it is
+`log2(|consistent worlds|)`, the Possible-Worlds Proof's own reporting unit
+(doc 03 section 6), computed live and polled from the worker's `/concord`
+route. It falls in real time as PILOT's descriptions narrow what KEEPER can be
+consistent with. That is the project's actual headline claim, running during
+play, and the fix was to explain it rather than to soften or hide it.
+
+**What it lacked was a way in, not a better number.** "AMBIGUITY 1.58 bits" on
+its own gives no cue for which direction is good, that it is a live
+consequence of how the conversation is going, or what "bits" means to somebody
+who has not read doc 03. Three additions, none of them touching the rail's own
+layout - the rail has broken from added text before (D-054) and nothing here
+risked that again:
+
+- **A `title` tooltip** on the gauge, the room name and the clock, each stating
+  in one sentence what the reading means and, for the gauge, which direction is
+  good.
+- **A ninth guided-shift beat**, "Watch AMBIGUITY drain" - the tour's own
+  mechanism for pointing at one thing while dimming the rest, used for the
+  first time on a HUD readout rather than a fixture or a drawer tab. It could
+  not use `mark: '[data-tab="..."]'`, because the gauge is not a drawer tab, so
+  `plan.test.ts`'s selector rule was widened to accept `data-tour` as well -
+  the same "an attribute is a promise, a class name is not" reasoning the
+  original rule gives, extended to a second stable target rather than loosened
+  in place.
+- **A durable paragraph in the Station panel**, for anybody who skipped the
+  tour or wants the definition again mid-session without hovering.
+
+**Verified against a browser that could actually reach the beat.** The first
+verification pass ran against the wrong headless instance - the one launched
+without WebMCP flags, for testing the gate screen - and reported `.solo` as
+missing, which was correctly the gate screen showing no start flow at all, not
+a defect. Caught before it was reported as one, by checking which browser was
+actually being asked. Re-run against a browser that could reach the landing
+screen: the tooltip attributes are present, the tour advances to "5 of 9" and
+spotlights exactly the gauge, and 27 of 27 browser checks pass unaffected -
+confirmed separately that the automated proof deliberately marks the tour
+"already seen" before it runs, so nothing about the new beat could have broken
+it silently.
+
+**The verification browser was closed the moment it was no longer needed**,
+per D-070's own lesson from three commits ago: a live game session left open
+in a test browser is a live socket and a poll loop, and the fix for the CPU
+spike that caused was "close what you open," not "remember to, eventually."
+
+*One more instance of the pattern D-070 already named.* Editing live source
+while the user's own tab is open triggers Vite HMR, and a big enough module
+change forces a full reload rather than a hot swap - which drops `?seed=` from
+the URL the same way a dead server connection does. Restored a second time,
+the same way: `Page.navigate` back to the seeded URL over CDP, done and
+reported. Worth writing down as its own trigger, distinct from a server crash.
+
+747 tests, 27 of 27 browser checks, entry 41.0KB gzipped of a 400KB budget.
