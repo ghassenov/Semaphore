@@ -81,9 +81,8 @@ const CHROME_FLAG = "chrome://flags/#enable-webmcp-testing";
  * reason the game may not: naming it is PILOT's half of the work.
  */
 const KEEPER_SIDE = [
-  "THE AIRLOCK. A cramped chamber, ankle-deep in cold water.",
-  "Three levers on the far wall: lever_a down, lever_b upright, lever_c upright.",
-  "Pulled so far: none.",
+  "THE AIRLOCK. Three levers on the far wall:",
+  "lever_a down, lever_b upright, lever_c upright.",
   "You cannot see what is lit above them. PILOT can. Ask.",
 ].join(" ");
 
@@ -1023,6 +1022,16 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   // the tour is, and a button that does nothing for one frame is better than
   // reordering the shell around a tutorial.
   let teach: (() => void) | null = null;
+  /**
+   * Whether the landing screen asked for the tour before there was a room.
+   *
+   * The tour's beats are about the Airlock's levers, so running it on the
+   * landing screen played a lesson over an empty page: the copy arrived, the
+   * camera had nothing to fly to, and the game the tutorial was describing was
+   * not on screen at all. "Show me how it works" now *starts* a practice shift
+   * and the tour opens when the room does.
+   */
+  let teachOnArrival = false;
 
   const launch = el("div", { class: "launch" });
   const sheet = el("div", { class: "launch-card" });
@@ -1085,7 +1094,25 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   }
   const showMe = el("button", { type: "button", class: "launch-teach" }, "Show me how it works");
   showMe.addEventListener("click", () => {
-    teach?.();
+    if (launch.hidden) {
+      // Already in a room: just play it.
+      teach?.();
+      return;
+    }
+    /*
+     * On the landing screen there is no room yet, and every beat after the
+     * first is about a lever in the Airlock. Running it here played a lesson
+     * over an empty page.
+     *
+     * So this opens a practice shift and the tour follows the room in. Practice
+     * is the right length to be shown things in: untimed, so nothing is running
+     * out while somebody reads.
+     */
+    teachOnArrival = true;
+    deps.audio.start();
+    void deps.client.post("start", { difficulty: "practice", mode: "full" }).then((response) => {
+      deps.onNote(`start practice: ${response.text}`);
+    });
   });
   sheet.append(
     showMe,
@@ -1498,6 +1525,15 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
       }
       // The tour waits for the opening to have had its say, so the two are
       // never on screen together telling the player two different things.
+      if (teachOnArrival && nowPhase === "IN_CHAMBER") {
+        teachOnArrival = false;
+        offered = true;
+        const asked = tour;
+        globalThis.setTimeout(() => {
+          story?.stop();
+          asked.start();
+        }, 900);
+      }
       if (!offered && nowPhase === "IN_CHAMBER") {
         offered = true;
         if (!tour.seen()) {
