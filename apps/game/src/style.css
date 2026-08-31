@@ -54,9 +54,9 @@
   --lamp-bright: #ffd9a3;
 
   /* KEEPER's channel: tidewater. Only the agent perceives this. */
-  --tide-deep: #0a3f5e;
-  --tide: #3fd0e8;
-  --tide-bright: #a8f0ff;
+  --tide-deep: #0d3a7a;
+  --tide: #4aa8ff;
+  --tide-bright: #b9dcff;
 
   /* Shared: pearl. Both parties perceive it. */
   --pearl: #f2efe9;
