@@ -151,8 +151,12 @@ curl -sX POST $B/pull_lever -H 'content-type: application/json' \
   -d '{"lever_id":"lever_c"}'
 ```
 
-Route names are the tool names; `apps/worker/src/Session.ts` line 136 onward is
-the list. Note the order: KEEPER calls `begin_shift` **first**, and only then
+**Route names are the tool names only for the mutating half.** The read-only
+tools are GETs on shorter paths - `get_status` is `GET /status`,
+`describe_chamber` is `/describe`, `read_manual` is `/manual?section=`,
+`inspect` is `/inspect?object_id=`, plus `/ciphertext`, `/lock_state` and
+`/notes`. `apps/worker/src/Session.ts` line 139 onward is the real list, and
+this file told two people otherwise. Note the order: KEEPER calls `begin_shift` **first**, and only then
 does PILOT pick a session length, or `start` answers `E_NO_SESSION`. Pick
 `practice` to look at rooms without a clock.
 
@@ -326,6 +330,8 @@ seconds with zero tokens. Budget the tokens before running, not after.
 
 ### The renderer
 
+- **A value the render loop writes into a live object every frame must never be read back as a starting point** (D-067). It is a feedback loop with no damping term. The camera's idle drift was added into `camera.position` each frame and the shot transition took its origin from `camera.position`, so the drift compounded at 0.22m a frame - about thirteen metres a second - and holding a movement key put the camera outside the station. The symptom of this class of bug is not a wrong value, it is a value that leaves the world.
+- **A camera transition is keyed on the shot's identity, never on its coordinates** (D-067). A room shot leans toward PILOT, so its eye moves every frame anybody is walking; keyed on the eye, every frame was a new shot, the easing never completed, and the follow that `roomShot` was written for had never once worked.
 - **A renderer's defects are in the frame, and the only instrument that sees them is a frame.** Eleven defects across three sittings (D-046 to D-048) were each invisible to 650 passing tests, and two of them were *introduced by the fix for another*. When a room looks wrong, do not reason about the plan: take the frame, crop it, and if that is not enough, name the scene graph and dump it. Every object now carries a name (`building`, `room`, `dressing`, `dress:<kind>`, `fix:<id>`) precisely so that dump is one call rather than a bisection.
 - **A test written around a bug you already found will not find its sibling.** The dressing-overlap check compared centre points and skipped any fixture above 1.4m, which is exactly why it missed a 4m monitor with two cabinets buried in it. Widen the check to what the rule actually says, not to what reproduces the one case.
 - **A test written from the code rather than from the intent will guard the bug.** A green unit test asserted that the finale had no room to draw. That was the defect: the last two beats of the game rendered an empty shell for as long as the 3D client had existed, and the test said so approvingly.
