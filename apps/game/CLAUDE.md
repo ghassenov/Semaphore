@@ -67,9 +67,14 @@ The client. It renders PILOT's world in real-time 3D and hosts the WebMCP tool d
 
 ### The console
 
-- **`src/ui/` has its own [CLAUDE.md](src/ui/CLAUDE.md)** (D-066). The DOM is
-  three surfaces built from one set of parts: `parts.ts`, `landing.ts`,
-  `console.ts`. The rules that matter outside that directory are the four below.
+- **`src/ui/` has its own [CLAUDE.md](src/ui/CLAUDE.md)** (D-066, D-069). The
+  DOM is three surfaces built from one set of parts: `parts.ts`, `landing.ts`,
+  `console.ts`, plus `reveal.ts` and `motion.ts` for the landing screen's
+  scroll reveals and cursor effects. The rules that matter outside that
+  directory are the four below.
+- **One typeface, `--display` (Fraunces), is a deliberate exception to "no
+  asset files"** (D-068). Self-hosted, OFL-licensed, noted in `LICENSE`, used
+  for display type only. Nothing structural depends on it.
 - **The landing screen is a surface laid over the console, never a card inside
   the deck** (D-066). As a card it inherited a rail reading `CONNECTING`, a live
   ambiguity gauge with no session, seven tab stubs and three faders above the
@@ -155,5 +160,6 @@ The client. It renders PILOT's world in real-time 3D and hosts the WebMCP tool d
 | 2026-08-30 | Ahmed Saad | The doors were put in the actual openings and PILOT can walk back through one (D-053 to D-055). Rules added: a door stands in a hole and the corridor moves when it cannot, walking back is a camera feature, a side-wall caption separates only vertically, and dressing may move without acquiring state. |
 | 2026-08-30 | Ahmed Saad | Rules added from the second and third playthroughs (D-046 to D-048): hidden means gone, a room shot stands one room, KEEPER's alcove is reserved, nothing hangs in front of a screen, a phase with no facts is not a phase with no room, low is not zero, and the three separate scars behind how a caption is built and sized. |
 | 2026-08-30 | Ahmed Saad | The starter prompt card became a requisition slip and phase 4 closed (D-062): rules added that it is built once and rendered twice, and that a panel which opens itself must hand the room back. |
+| 2026-08-31 | Ahmed Saad | The editorial pass (D-068, D-069): a self-hosted display typeface, scroll reveals, a cursor-reactive light and bounded card tilt on the landing screen. New rule for the one deliberate asset exception; the rest is detailed in `src/ui/CLAUDE.md`. |
 | 2026-08-31 | Ahmed Saad | The web layer was redesigned and `ui.ts` split into `src/ui/` (D-066), which has its own CLAUDE.md. New console rules: the landing screen is a surface rather than a card, the console is never `display: none`, every absolutely positioned band must own an edge, and an override goes below what it overrides. |
 | 2026-08-30 | Ahmed Saad | The judge path, the replay viewer and the accessibility layer landed (D-056 to D-061). New Access section: the mirror as the sanctioned DOM exception, contrast derived rather than declared, motion read per frame, one monitor picture across three surfaces, why the replay's URL is a query, and that a prop is not an error. The tour rule now names `data-settled` instead of a copied constant. |

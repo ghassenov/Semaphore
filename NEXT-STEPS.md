@@ -12,10 +12,10 @@ It answers three questions and only three: where the repo is right now, what to 
 |---|---|
 | **Last updated** | 2026-08-31, Ahmed Saad |
 | **Branch** | `feat/web-layer-redesign`, off `main` at `bc84552` |
-| **Pipeline** | Green: **735 tests**, typecheck, lint, format, both builds plus the bundle budget and the palette check |
+| **Pipeline** | Green: **747 tests**, typecheck, lint, format, both builds plus the bundle budget and the palette check |
 | **Sound** | **Built and heard** (D-050, D-051). Listened to on a real machine on 2026-08-30 and signed off. Plan phase 5.2 in full: eight mechanism cues, the ambience bed, four timer-keyed tension layers, a behind-the-wall thump per KEEPER tool call, and a mix with a mute. Plus **a warm unresolved theme** on top, always on, which is a deliberate departure from doc 06's chiptune direction (D-051). All synthesised in `apps/game/src/audio/`; still no asset file of any kind. `PilotView` gained `seq`, without which the detents cannot repeat. |
 | **Doors and the way back** | **Every door stands in an opening you can actually walk through, and PILOT can go back through one** (D-053 to D-055). `doorways.ts` holds each room's openings room-local and its test derives the real ones from `stationCells`; two openings could not carry a door (a south face, and eleven metres of gauge bank) so the **corridors were rerouted**, not the doors. `Q` at an open door walks PILOT back into a room the pair has already cleared, drawn from the last frame the server sent for it with its doors opened by `asCleared`. Nothing crosses the wire: the clock keeps running, KEEPER's 14 tools are untouched, and KEEPER's body is not drawn in a room the session has left. Every room also got a decoration and ambient-motion pass, including the two that had never had a composition pass. |
-| **Web layer** | **Redesigned from scratch, and its bugs fixed** (D-066). `ui.ts` is now `src/ui/` - `parts.ts`, `landing.ts`, `console.ts` - with its own CLAUDE.md. The landing screen is a **surface laid over the console** rather than a card inside its deck, with its own scroll and its own composition: identity, thesis, the split as one full-bleed band, then a numbered two-step start. **Picking a session length no longer fails silently** - it was the worst thing on the page and it was not a design problem. The gate is built from the same parts in the same order. The tab rails are rails, a drawer is as tall as its contents, the mixer is a housing, the replay's dead end is a page, and everything works down to 390px. The station itself was not opened. |
+| **Web layer** | **Redesigned from scratch, its bugs fixed, and then made to be looked at** (D-066, D-068, D-069). `ui.ts` is now `src/ui/` - `parts.ts`, `landing.ts`, `console.ts`, plus `reveal.ts` and `motion.ts` - with its own CLAUDE.md. The landing screen is a **surface laid over the console** rather than a card inside its deck, with its own scroll: identity, thesis, the split as one full-bleed editorial band, a rule with the split lamp between sections, then a numbered two-step start. **Picking a session length no longer fails silently.** A self-hosted display typeface (Fraunces, OFL, the one deliberate exception to no-asset-files, `LICENSE` carries the carve-out), scroll-driven reveals, a cursor-reactive light on the hero and a bounded tilt on the three cards a reader actually chooses between - all verified with a simulated pointer over CDP, not only read as code, because the light's first version measured as working and was genuinely invisible on screen. The gate is built from the same parts in the same order; `heroBlock` and `whyAndKey` are now shared functions rather than duplicated a third time. Reduced motion was checked with the emulated media feature set *before navigation*: every section is visible at `opacity: 1` with zero scrolling. The tab rails are rails, a drawer is as tall as its contents, the mixer is a housing, the replay's dead end is a page, and everything works down to 390px. **The camera stopped compounding its own idle drift** (D-067), found by playing it: holding a movement key, or leaning with `E` then moving, put the camera outside the station. The station's own room and its assets were otherwise not touched. |
 | **Console** | **Rebuilt around the room** (D-052). The room fills the deck and is centred; panels live behind labelled tabs on the two edges, open on demand, one per edge, resizable by drag or arrow keys, closed with Escape. Deeper ground, a grain layer, a beacon sweep on the start card and the gate, and PILOT has four poses and a flickering lamp. Channel colours untouched. |
 | **Interface** | **Rebuilt in real-time 3D** (D-042 to D-045). Phaser and the tile renderer are gone. The station is a lit cutaway model: rooms open at the top and on their south face, camera always to the south, four lights and no post-processing. New colour language (D-043), procedural assets and **no asset files at all** (D-044), and a console laid out as two surfaces with the room between them (D-045). |
 | **Licence** | **MIT throughout again.** The vendored art pack went with the tile renderer, so `LICENSE` has no carve-out (D-044). |
@@ -104,11 +104,12 @@ behind the old check and eleven of them silently kept the previous palette.
 
 ### 1. Play it, with two people, and fix what that finds [start here]
 
-**The redesign is done (D-066) and it has not met a person.** Every surface in
-it was checked by one person who knew where everything already was, which is
-exactly the thing item 3 says cannot find what is wrong with it.
+**The redesign is done (D-066, D-068, D-069) and it has not met a person.**
+Every surface in it was checked by one person who knew where everything
+already was, which is exactly the thing item 3 says cannot find what is wrong
+with it.
 
-Four things in the new web layer have been proved and never played:
+Four things in the structural pass have been proved and never played:
 
 - **The waiting state.** Pick a length with no agent pointed at the page, then
   point one at it. Does "Waiting for KEEPER" read as the page working, or as the
@@ -121,6 +122,22 @@ Four things in the new web layer have been proved and never played:
 - **The proof band.** It is the whole pitch in one graphic. Does a cold reader
   get the asymmetry from it without the paragraph underneath?
 - **The two-step start.** Does anybody actually do step one before step two.
+
+And three more from the editorial pass, all of them cosmetic rather than
+mechanical, which is exactly the kind of thing a person feels and a check
+cannot:
+
+- **The tilt on the mode cards and the slip.** Five degrees toward the pointer,
+  verified by reading the actual custom property back over CDP. Does it read
+  as premium, or as a card that will not sit still?
+- **The pointer light on the hero.** Its first version measured as
+  functioning and was invisible; it is two rings now, checked by cropping a
+  frame with and without a simulated pointer over the headline. Does it read
+  as the room's own light finding the page, or as nothing, or as too much?
+- **The display typeface.** Fraunces is the one deliberate exception to
+  "no asset files" (D-068), ~150KB the client did not used to fetch. Nobody
+  has looked at it on a phone, and nobody has looked at it in the ChatGPT
+  in-app browser, which is also where item 4's performance question lives.
 
 ### 2. Keep playing and fixing, and play it properly this time
 
