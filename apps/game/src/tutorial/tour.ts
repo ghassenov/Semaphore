@@ -29,6 +29,23 @@ const SEEN = "semaphore:tour-seen";
 /** How long the camera is given to arrive before the copy fades in. */
 const SETTLE_MS = 700;
 
+/**
+ * Whether a key event came from somebody typing rather than from the tour.
+ *
+ * The shared notepad is a real text field on the same page, and both this and
+ * the story listen on `globalThis`: without this, typing a space into a note
+ * advanced the tutorial a step, and typing anything at all skipped the opening.
+ */
+function typing(event: KeyboardEvent): boolean {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target.isContentEditable ||
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement
+  );
+}
+
 /** What the caller holds so it can start, stop or ask about the tour. */
 export interface TourHandle {
   /** Play from the first step. Safe to call while one is already running. */
@@ -91,27 +108,50 @@ export function createTour(parent: HTMLElement, model: StationModel): TourHandle
   let at = -1;
   let timer = 0;
 
-  function markUp(step: Step): void {
-    // The spotlight is a box drawn over the element the step names, rather than
-    // a mask cut out of the dimming layer: a box can be animated between two
-    // positions, and moving light is what makes the eye follow rather than
-    // search. Nothing to name means nothing to draw.
-    if (step.mark === null) {
+  /** The element the current step points at, so the box can follow it. */
+  let marked: HTMLElement | null = null;
+
+  /** Put the lit box over `marked`, wherever it is now. */
+  function placeSpot(): void {
+    if (marked === null) {
       spot.hidden = true;
       return;
     }
-    const target = document.querySelector(step.mark);
-    if (!(target instanceof HTMLElement)) {
-      spot.hidden = true;
-      return;
-    }
-    const box = target.getBoundingClientRect();
+    const box = marked.getBoundingClientRect();
     const host = parent.getBoundingClientRect();
     spot.hidden = false;
     spot.style.left = `${String(box.left - host.left - 6)}px`;
     spot.style.top = `${String(box.top - host.top - 6)}px`;
     spot.style.width = `${String(box.width + 12)}px`;
     spot.style.height = `${String(box.height + 12)}px`;
+  }
+
+  function markUp(step: Step): void {
+    // The spotlight is a box drawn over the element the step names, rather than
+    // a mask cut out of the dimming layer: a box can be animated between two
+    // positions, and moving light is what makes the eye follow rather than
+    // search. Nothing to name means nothing to draw.
+    if (step.mark === null) {
+      marked = null;
+      placeSpot();
+      return;
+    }
+    const target = document.querySelector(step.mark);
+    if (!(target instanceof HTMLElement)) {
+      marked = null;
+      placeSpot();
+      return;
+    }
+    marked = target;
+    /*
+     * Open the drawer the step is about, if it is closed.
+     *
+     * Pointing a spotlight at a shut tab teaches the player where a word is.
+     * The beat about the agent's faculties is about *what is in that drawer*,
+     * so the drawer has to be open for the sentence to be true.
+     */
+    if (target.getAttribute("aria-expanded") === "false") target.click();
+    placeSpot();
   }
 
   function show(index: number): void {
@@ -122,6 +162,10 @@ export function createTour(parent: HTMLElement, model: StationModel): TourHandle
     }
     at = index;
     model.focus = step.focus;
+    // PILOT's controls are the tour's for the duration. Set every step rather
+    // than once at the start, so a `stop` that raced a pending step cannot
+    // leave the player frozen out of their own game.
+    model.locked = true;
     beat.textContent = `${String(index + 1)} of ${String(TOUR.length)}`;
     title.textContent = step.title;
     say.textContent = step.say;
@@ -146,12 +190,15 @@ export function createTour(parent: HTMLElement, model: StationModel): TourHandle
   function stop(): void {
     globalThis.clearTimeout(timer);
     layer.hidden = true;
+    marked = null;
     spot.hidden = true;
     card.classList.remove("shown");
     at = -1;
-    // The camera goes back to its own mind, which is the thing that makes the
-    // tour feel like it handed the room over rather than let go of it.
+    // The camera goes back to its own mind, and the player gets their keys
+    // back. That handover is the thing that makes the tour feel like it gave
+    // the room over rather than merely stopped talking.
     model.focus = null;
+    model.locked = false;
     remembers()?.setItem(SEEN, "1");
   }
 
@@ -165,11 +212,25 @@ export function createTour(parent: HTMLElement, model: StationModel): TourHandle
   });
   skip.addEventListener("click", stop);
   const onKey = (event: KeyboardEvent): void => {
-    if (layer.hidden) return;
-    if (event.key === "Escape") stop();
-    if (event.key === "Enter" || event.key === " ") show(at + 1);
+    if (layer.hidden || typing(event)) return;
+    if (event.key === "Escape") {
+      stop();
+      return;
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      // Or the page scrolls, and the key that advances the lesson also moves
+      // the thing the lesson is pointing at.
+      event.preventDefault();
+      show(at + 1);
+    }
   };
   globalThis.addEventListener("keydown", onKey);
+  // The box follows its target rather than being measured once: a drawer
+  // opening, or the window changing shape, moved the tab out from under it.
+  const onResize = (): void => {
+    placeSpot();
+  };
+  globalThis.addEventListener("resize", onResize);
 
   return {
     start,

@@ -91,6 +91,17 @@ export interface StationModel {
    * frame loop is a second thing that can disagree with the first.
    */
   focus: Focus;
+  /**
+   * Whether PILOT's controls are frozen, because something else is driving.
+   *
+   * The guided shift sets it. Without it the player kept every key while the
+   * tour was speaking: `WASD` walked the body out from under a camera that was
+   * framing it, `M` yanked to the wide shot mid-sentence, and `Q` walked out of
+   * the Airlock entirely - after which every remaining step named a fixture the
+   * room no longer contained and the camera simply stopped moving. A tutorial
+   * that can be steered away from what it is teaching is not a tutorial.
+   */
+  locked: boolean;
 }
 
 /** What `main.ts` holds once the station is up. */
@@ -149,6 +160,7 @@ export async function startStation(
     chamberTimerMs: 0,
     standing: null,
     focus: null,
+    locked: false,
   };
 
   // The engine and the scene together, in one chunk, off the critical path.

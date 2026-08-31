@@ -74,11 +74,32 @@ export function playStory(parent: HTMLElement, beats: readonly Beat[]): StoryHan
   let timer = 0;
   let done = false;
 
+  /**
+   * Whether a key event came from somebody typing rather than from the reader.
+   *
+   * The shared notepad is a real text field on the same page and this listens
+   * on `globalThis`, so without it the first character typed into a note
+   * skipped the opening.
+   */
+  function typing(event: KeyboardEvent): boolean {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return false;
+    return (
+      target.isContentEditable ||
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement
+    );
+  }
+
+  const onKey = (event: KeyboardEvent): void => {
+    if (!typing(event)) stop();
+  };
+
   function stop(): void {
     if (done) return;
     done = true;
     globalThis.clearTimeout(timer);
-    globalThis.removeEventListener("keydown", stop);
+    globalThis.removeEventListener("keydown", onKey);
     layer.removeEventListener("click", stop);
     layer.classList.add("gone");
     // Removed after the fade rather than on the frame it starts, so the last
@@ -109,7 +130,7 @@ export function playStory(parent: HTMLElement, beats: readonly Beat[]): StoryHan
     );
   }
 
-  globalThis.addEventListener("keydown", stop);
+  globalThis.addEventListener("keydown", onKey);
   layer.addEventListener("click", stop);
   beat(0);
 
