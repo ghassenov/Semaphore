@@ -47,12 +47,15 @@ describe("the guided shift", () => {
 
   it("only marks console elements that name themselves", () => {
     // A selector is a promise about markup that lives in another file. Keeping
-    // them to `data-tab` means the promise is one attribute rather than a class
-    // name that a styling change is free to rename.
+    // them to a `data-*` attribute means the promise is one attribute rather
+    // than a class name that a styling change is free to rename. `data-tab`
+    // marks a drawer tab; `data-tour` marks anything else stable enough to be
+    // pointed at - the ambiguity gauge is the first of those, because it is a
+    // HUD readout with no fixture the camera could focus on instead.
     for (const step of TOUR) {
       if (step.mark === null) continue;
-      expect(step.mark, `${step.id} marks by something other than data-tab`).toMatch(
-        /^\[data-tab="[a-z-]+"\]$/,
+      expect(step.mark, `${step.id} marks by something other than data-tab/data-tour`).toMatch(
+        /^\[data-(tab|tour)="[a-z-]+"\]$/,
       );
     }
   });

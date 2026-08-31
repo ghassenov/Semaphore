@@ -339,20 +339,53 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   const rail = el("header", { class: "rail" });
   const mark = el("span", { class: "mark" });
   mark.append(lampMark(18), el("span", {}, "SEMAPHORE"));
-  const room = el("span", { class: "room" }, "CONNECTING");
-  const resets = el("span", { class: "resets" });
+  const room = el(
+    "span",
+    {
+      class: "room",
+      title: 'Which room the session is in. "REVISITED" means you have walked back through a door.',
+    },
+    "CONNECTING",
+  );
+  const resets = el("span", {
+    class: "resets",
+    title: "How many times this chamber has been reset after an invalid action.",
+  });
 
-  // The ambiguity gauge, beside the clock because it is a headline number.
-  // Segmented rather than continuous: information arrives in discrete quanta
-  // and doc 06 section 7 asks for a meter that ratchets rather than slides.
-  const gauge = el("div", { class: "gauge" });
+  /*
+   * The ambiguity gauge, beside the clock because it is a headline number.
+   *
+   * Segmented rather than continuous: information arrives in discrete quanta
+   * and doc 06 section 7 asks for a meter that ratchets rather than slides.
+   *
+   * It is a real number - `log2(|consistent worlds|)`, doc 03 section 6 - and
+   * that is worth keeping rather than hiding: it is this project's actual
+   * measured claim, not a decorative stat. What it lacked was a plain-language
+   * way in. It never had one on first contact - "AMBIGUITY 1.58 bits" reads as
+   * instrumentation to somebody who has not read the design docs, with no cue
+   * for which direction is good or that it is a live consequence of how well
+   * PILOT is describing the room. `title` gives the on-demand explanation;
+   * `data-tour="gauge"` is what the guided shift spotlights the one time it
+   * actually walks somebody through what they are looking at.
+   */
+  const gauge = el("div", {
+    class: "gauge",
+    "data-tour": "gauge",
+    title:
+      "How much your agent still does not know about this room, in bits. It only falls " +
+      "when what you tell it actually narrows things down.",
+  });
   const gaugeTrack = el("div", { class: "gauge-track" });
   const segments = Array.from({ length: GAUGE_SEGMENTS }, () => el("i", {}));
   gaugeTrack.append(...segments);
   const bits = el("span", { class: "gauge-bits" }, "-");
   gauge.append(el("span", { class: "gauge-label" }, "AMBIGUITY"), gaugeTrack, bits);
 
-  const clock = el("span", { class: "clock" }, "--:--");
+  const clock = el(
+    "span",
+    { class: "clock", title: "Time left in this chamber. UNTIMED in practice mode." },
+    "--:--",
+  );
   rail.append(mark, room, resets, gauge, clock);
 
   // ---- The deck: the room, with everything else folded into its two edges. -
@@ -531,6 +564,19 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   const station = panel("The station");
   const floorList = el("ol", { class: "floors", "data-empty": "OUTSIDE THE STATION" });
   station.body.append(floorList, legendRow());
+  // A durable answer to "what does AMBIGUITY mean", for anybody who skipped
+  // the guided shift or wants to check the definition again mid-session. The
+  // rail's own tooltip and the tour's spotlight are the two other ways in;
+  // this is the one that is always sitting somewhere to be found.
+  station.body.append(
+    el(
+      "p",
+      { class: "note" },
+      "The AMBIGUITY gauge, top of screen, is how much your agent still does not know " +
+        "about the room you are both in. It falls when your words actually narrow things " +
+        "down for it, not just when you talk.",
+    ),
+  );
 
   const controls = panel("Your hands", "controls");
   const actionButtons = PILOT_ACTIONS.map((entry) => {
