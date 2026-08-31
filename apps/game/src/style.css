@@ -1440,26 +1440,34 @@ body::after {
 }
 
 /*
- * The pointer light (`wirePointerLight`).
+ * The pointer light (`wirePointerLight`), across the whole page.
  *
  * `--light-x` / `--light-y` are written by JavaScript as the pointer moves;
- * everything about what the light actually *looks like* is decided here. A
- * radial gradient the width of PILOT's own lamp colour, at an opacity low
- * enough to read as the room's own light finding the page rather than as a
- * cursor effect - the station's whole information law is that a channel is a
- * light, not a fill, and this is that law applied to type on a page instead
- * of a mechanism in a room.
+ * everything about what the light actually *looks like* is decided here.
+ *
+ * **It used to be scoped to the hero only** - a warm patch roughly the height
+ * of the headline, nothing anywhere else on the page. Reported back exactly
+ * as what it was: "the cursor is stuck in a little box where the effects are
+ * only there." Nothing was trapping a click - a full sweep of the page found
+ * every point hit-testing to the right element underneath it - but a light
+ * that exists in one rectangle and nowhere else reads as broken even though
+ * nothing is, because the rest of the page then has no reason to have a
+ * cursor at all. It is wired on `.landing` itself now, the fixed,
+ * full-viewport surface everything else scrolls inside, so the light holds
+ * its position on screen while the reader scrolls past it, the way a ceiling
+ * lamp would, rather than travelling with the content or vanishing past the
+ * hero's own height.
  */
-.landing-head {
-  position: relative;
-  isolation: isolate;
+.landing {
+  --light-x: 50%;
+  --light-y: 30%;
 }
 
-.landing-head::before {
+.landing::before {
   content: "";
   position: absolute;
-  inset: -20% -10%;
-  z-index: -1;
+  inset: 0;
+  z-index: 0;
   /*
    * Two rings rather than one: the inner one dense and small so the effect
    * actually registers at a glance, the outer one wide and faint so it does
@@ -1470,13 +1478,13 @@ body::after {
    */
   background:
     radial-gradient(
-      15rem circle at var(--light-x, 30%) var(--light-y, 20%),
-      color-mix(in srgb, var(--lamp) 20%, transparent),
+      16rem circle at var(--light-x) var(--light-y),
+      color-mix(in srgb, var(--lamp) 16%, transparent),
       transparent 70%
     ),
     radial-gradient(
-      36rem circle at var(--light-x, 30%) var(--light-y, 20%),
-      color-mix(in srgb, var(--lamp) 10%, transparent),
+      40rem circle at var(--light-x) var(--light-y),
+      color-mix(in srgb, var(--lamp) 8%, transparent),
       transparent 65%
     );
   opacity: 0;
@@ -1484,8 +1492,14 @@ body::after {
   pointer-events: none;
 }
 
-.landing-head.has-light::before {
+.landing.has-light::before {
   opacity: 1;
+}
+
+/* The scrolling content paints above the light layer. */
+.landing-scroll {
+  position: relative;
+  z-index: 1;
 }
 
 .wordmark {
@@ -1915,20 +1929,38 @@ body::after {
  * a phone - and the first thing anybody wants to know before starting is how
  * long this is going to take them.
  */
+/*
+ * A CTA, not a card.
+ *
+ * Reported back plainly: the buttons were hard to see. They read as
+ * information cards - a name the same size as its own caption, no icon, no
+ * sense of "click here" beyond a cursor change - because the label competed
+ * with everything around it instead of being the loudest thing in its own
+ * row. The name is a full size step up and carries the display face; a
+ * chevron says "goes somewhere" the way a hyperlink used to before browsers
+ * stopped colouring them blue; and the whole card gets a floor - a lit
+ * bottom edge - which is what makes something read as raised and pressable
+ * rather than as a labelled rectangle.
+ */
 .mode {
+  position: relative;
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 0.15rem 0.9rem;
-  padding: 0.75rem 0.9rem;
+  align-items: center;
+  column-gap: 0.9rem;
+  padding: 1.1rem 1.3rem 1.15rem;
   text-align: left;
-  border: 1px solid color-mix(in srgb, var(--lamp) 26%, transparent);
+  border: 1px solid color-mix(in srgb, var(--lamp) 30%, transparent);
   border-radius: var(--radius);
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--lamp-deep) 22%, var(--stone)),
-    color-mix(in srgb, var(--lamp-deep) 8%, var(--slate))
+    color-mix(in srgb, var(--lamp-deep) 24%, var(--stone)),
+    color-mix(in srgb, var(--lamp-deep) 9%, var(--slate))
   );
-  box-shadow: var(--sheen), var(--lift-1);
+  box-shadow:
+    var(--sheen),
+    var(--lift-1),
+    inset 0 -2px 0 color-mix(in srgb, var(--lamp) 22%, transparent);
   color: var(--pearl);
   font: inherit;
   cursor: pointer;
@@ -1948,32 +1980,83 @@ body::after {
 
 .mode:hover,
 .mode:focus-visible {
-  transform: translateY(-2px) perspective(900px) rotateX(var(--tilt-x, 0deg))
+  transform: translateY(-3px) perspective(900px) rotateX(var(--tilt-x, 0deg))
     rotateY(var(--tilt-y, 0deg));
   border-color: var(--lamp);
-  box-shadow: var(--sheen), var(--lift-2);
+  box-shadow:
+    var(--sheen),
+    var(--lift-2),
+    inset 0 -2px 0 var(--lamp);
+}
+
+/* The chevron: the one piece of iconography on the page, and it means
+   exactly one thing everywhere it appears - this is a door, go through it. */
+.mode::after {
+  content: "";
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  justify-self: end;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-top: 2px solid var(--lamp);
+  border-right: 2px solid var(--lamp);
+  rotate: 45deg;
+  opacity: 0.7;
+  transition:
+    translate 140ms ease,
+    opacity 140ms ease;
+}
+
+.mode:hover::after,
+.mode:focus-visible::after {
+  translate: 3px 0;
+  opacity: 1;
+}
+
+.mode-top {
+  grid-column: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
 }
 
 .mode-name {
-  font-size: 0.98rem;
+  font-family: var(--display);
+  font-optical-sizing: auto;
+  font-size: 1.32rem;
+  font-weight: 460;
+  color: var(--lamp-bright);
+}
+
+.mode-badge {
+  padding: 0.1rem 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--lamp) 55%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--lamp) 16%, transparent);
+  font-family: var(--mono);
+  font-size: 0.6rem;
   font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   color: var(--lamp-bright);
 }
 
 .mode-cost {
-  align-self: center;
+  grid-column: 1;
   font-family: var(--mono);
-  font-size: 0.68rem;
-  letter-spacing: 0.1em;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--lamp);
+  color: var(--mist);
   white-space: nowrap;
 }
 
 .mode-blurb {
   grid-column: 1 / -1;
-  font-size: 0.82rem;
-  line-height: 1.5;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  line-height: 1.55;
   color: var(--mist);
 }
 

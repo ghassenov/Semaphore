@@ -2418,3 +2418,65 @@ screen is, as this file's own rule says, the browser tour's job, and the tour
 stayed at 27 of 27 through every step of this pass. 747 tests, entry 40.5KB
 gzipped of a 400KB budget (up from 39.0KB - the two new TypeScript modules,
 not the fonts, which are not part of the JS bundle at all).
+
+---
+
+### D-070 The light was scoped to a box, and the buttons did not look like buttons
+
+**2026-08-31.** Reported back after D-069, plainly and mid-session: "not bad
+but... full of bugs," "the cursor is stuck in a little box where the effects
+are only there," "lets the judges try it out in an easy way and see the
+buttons easily." Two of the three were investigated literally before anything
+was changed, which is the rule this file has stated before and is worth
+restating: a report of what somebody sees is an observation, not a hypothesis.
+
+**"Full of bugs" turned out to be true, and not one bug was in the redesign.**
+The worker (`wrangler dev`) crashed twice mid-session with an internal
+miniflare proxy error, both times traced to the same cause: roughly sixty
+Chrome processes had accumulated from the session's own testing scripts, each
+one a throwaway tab that opened a live game session, subscribed to its socket
+and polled `/concord` every 2.5 seconds, and was never closed. Closing every
+leftover tab on the two test browsers (never the user's own) brought the
+process count back to normal and the worker has not crashed since. **Neither
+crash cost the user's actual progress** - the Durable Object's local state
+persists to disk across a `wrangler dev` restart - but each restart did drop
+`?seed=play-1` from the user's own tab, because a lost HMR connection
+resurfaces as a reload of the bare origin and `sessionIdFrom` mints a fresh
+random id when there is no `seed` param. Both times the fix was a `Page.navigate`
+back to the seeded URL, over CDP, on the user's own tab, done and reported
+rather than done and left unmentioned.
+
+**"The cursor is stuck in a little box" was checked before being reinterpreted,
+and it was not a trapped click.** A grid sweep of the whole first viewport,
+reading `document.elementFromPoint` at every cell, found every point
+hit-testing to the real element underneath it - nothing was eating a click
+meant for something else. What was true is that the pointer light
+(`wirePointerLight`, D-069) was scoped to `.landing-head`, a box roughly the
+height of the hero, and nowhere else on the page reacted to the cursor at all.
+A light that exists in one rectangle reads as broken even though nothing is,
+because the rest of the page then has no reason to have a cursor. It is wired
+on `.landing` now - the fixed, full-viewport surface everything scrolls
+inside - so it holds its position on screen while the reader scrolls past it,
+like a ceiling lamp, verified by moving the pointer to the open background
+space beside the session-length cards, well past the hero, and confirming the
+glow appears there and not at the old default.
+
+**"See the buttons easily" was a real gap, not a vibe.** The three
+session-length buttons carried a name at the same size as their own caption,
+no icon, and nothing marking which of the three a first-time visitor should
+take. They are a CTA now rather than an information card: the name is a full
+size step up and set in the display face, a chevron says "this goes
+somewhere" the one time this page uses an icon at all, the card gets a lit
+floor edge that reads as raised rather than flat, and Full Shift carries a
+`RECOMMENDED` badge so three equally weighted options do not have to be
+independently adjudicated by somebody who does not yet know the game.
+
+**Nothing about the design law moved**, again: the twenty-colour lock, the
+channel hues, `check-palette.mjs`, the canvas-only rule. 747 tests, 27 of 27
+browser checks, entry 40.7KB gzipped of a 400KB budget.
+
+*One operational lesson, for whoever runs the next long session against live
+`wrangler dev` and `vite`.* A throwaway CDP tab that opens a real game session
+is a live WebSocket and a 2.5-second poll loop that outlives the script that
+opened it, unless the script closes its own target when it is done. Sixty of
+those took the worker down twice. Close what you open.

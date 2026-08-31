@@ -66,6 +66,18 @@ The 3D room is not in here at all - it is `../render/`.
   immediately anyway - "almost immediately" is not the same guarantee, and the
   difference is exactly the kind of thing that is invisible in a screenshot and
   real to someone who asked for it.
+- **A cursor effect scoped to one element reads as broken everywhere else on the
+  page** (D-070). The pointer light was confined to the hero and was reported
+  back as "stuck in a little box" - correctly, even though a full grid sweep of
+  `document.elementFromPoint` found no click actually trapped. It is wired on
+  `.landing` now, not `.landing-head`, so it follows the reader down the whole
+  page rather than living in one rectangle near the top.
+- **A CTA is not an information card.** The session-length buttons had a name
+  set at the same size as their own caption and nothing marking which one a
+  first-time visitor should take. A primary action needs a name a full size
+  louder than everything around it, something that says "this goes somewhere"
+  - the one chevron on the page - and, where there is an obvious default, a
+  badge saying so rather than three equally weighted options.
 
 ## What may be a text node
 
@@ -78,5 +90,6 @@ which is both the design law and the argument the graphic is making.
 
 | Date | Author | What changed |
 |---|---|---|
+| 2026-08-31 | Ahmed Saad | Reported bugs fixed (D-070): the pointer light moved from `.landing-head` to `.landing` so it is not scoped to one box, and the session-length buttons became CTAs rather than information cards. Two worker crashes this session were traced to leftover test-tab sockets, not to this code. |
 | 2026-08-31 | Ahmed Saad | The editorial pass (D-068, D-069). `reveal.ts` and `motion.ts` are new. `--display` (Fraunces) landed as the one deliberate asset exception; `heroBlock` and `whyAndKey` in `landing.ts` are now shared compositions. Rules added: shared builders, the typeface exception, verifying a cursor effect by pixels rather than by its custom property, and reduced-motion meaning synchronous rather than merely inert. |
 | 2026-08-31 | Ahmed Saad | Created with the web-layer redesign (D-066). `ui.ts` split into `parts.ts`, `landing.ts` and `console.ts`; the landing screen became a surface of its own and the start flow stopped failing silently. |

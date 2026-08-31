@@ -77,6 +77,9 @@ const BEGIN_MODES: readonly {
   readonly name: string;
   readonly cost: string;
   readonly blurb: string;
+  /** Marks the one option the button itself recommends, rather than leaving
+   * three equally weighted cards for a first-time visitor to arbitrate. */
+  readonly badge?: string;
 }[] = [
   {
     mode: "full",
@@ -84,6 +87,7 @@ const BEGIN_MODES: readonly {
     name: "Full shift",
     cost: "about 15 minutes",
     blurb: "Four chambers, the Archive and the finale. The whole station.",
+    badge: "RECOMMENDED",
   },
   {
     mode: "brief",
@@ -300,8 +304,11 @@ export function renderLanding(deps: LandingDeps): LandingHandle {
 
   for (const choice of BEGIN_MODES) {
     const button = el("button", { type: "button", class: "mode", "data-tilt": "" });
+    const top = el("span", { class: "mode-top" });
+    top.append(el("span", { class: "mode-name" }, choice.name));
+    if (choice.badge) top.append(el("span", { class: "mode-badge" }, choice.badge));
     button.append(
-      el("span", { class: "mode-name" }, choice.name),
+      top,
       el("span", { class: "mode-cost" }, choice.cost),
       el("span", { class: "mode-blurb" }, choice.blurb),
     );
@@ -405,7 +412,11 @@ export function renderLanding(deps: LandingDeps): LandingHandle {
 
   // ---- The two cursor-driven touches: a light on the hero, a tilt on the
   //      three cards a reader is actually choosing between. -----------------
-  const disposeLight = wirePointerLight(head);
+  // Wired on `landing` itself, not the hero: the light used to be scoped to
+  // the header box only, which read back as "the cursor is stuck in a
+  // little box" - correct, since nowhere else on the page had anything to
+  // react to a cursor at all. It now follows the reader down the whole page.
+  const disposeLight = wirePointerLight(landing);
   const disposeTilt = wireTilt(start);
   const disposeReveals = wireReveals(landing);
 
@@ -625,7 +636,7 @@ export function renderGate(root: HTMLElement): void {
   gate.append(scroll);
   root.append(gate);
 
-  wirePointerLight(head);
+  wirePointerLight(gate);
   wireTilt(start);
   // No disposer kept: the gate is the terminal state of this document, and
   // nothing ever tears it down to replace it with something else.
