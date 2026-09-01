@@ -360,7 +360,7 @@ Legend: **★** critical path · **◆** de-risking · **▸** demoable checkpoi
 - [ ] `?seed=`, `?chamber=`, `/replay/:id`, attract mode, SPECTATE all working
 - [ ] Final `toolchange` fires with an empty registry
 - [ ] All CI gates green
-- [ ] Production deploy on a stable custom domain
+- [x] Production deploy on a stable custom domain (D-074, D-075 - `semaphore.ahmedxsaad.me`)
 - [ ] **Re-run the spec spike** and update `11-spec-notes.md` with the final Chrome version
 
 ### 8.2 Repository
