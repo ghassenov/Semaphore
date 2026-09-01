@@ -36,7 +36,7 @@
 import type { PilotView, SessionMode } from "@semaphore/protocol";
 import type { RenderChannel } from "./palette.js";
 import { FLOOR_NAMES, previousFloor, type FloorId } from "./floors.js";
-import { doorsOf, type Doorway, type Wall } from "./doorways.js";
+import { doorsOf, type Doorway, type RoomDoors, type Wall } from "./doorways.js";
 
 /** A point in room-local metres. */
 export interface Vec3 {
@@ -393,6 +393,39 @@ const WALL_FACING: Readonly<Record<Wall, number>> = {
 };
 
 /**
+ * The door assembly's own dimensions, in metres.
+ *
+ * Shared with `fixtures.ts`'s `buildDoor`, which used to carry its own local
+ * copy of both numbers, and with `chamber.test.ts`'s bolt-ring check, which
+ * carried a third. Three copies of the same two numbers is three things that
+ * can quietly disagree the first time either changes - the exact shape this
+ * file's own `MONITOR_DEPTH` exists to prevent for the Archive's screen.
+ */
+export const DOOR_WIDTH = 3.2;
+export const DOOR_HEIGHT = 2.9;
+
+/**
+ * How far a door's own assembly reaches along the wall it stands in, frame
+ * included, from its centre to either edge.
+ *
+ * `buildDoor` frames the doorway `0.6` wider than the leaves themselves, so
+ * this is `DOOR_WIDTH / 2 + 0.3` - the number a piece of dressing has to clear
+ * to avoid running into the door rather than past it.
+ */
+const DOOR_HALF_SPAN = DOOR_WIDTH / 2 + 0.3;
+
+/**
+ * How far short of a wall a ceiling beam stops when a door stands in its way.
+ *
+ * The door assembly itself protrudes only a few tenths of a metre from the
+ * wall (`buildDoor`'s own frame depth), so this is generous margin rather than
+ * the minimum that would avoid touching it - a beam that stops well clear of
+ * a doorway reads as deliberate; one stopping exactly at the door's own edge
+ * reads as a beam that got lucky.
+ */
+const BEAM_DOOR_RETRACT = 1.0;
+
+/**
  * Where a doorway stands in a room, in the room's own metres.
  *
  * `doorways.ts` holds an opening as a wall and a distance along it, because
@@ -500,15 +533,42 @@ function pipeRun(
  * south edge is a bar drawn between the viewer and the mechanism: the first
  * pass spanned the whole depth and put a girder across the levers. The back
  * half gives the room a ceiling to have without giving it one to look through.
+ *
+ * **And never through a door standing in the east or west wall.** The two were
+ * placed with no knowledge of each other - `beams` only ever knew the room's
+ * depth, and a door's `along` was never in reach here - so wherever a beam's
+ * own z happened to fall inside a door's reach along its wall, the beam ran
+ * straight into that door's lintel. Reported back as "things overflowing into
+ * the wall" and it was not only the Airlock: measured against every doorway
+ * table, the Signal Room's ring door catches one beam on each side at once
+ * (it is the same `along` on both walls, doc 02's "straight through"), the
+ * Blind Panel's east door catches every beam it has, and the Concord Lock's
+ * does in brief mode. Whichever end of a beam would cross a door retracts
+ * clear of it instead of the whole beam being dropped, so the room keeps a
+ * ceiling everywhere a doorway is not.
  */
-function beams(size: RoomSize, count: number): readonly Dressing[] {
+function beams(size: RoomSize, count: number, doors: RoomDoors): readonly Dressing[] {
   const back = -size.depth / 2 + 0.9;
   const span = size.depth * 0.34;
-  return spread(count, span).map((offset) => ({
-    kind: "beam" as const,
-    at: { x: 0, y: size.height - 0.35, z: back + span / 2 + offset },
-    length: size.width,
-  }));
+  const halfWidth = size.width / 2;
+  const sideDoors = [doors.back, doors.out].filter(
+    (door): door is Doorway => door !== undefined && (door.wall === "east" || door.wall === "west"),
+  );
+  return spread(count, span).map((offset) => {
+    const z = back + span / 2 + offset;
+    let x0 = -halfWidth;
+    let x1 = halfWidth;
+    for (const door of sideDoors) {
+      if (Math.abs(z - door.along) >= DOOR_HALF_SPAN) continue;
+      if (door.wall === "west") x0 = -halfWidth + BEAM_DOOR_RETRACT;
+      else x1 = halfWidth - BEAM_DOOR_RETRACT;
+    }
+    return {
+      kind: "beam" as const,
+      at: { x: (x0 + x1) / 2, y: size.height - 0.35, z },
+      length: x1 - x0,
+    };
+  });
 }
 
 /**
@@ -609,7 +669,7 @@ function airlock(mode: SessionMode, facts: Readonly<Record<string, unknown>>): R
       { kind: "puddle", at: { x: -3.4, y: 0, z: 1.9 }, length: 2.6 },
       { kind: "puddle", at: { x: 2.9, y: 0, z: 2.4 }, length: 2 },
       { kind: "puddle", at: { x: 4.6, y: 0, z: -1.4 }, length: 1.6 },
-      ...beams(size, 3),
+      ...beams(size, 3, out === undefined ? {} : { out }),
     ],
     accent: CHAMBER_ACCENT.airlock,
     sound: text(facts, "lastSound"),
@@ -769,7 +829,7 @@ function signalRoom(mode: SessionMode, facts: Readonly<Record<string, unknown>>)
       { kind: "puddle", at: { x: -4.4, y: 0, z: 3.4 }, length: 2.2 },
       { kind: "puddle", at: { x: 3.8, y: 0, z: -4.4 }, length: 2.4 },
       { kind: "puddle", at: { x: -2.2, y: 0, z: 5.2 }, length: 3.0 },
-      ...beams(size, 4),
+      ...beams(size, 4, doors),
     ],
     accent: CHAMBER_ACCENT.signal_room,
     sound: text(facts, "lastSound"),
@@ -1265,7 +1325,7 @@ function blindPanel(mode: SessionMode, facts: Readonly<Record<string, unknown>>)
       },
       { kind: "puddle", at: { x: 4.2, y: 0, z: 1.6 }, length: 2.8 },
       { kind: "puddle", at: { x: -4.8, y: 0, z: 2.1 }, length: 2.2 },
-      ...beams(size, 3),
+      ...beams(size, 3, doors),
     ],
     accent: CHAMBER_ACCENT.blind_panel,
     // Singular at one. The count is puzzle-critical in this room - it is how
@@ -1338,7 +1398,10 @@ function finale(mode: SessionMode): RoomPlan {
     id: "concord_lock",
     size,
     fixtures,
-    dressing: [...concordDressing(size), ...finaleDoorDressing(mode, size)],
+    dressing: [
+      ...concordDressing(size, doorsOf(mode, "concord_lock").back),
+      ...finaleDoorDressing(mode, size),
+    ],
     accent: CHAMBER_ACCENT.concord_lock,
     sound: null,
     solved: true,
@@ -1352,7 +1415,7 @@ function finale(mode: SessionMode): RoomPlan {
  * One definition, because the ending is the same room and a second copy of the
  * columns is a second thing to forget to change.
  */
-function concordDressing(size: RoomSize): readonly Dressing[] {
+function concordDressing(size: RoomSize, back: Doorway | undefined): readonly Dressing[] {
   return [
     ...spread(3, size.depth * 0.55).flatMap((z) => [
       { kind: "column" as const, at: { x: -size.width / 2 + 0.6, y: 0, z }, height: size.height },
@@ -1411,7 +1474,7 @@ function concordDressing(size: RoomSize): readonly Dressing[] {
       at: { x: side * 5.0, y: size.height, z: 1.0 },
       height: 1.2,
     })),
-    ...beams(size, 4),
+    ...beams(size, 4, back === undefined ? {} : { back }),
   ];
 }
 
@@ -1544,7 +1607,10 @@ function concordLock(mode: SessionMode, facts: Readonly<Record<string, unknown>>
     // from the dark above the door, and nothing on the floor between PILOT and
     // the door: the room's whole job is to make the last twelve metres feel
     // like a walk.
-    dressing: [...concordDressing(size), ...(back === undefined ? [] : doorDressing(size, back))],
+    dressing: [
+      ...concordDressing(size, back),
+      ...(back === undefined ? [] : doorDressing(size, back)),
+    ],
     accent: CHAMBER_ACCENT.concord_lock,
     sound: text(facts, "lastSound"),
     solved: open,
