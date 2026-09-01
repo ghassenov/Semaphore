@@ -119,6 +119,7 @@ describe("the session tier", () => {
       "inspect",
       "read_manual",
       "read_note",
+      "request_assistance",
     ]);
   });
 
@@ -299,6 +300,9 @@ describe("instrumentation", () => {
       remainingMs: 0,
       retries: 0,
       ghost: null,
+      assist: null,
+      objective: null,
+      progress: null,
       seq: 0,
       facts: {},
       notes: [],

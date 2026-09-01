@@ -30,7 +30,14 @@ import {
   type PersistedSession,
 } from "./reducer.js";
 import { ActionSemaphore } from "./semaphore.js";
-import { describeChamber, inspectObject, lockState, readCiphertext, readNotes } from "./views.js";
+import {
+  describeChamber,
+  inspectObject,
+  keeperObjective,
+  lockState,
+  readCiphertext,
+  readNotes,
+} from "./views.js";
 import { inTheRoom, pilotView, stateSummary } from "./pilot.js";
 import { MANUAL_SECTIONS, isManualSection, manualSection } from "./manual.js";
 import { percentile, staminaWindowMs } from "./latency.js";
@@ -102,6 +109,8 @@ function labelFor(action: Action): string {
       return "opening the outer door";
     case "retry_chamber":
       return "resetting the chamber";
+    case "request_assistance":
+      return "asking the station for help";
     case "write_note":
       return "writing to the notepad";
   }
@@ -177,6 +186,9 @@ export class Session {
     // local development takes down wrangler's proxy and with it the whole dev
     // session. Reading here means no route can forget.
     const body = await readBody(request);
+    if (pathname.endsWith("/request_assistance")) {
+      return this.#act({ type: "request_assistance" });
+    }
     if (pathname.endsWith("/begin_shift")) {
       return this.#act({ type: "begin_shift", designation: String(body.designation ?? "") });
     }
@@ -471,6 +483,10 @@ export class Session {
       staminaWindowMs: staminaWindowMs(session.observedLatencyMs),
       retries: session.machine.retries,
       archiveEntriesRead: session.archiveEntriesRead.length,
+      // What the room is asking for. Null outside a chamber, which is the
+      // honest answer in the lobby, the Archive and the finale - all three of
+      // which `describe_chamber` already answers with a next action.
+      objective: keeperObjective(session, Date.now()),
     });
   }
 

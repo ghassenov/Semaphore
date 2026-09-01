@@ -99,6 +99,19 @@ export const DETENT_MS = 180;
 export function soundingFor(previous: PilotView | null, current: PilotView): Sounding | null {
   if (previous !== null && previous.seq === current.seq) return null;
 
+  // The intercom, before anything the chamber says.
+  //
+  // Keyed on the assist's own index rather than on `seq` alone, because a
+  // frame bumps `seq` for plenty of reasons that have nothing to do with the
+  // intercom. First, because a chamber's `lastClicks` stays on the frame
+  // after the rotation that set it: reaching the branch below on an intercom
+  // frame would replay the previous rotation's detents underneath the
+  // announcement, and in Chamber II a detent count is a puzzle fact rather
+  // than a flourish.
+  if ((current.assist?.index ?? 0) > (previous?.assist?.index ?? 0)) {
+    return { cue: "chime", count: 1 };
+  }
+
   // The Blind Panel speaks in detents and has no `lastCue` of its own: the
   // count *is* the cue, and it already travels as this chamber's own AUDIBLE
   // fact. Reading it here rather than adding a second field keeps one fact

@@ -32,48 +32,10 @@
  * asks for anything else, and could not display it if it did.
  */
 
-import { CHAMBER_NAMES, type ChamberId } from "@semaphore/protocol";
+import { CHAMBER_NAMES } from "@semaphore/protocol";
 import { paintMonitor } from "./render/monitor.js";
-import { wordmark } from "./ui/parts.js";
-
-/** The projection the worker's `/replay/:id` route returns. */
-interface Replay {
-  readonly sessionId: string;
-  readonly designation: string;
-  readonly difficulty: string;
-  readonly mode: string;
-  readonly outcome: string;
-  readonly chambersCleared: number;
-  readonly durationMs: number;
-  readonly staminaWindowMs: number;
-  readonly medianLatencyMs: number;
-  readonly calls: readonly {
-    readonly t: number;
-    readonly tool: string;
-    readonly result: "ok" | "error";
-    readonly latencyMs: number;
-    readonly wasted: boolean;
-    readonly concordBits: number;
-  }[];
-  readonly beats: readonly {
-    readonly t: number;
-    readonly kind: "action" | "audible";
-    readonly what: string;
-    readonly count?: number;
-  }[];
-  readonly chambers: readonly {
-    readonly t: number;
-    readonly kind: string;
-    readonly chamber: ChamberId;
-  }[];
-  /** What the pair wrote to each other. The one track that is neither party alone. */
-  readonly notes: readonly {
-    readonly t: number;
-    readonly author: "PILOT" | "KEEPER";
-    readonly text: string;
-  }[];
-  readonly track: Parameters<typeof paintMonitor>[1];
-}
+import { gradeShift, type Replay } from "./report.js";
+import { copyResultButton, reportCard, wordmark } from "./ui/parts.js";
 
 /**
  * The session a replay URL names, or null if this is not a replay URL.
@@ -179,19 +141,49 @@ export async function renderReplay(root: HTMLElement, sessionId: string): Promis
 
   // ---- Who, and how it went.
   const head = el("header", { class: "replay-head" });
+  /*
+   * Who, in its own block, so the report can stand beside it rather than
+   * under it.
+   *
+   * Not cosmetic. The page is `height: 100dvh` and its rows are tuned to fit
+   * one screen; a card stacked under the identity added two hundred pixels to
+   * the head and pushed the two tracks - which are the whole point of this
+   * page - below the fold. Side by side, the head grows by the difference
+   * between the two blocks rather than by the whole of one, and the width was
+   * already there: the head spans both grid columns.
+   */
+  const identity = el("div", { class: "replay-identity" });
   // The mark, because a shared replay link is often somebody's first sight of
   // the project and an unlabelled chart says nothing about what it is from.
-  head.append(
+  identity.append(
     wordmark("large"),
     el("p", { class: "eyebrow" }, "SESSION REPLAY"),
     el("h1", {}, replay.designation || "UNNAMED"),
-    el(
-      "p",
-      { class: "lede" },
-      `${replay.outcome}, ${String(replay.chambersCleared)} of four chambers, ` +
-        `${clock(replay.durationMs)} on the clock. ${replay.difficulty}, ${replay.mode} mode.`,
-    ),
+    // What the card below cannot say: which settings this run was played
+    // under. The outcome, the rooms and the clock all used to be here too and
+    // are the card's own opening line now, so saying them twice, one above
+    // the other, was the whole of what this sentence had become.
+    el("p", { class: "lede" }, `${replay.outcome}. ${replay.difficulty}, ${replay.mode} mode.`),
   );
+  head.append(identity);
+
+  // ---- How it went, on the same card the ending draws.
+  //
+  // Above the tracks, because a shared link is usually read by somebody who
+  // was not in the session and "grade B, four rooms, eleven minutes" is what
+  // makes the two tracks underneath worth looking at. The same element, from
+  // the same function, as the strip the pair saw when they got out.
+  //
+  // Appended into the header rather than into the page. `.replay` is a
+  // named-area grid, so a child with no `grid-area` is auto-placed into an
+  // implicit row *after* every named one: the first build of this put the
+  // card at the very bottom of a two-thousand-pixel page, below the
+  // transcript, with every check still green. Inside `head` it flows with the
+  // identity block and the grid does not have to change at all.
+  const report = gradeShift(replay);
+  const card = reportCard(report);
+  card.actions.append(copyResultButton(report, replayUrl(replay.sessionId)));
+  head.append(card.section);
   main.append(head);
 
   // ---- The room, on the station's own monitor.
@@ -518,5 +510,15 @@ export async function renderReplay(root: HTMLElement, sessionId: string): Promis
     );
   });
   share.append(link, copy);
-  main.append(share);
+  /*
+   * Under the identity block, not in the corner of the head.
+   *
+   * It used to be `grid-area: head; justify-self: end`, which is the same
+   * corner the shift report now occupies, and the two printed straight
+   * through each other: "SHIFT REPORT / 4 of 4 chambers" with a URL box
+   * across it. Both are things a reader takes away, so they belong on the
+   * same side rather than fighting for one; the score's own COPY RESULT lives
+   * in the card and this stays with the session's name.
+   */
+  identity.append(share);
 }
