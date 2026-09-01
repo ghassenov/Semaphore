@@ -3118,3 +3118,35 @@ Blind Panel during the window or on the rotation right after it. A beat that
 only sometimes has an "after" has to be observed while it is running.
 
 Tour is at 42 checks, fifteen frames.
+
+---
+
+### D-085 The live site threw before it drew: a registry that is not an EventTarget
+
+**2026-09-01.** `https://semaphore.ahmedxsaad.me/` reported one console error
+and no station: `TypeError: t.addEventListener is not a function`, thrown out
+of `onToolChange` during startup.
+
+The adapter's feature detection asks for `registerTool` and `getTools`, on the
+reasoning that a host exposing the property without the methods exists in the
+wild. It does; so does the next one along. This host has both methods on a
+plain object that is not an `EventTarget`, so it passed detection, took the
+playing branch, and died on `addEventListener("toolchange")` before
+`startStation` ever returned. The whole page, not just the manifest.
+
+Options: tighten `getModelContext` to require the listener pair, which is a
+smaller diff and takes the game away from a browser that can perfectly well
+play it; or treat the event as the optional part of the surface, which is what
+it is. Second one.
+
+`ModelContext` no longer extends `EventTarget`: the pair is declared optional
+and `onToolChange` returns the no-op unsubscribe when it is missing, the same
+answer it already gave for a browser with no registry at all.
+
+That leaves such a host with no signal that the registry moved, and KEEPER's
+body and the manifest plate would have frozen on the tools of the first room.
+`setState` refreshes them too now. A tier change is the other thing that moves
+the registry, and it arrives on a channel every host has.
+
+Test in `adapter.test.ts` alongside the no-registry one: both methods present,
+no listener pair, still supported, still does not throw.
