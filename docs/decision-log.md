@@ -2657,3 +2657,87 @@ already has twice (D-070, D-071).
 
 748 tests, typecheck and lint clean across every workspace, palette lock holds
 at 20 colours.
+
+---
+
+### D-074 First deployment, and a bug only a real deployment could show
+
+**2026-09-01.** Asked directly: prepare Cloudflare deployment at a subdomain of
+`ahmedxsaad.me`, named `semaphore.ahmedxsaad.me`, and confirm it actually works
+once deployed. The stack was designed for this from D-005 onward but had never
+been deployed at all - `wrangler whoami` found an authenticated account and
+`wrangler deploy --dry-run` had never been run against it before today.
+
+**What is live.** The worker, at `https://semaphore.ahmedxsaad.workers.dev`
+(the default `workers.dev` subdomain: no DNS footprint needed for an API
+nobody browses directly, and it is what `ALLOWED_ORIGINS` and
+`VITE_WORKER_ORIGIN` both point at). Two Cloudflare Pages projects, `semaphore`
+(the game) and `semaphore-archive` (the second origin D-033 needs), both
+building from the same `dist/` output this repo already produces and both
+deployed to their production branch. The production D1 database
+`semaphore-sessions` had only migration `0001` applied since its provisioning
+on 2026-08-27; `0002_deep_linked.sql` was missing, so `deep_linked` did not
+exist on the live schema until this session applied it. `VITE_ARCHIVE_ORIGIN`
+is set to the custom domain, not the `.pages.dev` fallback, so the shipped
+build already asks for cross-origin delegation rather than the same-origin
+path - the production configuration the project actually wants, not a
+placeholder.
+
+**What is not, and why not from here.** Both custom domains
+(`semaphore.ahmedxsaad.me`, `semaphore-archive.ahmedxsaad.me`) are registered
+on their Pages projects and both answer `CNAME record not set`. Wrangler's own
+OAuth token, confirmed via `whoami`, carries `zone (read)` but no
+`dns_records` scope of any kind - not even read. Creating the two CNAME
+records is the one step in this deployment that could not be done from this
+session; exact records are in `NEXT-STEPS.md` item 7.
+
+**A production-only bug, found by actually deploying rather than by reasoning
+about the config.** `apps/game/public/_redirects` carried `/replay
+/index.html  200` since D-060, verified only under `vite preview`, which had
+never been the same code path as a real Cloudflare Pages deployment. On the
+actual edge, requesting `/replay?id=...` came back a bare `308` to `/?id=...`
+- the query string survived, the path did not, and the ending's own replay
+link would have landed every visitor on the landing screen instead. Isolated
+with a disposable one-file Pages project (`redirects-probe`, deleted after)
+that proved the rewrite's *target* was the cause: `/index.html` as a
+destination resolves through the same clean-URL canonicalisation that turns
+`/index.html` into `/`, and that canonicalisation's redirect was not staying
+internal to the rewrite. `/replay  /  200` - target `/`, not `/index.html` -
+fixed it, confirmed by curl against the live deployment before touching
+anything else. Nothing in the test suite could have caught this: it is
+Cloudflare's own edge routing, which does not exist until something is
+actually deployed to it, which is the whole argument for the repo's own rule
+that the game is the test, extended one layer further than a browser.
+
+**The cross-origin proof was re-run against the live stack, and two of its own
+checks failed for a reason that turns out to be the test's, not the product's.**
+Run with `WORKER`/`GAME`/`ARCHIVE` pointed at the deployed `.workers.dev` and
+`.pages.dev` origins: the registry lifecycle, `fromOrigins` visibility, the
+Airlock, a door walk-back, the Signal Room and the Archive beat's tool
+appearing on the correct origin and nowhere else all verified clean against
+the real worker's Durable Object over the actual internet, not local
+`workerd`. The two checks that invoke a delegated tool by CDP frame id failed
+with `No frame for given id found`. Diagnosed rather than dismissed: a direct
+`Page.getFrameTree()` query mid-session showed the archive iframe correctly
+set in the DOM (`src`, `allow="tools"` both right) but absent from
+`childFrames` entirely, and `pages.dev` is a public suffix - two different
+`*.pages.dev` subdomains are different *sites* under Chrome's site isolation,
+so the archive frame becomes an out-of-process frame this script's plain
+`Page.getFrameTree()` call cannot see without `Target.setAutoAttach`.
+`semaphore.ahmedxsaad.me` and `semaphore-archive.ahmedxsaad.me` share one
+registrable domain and should not trigger this once DNS is live - the same
+reason `localhost:5173` and `localhost:5175` never did in every prior local
+run of this exact proof. Left as the first thing to re-check once the DNS
+records land (`NEXT-STEPS.md` item 7), rather than patched into the test with
+`Target.setAutoAttach` on a hypothesis not yet confirmed against the real
+domains.
+
+**Verification used no local session state and touched no running server
+this checkout depends on.** All browser-side checks ran in disposable headless
+Chrome instances on their own debugging ports, closed the moment they were no
+longer needed (D-070's lesson, still holding); the throwaway `redirects-probe`
+Pages project was deleted after use; nothing here touched the local `wrangler
+dev` or the user's own browser tab.
+
+748 tests, typecheck and lint clean across every workspace, palette lock holds
+at 20 colours, worker and both Pages projects live and smoke-tested.
