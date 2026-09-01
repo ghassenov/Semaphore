@@ -2540,3 +2540,55 @@ the same way: `Page.navigate` back to the seeded URL over CDP, done and
 reported. Worth writing down as its own trigger, distinct from a server crash.
 
 747 tests, 27 of 27 browser checks, entry 41.0KB gzipped of a 400KB budget.
+
+---
+
+### D-072 A ceiling beam and a doorway never knew about each other
+
+**2026-09-01.** Reported as an observation, not a hypothesis (repo CLAUDE.md
+section 4): "in room one somethings are overflowing into the wall." Reproduced
+it before reinterpreting it, per the same rule, and it held up - the Airlock's
+south-east ceiling beam ran straight through the lintel of its own OUT door.
+Queried the live Three.js scene graph over CDP for both objects' true world
+coordinates rather than guessing from a screenshot, then reproduced the clash
+in a plain Python simulation of `spread()` and `beams()` to confirm the exact
+cause: `beams()` in `chamber.ts` places ceiling beams from a room's depth
+alone, and has never known where a door stands. The two were built by
+different code with no shared coordinate, so wherever a beam's own z happened
+to fall inside a door's reach along its wall, it ran through the frame.
+
+**Not only the Airlock.** Checked every room's doorway table against the same
+math: the Signal Room's ring door catches a beam on both sides at once (one
+`along` value shared by both walls, doc 02's own "straight through"), the
+Blind Panel's east door catches every beam it has, and the Concord Lock's does
+in brief mode. Four of the game's five rooms, latent since the doors moved
+into the building's real openings (D-053) and beams gained no knowledge of it.
+
+**Fixed by retraction, not by dropping the beam.** `beams()` now takes the
+room's doors and pulls back whichever end would cross one, by a fixed margin
+generous enough to read as deliberate rather than as a beam that got lucky.
+The room keeps a ceiling everywhere a doorway is not, which a dropped beam
+would not have.
+
+**Consolidated the door's own dimensions while fixing this**, because the beam
+now needs to know a door's width and reach along its wall, and that number had
+three independent copies before this fix: `fixtures.ts`'s `buildDoor`,
+`chamber.test.ts`'s bolt-ring check, and the one `chamber.ts` needed and did
+not have. `DOOR_WIDTH` and `DOOR_HEIGHT` are now `chamber.ts`'s own exported
+constants, the same pattern `MONITOR_DEPTH` already set for the Archive's
+screen - three numbers that could quietly disagree the first time any one of
+them changed is now one.
+
+Two things that looked like the same bug were not. The sliver of orange still
+visible near the Airlock's OUT door after the fix is the door's own copper
+leaf material at a grazing viewing angle - confirmed by sampling its pixel
+colour against the palette's `--copper` swatch, not by re-reading the geometry
+a second time. A second orange block seen over the ambiguity gauge in one
+close-up screenshot did not reproduce anywhere in the live DOM across three
+independent checks (element-under-cursor, ancestor-chain walk, full-document
+search for warm-coloured elements near the top of the viewport) and is
+concluded to be a compositing artefact specific to headless CDP capture over
+software WebGL, not a defect a player would see.
+
+748 tests (45 in `chamber.test.ts`), typecheck and lint clean across every
+workspace, palette lock holds at 20 colours, 27 of 27 browser checks.
