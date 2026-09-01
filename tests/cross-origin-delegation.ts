@@ -121,8 +121,10 @@ interface View {
   phase: string;
   chamber: string | null;
   facts: Record<string, unknown>;
+  /** Null in an untimed session. The intercom check reads it either side of a call. */
+  remainingMs: number | null;
 }
-let view: View = { phase: "ENTRY", chamber: null, facts: {} };
+let view: View = { phase: "ENTRY", chamber: null, facts: {}, remainingMs: null };
 const socket = new WebSocket(`${base.replace("http", "ws")}/socket`);
 socket.addEventListener("message", (event) => {
   view = JSON.parse(String(event.data)) as View;
@@ -479,6 +481,82 @@ await shot("airlock");
 await sleep(600);
 
 /*
+ * ---- The room says what it is asking for, to both parties.
+ *
+ * The objective is authored `SHARED` copy that reaches PILOT on the socket
+ * frame and KEEPER through `get_status`, computed on the server from each
+ * party's own projection. Asserted in the browser rather than as a unit test
+ * because the failure that matters is the line not being *on screen*: it is a
+ * row inside the rail, and a rail that has silently gone back to one flex row
+ * hides it perfectly while every unit test stays green.
+ */
+{
+  const shown = await evaluate<string>(
+    `(()=>{const line=document.querySelector(".rail-objective");
+      return line && !line.hidden && line.getBoundingClientRect().height > 0
+        ? (line.textContent ?? "") : "";})()`,
+  );
+  check(
+    "the rail says what the room is asking for",
+    shown.includes("outer door") && shown.includes("LEVERS TRIED"),
+    shown || "(not on screen)",
+  );
+  const status = await invoke(mainFrameId, "get_status", {});
+  check(
+    "and get_status tells KEEPER the same thing",
+    status.includes("objective:") && status.includes("outer door"),
+    status.split("\n")[0] ?? "",
+  );
+}
+
+/*
+ * ---- The intercom, which is the one exit a stalled pair used to not have.
+ *
+ * Three things have to be true at once and only a browser can see all three:
+ * the agent gets the note back, PILOT is shown the same words, and the clock
+ * actually drops. A hint that reached only KEEPER would hand one party the
+ * other's half of the room, so "PILOT sees it too" is the assertion that
+ * matters most here.
+ */
+{
+  const before = view.remainingMs ?? 0;
+  const said = await invoke(mainFrameId, "request_assistance", {});
+  await sleep(500);
+  const onScreen = await evaluate<string>(
+    `(()=>{const box=document.querySelector(".intercom");
+      return box && !box.hidden
+        ? (box.querySelector(".intercom-text")?.textContent ?? "") : "";})()`,
+  );
+  check("the intercom answers KEEPER", said.includes("intercom crackles"), said.slice(0, 60));
+  check(
+    "and PILOT is shown the same words, because a hint may not be one-sided",
+    onScreen.length > 0 && said.includes(onScreen),
+    onScreen.slice(0, 60) || "(nothing on screen)",
+  );
+  /*
+   * And it was free, because this tour plays in Practice.
+   *
+   * Named for what it actually measures. It was first written as "it cost the
+   * chamber clock what it said it would", which this run cannot see: the tour
+   * starts `difficulty: "practice"`, so `remainingMs` is null on every frame
+   * and the difference between two nulls is zero whether the charge works or
+   * not. The charge itself is proved against a timed session in
+   * `reducer.test.ts`; what only a browser can prove is the branch below,
+   * that an untimed room still gets its advice and is not quietly charged
+   * against a clock that does not exist.
+   */
+  check(
+    "and it cost an untimed room nothing, while still speaking",
+    view.remainingMs === null && before === 0,
+    String(view.remainingMs),
+  );
+  await shot("intercom");
+  await evaluate<boolean>(
+    `(()=>{document.querySelector(".intercom-close")?.click(); return true;})()`,
+  );
+}
+
+/*
  * ---- Walking does not throw the camera out of the building (D-067).
  *
  * A room shot leans toward PILOT, so its eye moves every frame somebody is
@@ -809,6 +887,53 @@ await sleep(600);
     href.includes("/replay") && href.includes(SEED),
     href || "(no card)",
   );
+}
+
+/*
+ * ---- The shift report.
+ *
+ * The ending used to be one sentence and a link. The card is fetched from the
+ * worker's own replay row after the session has been flushed to D1, so this is
+ * the only place the whole path can be checked: the row exists, the projection
+ * carries what the grade needs, and the card is actually on screen rather than
+ * merely in the DOM behind a strip that never opened.
+ */
+{
+  // The strip fetches its own replay with two retries, so give it the second.
+  await sleep(2500);
+  const card = await evaluate<string>(
+    `(()=>{const r=document.querySelector(".ending .report");
+      if(!r) return "";
+      const box=r.getBoundingClientRect();
+      if(box.width<100||box.height<40) return "offscreen";
+      const grade=r.querySelector(".report-grade")?.textContent ?? "";
+      const bars=r.querySelectorAll(".report-bar").length;
+      const rooms=r.querySelectorAll(".report-splits li").length;
+      const stats=r.querySelector(".report-stats")?.textContent ?? "";
+      return grade+"|"+String(bars)+"|"+String(rooms)+"|"+stats;})()`,
+  );
+  const [grade, bars, rooms, stats] = card.split("|");
+  check(
+    "the ending grades the shift, on screen, with all three marks and every room",
+    /^[SABCD]$/.test(grade ?? "") && bars === "3" && Number(rooms ?? 0) >= 4,
+    card || "(no card)",
+  );
+  /*
+   * And the intercom call this run made is counted.
+   *
+   * This is the assertion the tour was written for. The first run of it read
+   * "0 intercom" on a session that had used the intercom in the Airlock: the
+   * action wrote its audible event and never a `tool_call`, so nothing
+   * downstream - the report, the replay's cyan track, the benchmark corpus -
+   * could tell a pair that leaned on it from one that never asked. Every unit
+   * test was green.
+   */
+  check(
+    "and counts the intercom call this run actually made",
+    /\b1 intercom\b/.test(stats ?? ""),
+    stats ?? "(no stats)",
+  );
+  await shot("report");
 }
 
 const ending = await all();
