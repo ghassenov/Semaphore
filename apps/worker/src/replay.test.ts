@@ -57,10 +57,18 @@ function log(): SessionEvent[] {
       text: "the third lever sticks",
     },
     { t: 2400, seq: 7, type: "tool_cancel", tool: "press_key", elapsedMs: 40 },
-    { t: 2500, seq: 8, type: "chamber_solved", chamber: "airlock" },
+    {
+      t: 2450,
+      seq: 8,
+      type: "failure",
+      failure: "DEADLOCK",
+      chamber: "airlock",
+      concordBits: 2.32,
+    },
+    { t: 2500, seq: 9, type: "chamber_solved", chamber: "airlock" },
     {
       t: 3000,
-      seq: 9,
+      seq: 10,
       type: "session_end",
       outcome: "escaped",
       chambersCleared: 4,
@@ -85,6 +93,13 @@ describe("projectReplay", () => {
     expect(replay!.calls[0]!.concordBits).toBe(1.58);
     expect(replay!.beats.map((beat) => beat.kind)).toEqual(["audible", "action"]);
     expect(replay!.chambers.map((c) => c.kind)).toEqual(["enter", "solved"]);
+  });
+
+  it("keeps the deadlocks, so a stalled run does not read as a clean one", () => {
+    // Without this the report card grades a pair that stalled twice exactly
+    // like a pair that never did, which is the one thing a grade may not do.
+    const replay = projectReplay(log());
+    expect(replay!.failures).toEqual([{ t: 2450, chamber: "airlock", concordBits: 2.32 }]);
   });
 
   it("never lets a HIDDEN field out, even though the session is over", () => {

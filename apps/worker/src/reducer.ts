@@ -27,12 +27,15 @@
  */
 
 import {
+  ASSIST_COST_MS,
+  ASSISTS_PER_CHAMBER,
   DIFFICULTIES,
   errors,
   MODE_CHAMBERS,
   NOTE_CAPACITY,
   NOTE_MAX_LENGTH,
   timerFor,
+  type Assist,
   type ChamberId,
   type Difficulty,
   type Note,
@@ -46,6 +49,7 @@ import * as signalRoom from "./chambers/signal_room.js";
 import * as blindPanel from "./chambers/blind_panel.js";
 import * as concordLock from "./chambers/concord_lock.js";
 import * as archive from "./archive/index.js";
+import { assistFor } from "./chambers/hints.js";
 import { projectedHash, viewHash } from "./projection.js";
 import { describeChamber } from "./views.js";
 import { concordBits, measure, type Ambiguity, type ChamberWorlds } from "./worlds.js";
@@ -81,6 +85,16 @@ export interface PersistedSession {
   readonly concordLock: concordLock.ConcordLockState | null;
   /** Distinct ghost-log entries KEEPER has read so far. Doc 02 section 4: not a puzzle, just required at least once. */
   readonly archiveEntriesRead: readonly number[];
+  /**
+   * The last thing the station's intercom said in this chamber, or null if it
+   * has not been asked.
+   *
+   * One field rather than a list, because `index` is what the next call needs
+   * and the text is what both parties need: the count of assists spent in this
+   * room is exactly `assist?.index ?? 0`. Cleared by `chamberEntryFields`, so
+   * a new room can never open playing the last room's advice.
+   */
+  readonly assist: Assist | null;
   /**
    * Whether this session was opened part way in by a `?chamber=N` deep link.
    *
@@ -137,6 +151,7 @@ export function newSession(sessionId: string, seed: string, nowMs: number): Pers
     blindPanel: null,
     concordLock: null,
     archiveEntriesRead: [],
+    assist: null,
     notes: [],
     observedLatencyMs: [],
     seq: 0,
@@ -184,6 +199,11 @@ export type Action =
   // The only way out of DEADLOCK (doc 02 section 5). PILOT's decision, not
   // KEEPER's: an agent cannot restart a chamber it cannot see.
   | { readonly type: "retry_chamber" }
+  // The station intercom (`chambers/hints.ts`). Costs clock, is capped per
+  // room, and what it says is played to both parties rather than to the
+  // caller - a hint that reached only KEEPER would hand one party the other's
+  // half of the room.
+  | { readonly type: "request_assistance" }
   // The shared notepad (doc 03 section 8). The one action either party can
   // take, which is why it carries who took it.
   | { readonly type: "write_note"; readonly text: string; readonly author: NoteAuthor };
@@ -425,6 +445,8 @@ function apply(session: PersistedSession, action: Action, nowMs: number): Reduce
       return openTheDoor(session, nowMs);
     case "retry_chamber":
       return retryChamber(session, nowMs);
+    case "request_assistance":
+      return requestAssistance(session, nowMs);
     case "write_note":
       return writeNote(session, action.text, action.author, nowMs);
   }
@@ -562,6 +584,9 @@ function chamberEntryFields(
   return {
     ...(CHAMBER_ENTRY[machine.chamber]?.(session, machine, nowMs) ?? {}),
     chamberDeadlineMs: timer === null ? null : nowMs + timer,
+    // A fresh shelf, and nothing carried over. The previous room's advice
+    // played over this one's first frame would be worse than no intercom.
+    assist: null,
   };
 }
 
@@ -1116,6 +1141,172 @@ function gripBar(session: PersistedSession, nowMs: number): ReduceResult {
  * of this, which is correct: nothing moves in a dead chamber until PILOT
  * resets it.
  */
+/**
+ * What KEEPER could perceive of the live chamber, hashed.
+ *
+ * Every other tool call computes this inline from the chamber module it is
+ * already holding. The intercom is not any one room's mechanism, so it needs
+ * the dispatch the four of them each skip - and having it in one place is
+ * what stops a fifth caller writing a fifth version of the same switch.
+ */
+function keeperHashFor(session: PersistedSession): string {
+  const { chamber } = session.machine;
+  if (chamber === "airlock" && session.airlock) {
+    return projectedHash(airlock.facts(session.airlock), "KEEPER");
+  }
+  if (chamber === "signal_room" && session.signalRoom) {
+    return projectedHash(signalRoom.facts(session.signalRoom), "KEEPER");
+  }
+  if (chamber === "blind_panel" && session.blindPanel) {
+    return projectedHash(blindPanel.facts(session.blindPanel), "KEEPER");
+  }
+  if (chamber === "concord_lock" && session.concordLock) {
+    return projectedHash(
+      concordLock.facts(session.concordLock, session.lastRespondedAtMs),
+      "KEEPER",
+    );
+  }
+  return viewHash(null);
+}
+
+/**
+ * The station intercom (`chambers/hints.ts`).
+ *
+ * A stalled pair used to have one exit, which was to watch the clock run out.
+ * This is the other one, and it is priced rather than free: `ASSIST_COST_MS`
+ * off the chamber's deadline, three per room, and every one of them logged as
+ * a tool call so the shift report can grade a run that leaned on it
+ * differently from one that did not.
+ *
+ * Three decisions worth stating, because each of them is the difference
+ * between a mechanic and a cheat button:
+ *
+ *   - **Both parties hear it.** The text goes onto `PilotView` beside the
+ *     notepad, not only into KEEPER's tool response. An assist that reached
+ *     only the agent would quietly hand one party the other's half of the
+ *     room, which is the one class of change this project never accepts. The
+ *     lines are authored constants with no chamber state in them, so there is
+ *     nothing for a projection to strip.
+ *   - **An empty shelf is free.** Charging for silence would make the fourth
+ *     press a pure punishment for having asked three times.
+ *   - **It refuses rather than ending the room.** Asking with less than the
+ *     price left on the clock does not half-charge and does not deadlock the
+ *     pair the instant they reach for help. It says so and takes nothing.
+ */
+function requestAssistance(session: PersistedSession, nowMs: number): ReduceResult {
+  const { chamber, phase } = session.machine;
+  if (phase !== "IN_CHAMBER" || !chamber) {
+    // Actionable, per this app's rule that a bare rejection teaches an agent
+    // nothing and produces flailing retries.
+    throw errors.staleTool();
+  }
+
+  const index = session.assist?.index ?? 0;
+  const text = assistFor(chamber, index);
+  if (text === null) {
+    return {
+      session,
+      events: [],
+      toolText:
+        "The intercom hisses and nothing follows. The keeper before you left three " +
+        "notes for this room and you have played all of them. What is left is between " +
+        "you and PILOT.",
+    };
+  }
+
+  const cost = Math.round(ASSIST_COST_MS * DIFFICULTIES[session.difficulty].penaltyScale);
+  const deadline = session.chamberDeadlineMs;
+  if (deadline !== null && cost > 0 && deadline - nowMs <= cost) {
+    return {
+      session,
+      events: [],
+      toolText:
+        "There is not enough left on this clock to stop and listen. Nothing was played " +
+        "and nothing was charged. Ask PILOT what they can see.",
+    };
+  }
+
+  const assist: Assist = {
+    text,
+    index: index + 1,
+    remaining: ASSISTS_PER_CHAMBER - (index + 1),
+  };
+  // What KEEPER knew when it asked. The same field every other tool call
+  // records, and the one that makes "could this call have succeeded" answerable
+  // after the fact.
+  const keeperViewHash = keeperHashFor(session);
+  const at = elapsed(session, nowMs);
+  const events: SessionEvent[] = [
+    /*
+     * A call KEEPER made, in the log like every other one.
+     *
+     * It has to be here or nothing downstream can see that a run leaned on
+     * the intercom: the shift report grades it, the replay draws it on the
+     * cyan track, and the benchmark corpus would otherwise record a pair that
+     * asked three times per room as identical to one that never asked. The
+     * browser tour found exactly that, reporting "0 intercom" on a run that
+     * had just used it.
+     *
+     * `wasted` is false by construction: a call that reaches this line played
+     * a note, and the two calls that buy nothing (an empty shelf, a clock
+     * that cannot pay) both return before any event is written.
+     *
+     * It does **not** join `observedLatencyMs`, for the reason the notepad
+     * does not: that sample derives Chamber III's grip window, and a gap
+     * measured across somebody reading three sentences off the intercom is
+     * not a measurement of how fast the agent acts. Letting it in would mean
+     * a pair could widen the stamina window by asking for hints.
+     */
+    {
+      t: at,
+      seq: session.seq,
+      type: "tool_call",
+      tool: "request_assistance",
+      input: {},
+      result: "ok",
+      latencyMs: nowMs - session.lastRespondedAtMs,
+      keeperViewHash,
+      concordBits: ambiguityFor(session)?.bits ?? 0,
+      wasted: false,
+    },
+    // Heard, by both, and rendered differently to each: the console prints
+    // the words and the client plays the cue. `chime` rather than a new cue,
+    // because a fifth acknowledgement sound is a fifth thing to learn and
+    // this one already means "the station accepted that".
+    { t: at, seq: session.seq + 1, type: "audible", cue: "chime" },
+  ];
+  let next: PersistedSession = { ...session, assist, seq: session.seq + 2 };
+  if (deadline !== null && cost > 0) {
+    const to = deadline - cost;
+    events.push({
+      t: at,
+      seq: next.seq,
+      type: "state_delta",
+      path: "chamberDeadlineMs",
+      from: deadline,
+      to,
+    });
+    next = { ...next, chamberDeadlineMs: to, seq: next.seq + 1 };
+  }
+
+  const spent =
+    cost > 0 && deadline !== null
+      ? `${String(Math.round(cost / 1000))}s off the clock`
+      : "no clock (this session is untimed)";
+  return {
+    session: next,
+    events,
+    toolText: [
+      "The intercom crackles and a recorded voice reads out one of the previous",
+      "keeper's notes. PILOT hears it too.",
+      "",
+      text,
+      "",
+      `That cost ${spent}. ${assist.remaining === 0 ? "The shelf is empty now." : `${String(assist.remaining)} left on the shelf for this room.`}`,
+    ].join("\n"),
+  };
+}
+
 function writeNote(
   session: PersistedSession,
   text: string,

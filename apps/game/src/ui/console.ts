@@ -56,7 +56,17 @@ import { CHANNEL_MARKER } from "../render/palette.js";
 import { describeRoom } from "../render/mirror.js";
 import { createTour, type TourHandle } from "../tutorial/tour.js";
 import { ENDING, OPENING, playStory, type StoryHandle } from "../story.js";
-import { el, fill, legendRow, panel, promptCard, lampMark } from "./parts.js";
+import { gradeShift, type Replay } from "../report.js";
+import {
+  copyResultButton,
+  el,
+  fill,
+  legendRow,
+  panel,
+  promptCard,
+  lampMark,
+  reportCard,
+} from "./parts.js";
 import { renderLanding } from "./landing.js";
 
 /** How many segments the ambiguity gauge in the rail is divided into. */
@@ -386,7 +396,43 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
     { class: "clock", title: "Time left in this chamber. UNTIMED in practice mode." },
     "--:--",
   );
-  rail.append(mark, room, resets, gauge, clock);
+  /*
+   * What the room is asking for, on its own line under the readouts.
+   *
+   * Its own line rather than beside the room name, which already ellipsises
+   * below about 800px: two competitors for one row is how the marker on
+   * "CONCORD LOCK - REVISITED" got cut. And inside the rail rather than as a
+   * sixth band over the viewport, because five things are already absolutely
+   * positioned there and each has to be told which edge it owns - that
+   * arrangement has produced four separate defects and none of them was worth
+   * a text line.
+   *
+   * `SHARED` and safe to be a text node for the reason the header's audit
+   * gives: it is authored copy the worker sends to both parties, and KEEPER
+   * reads the same sentence off `get_status`. The reading beside it is
+   * PILOT's own, computed on the server from the projection this frame was
+   * drawn from, so it can only ever count something PILOT can see.
+   */
+  const objective = el("p", { class: "rail-objective" });
+  objective.hidden = true;
+  /*
+   * Two spans, and the split is load-bearing on a narrow window.
+   *
+   * The line does not wrap - a rail that changes height as a sentence rewraps
+   * moves the top of the frame - so on a phone something has to be cut. The
+   * sentence is standing text somebody reads once; the reading is the live
+   * half and changes every time the pair does something. So the sentence
+   * shrinks and ellipsises and the reading never shrinks at all. Written the
+   * other way round, "BOLTS ALIGNED 0/3" was the part that disappeared, which
+   * is precisely the fault already on record against the room name above it.
+   */
+  const objectiveText = el("span", { class: "rail-goal" });
+  const objectiveCount = el("span", { class: "rail-reading" });
+  objective.append(objectiveText, objectiveCount);
+
+  const railTop = el("div", { class: "rail-top" });
+  railTop.append(mark, room, resets, gauge, clock);
+  rail.append(railTop, objective);
 
   // ---- The deck: the room, with everything else folded into its two edges. -
   const deck = el("main", { class: "deck" });
@@ -506,16 +552,80 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   ending.hidden = true;
   const replayHref = replayUrl(deps.client.sessionId);
   const replayLink = el("a", { class: "spectate", href: replayHref }, "WATCH THE REPLAY");
-  ending.append(
-    el(
-      "p",
-      { class: "note" },
-      "The whole shift is on the station's log: what you did, what your agent " +
-        "called, and the ambiguity between you.",
-    ),
-    replayLink,
+  const endingNote = el(
+    "p",
+    { class: "note" },
+    "The whole shift is on the station's log: what you did, what your agent " +
+      "called, and the ambiguity between you.",
   );
+  ending.append(endingNote, replayLink);
   viewport.append(ending);
+
+  /**
+   * Fetch this session's own replay and put the shift report in the strip.
+   *
+   * The row is written to D1 inside the Durable Object on the way into
+   * ESCAPED and awaited before the acting agent gets its answer, so by the
+   * time the socket has pushed the phase it is almost always there. Almost:
+   * the write swallows its own failure on purpose (doc 07 section 3.1 - the
+   * game keeps working when the instrument recording it does not), so it can
+   * legitimately never arrive.
+   *
+   * Which is why this is additive and never destructive. On success the card
+   * goes in above the sentence that was already there; on failure, or on a
+   * row that never lands, the strip stays exactly what it was before this
+   * existed. **The ending must not be able to get worse than it is.**
+   */
+  async function loadReport(): Promise<void> {
+    const origin = import.meta.env.VITE_WORKER_ORIGIN ?? "";
+    const url = `${origin}/replay/${encodeURIComponent(deps.client.sessionId)}`;
+    for (const waitMs of [0, 600, 1500]) {
+      if (waitMs > 0) await new Promise((done) => globalThis.setTimeout(done, waitMs));
+      try {
+        const response = await fetch(url);
+        if (!response.ok) continue;
+        const report = gradeShift((await response.json()) as Replay);
+        const card = reportCard(report);
+        card.actions.append(copyResultButton(report, replayHref), replayLink);
+        // The sentence explained what the link was for. The card says it
+        // better and in more detail, so the sentence goes rather than sitting
+        // above a table repeating itself.
+        endingNote.remove();
+        ending.prepend(card.section);
+        return;
+      } catch {
+        // A network fault on the way to a nicety. Try again, then stop.
+      }
+    }
+  }
+
+  /*
+   * The station intercom, when KEEPER has asked it for something.
+   *
+   * Under the rail rather than on one of the four edges the rail, the foot,
+   * the caption band and the ending strip already own. It is safe there
+   * because it is **exclusive by phase** with the only other thing that owns
+   * the top: an assist exists only in `IN_CHAMBER` (the worker refuses it
+   * anywhere else) and the ending strip appears only at `ESCAPED`. The two
+   * can never be on screen together, and that is a property of the machine
+   * rather than of a z-index.
+   *
+   * It is `SHARED` text and may be a DOM node for the same reason the notepad
+   * may: it is authored copy the worker sent to both parties, and KEEPER read
+   * the identical sentence out of its own tool response.
+   */
+  const intercom = el("aside", { class: "intercom", "aria-live": "polite" });
+  intercom.hidden = true;
+  const intercomText = el("p", { class: "intercom-text" });
+  const intercomClose = el(
+    "button",
+    { type: "button", class: "intercom-close", "aria-label": "Dismiss the intercom" },
+    "DISMISS",
+  );
+  intercomClose.addEventListener("click", () => {
+    intercom.hidden = true;
+  });
+  intercom.append(el("p", { class: "eyebrow" }, "STATION INTERCOM"), intercomText, intercomClose);
 
   const audible = el("p", { class: "audible", "aria-live": "polite" });
 
@@ -790,7 +900,7 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   // is hidden and zero-sized when it exists at all.
   const archiveHost = el("div", { class: "archive-host", "aria-hidden": "true" });
 
-  console_.append(rail, deck, foot, archiveHost);
+  console_.append(rail, intercom, deck, foot, archiveHost);
   /*
    * The landing screen goes *first*, and that is not a paint decision.
    *
@@ -843,6 +953,15 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
    */
   let tour: TourHandle | null = null;
   let offered = false;
+  /**
+   * Which of this room's assists is currently on screen, or 0 for none.
+   *
+   * The index rather than a boolean, because "has this one already been
+   * shown" and "is the panel open" are different questions: a dismissed
+   * assist must stay dismissed for the rest of the frames that still carry
+   * it, and the next one must still open the panel.
+   */
+  let shownAssist = 0;
   /*
    * The two sequences that bracket a shift, each played once.
    *
@@ -879,6 +998,10 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
       if (nowPhase === "ESCAPED" && !told.has("ending")) {
         told.add("ending");
         story = playStory(deck, ENDING);
+        // Started with the three closing beats rather than after them: the
+        // fetch and the story take about the same few seconds, so the card is
+        // ready as the last line clears instead of arriving after a pause.
+        void loadReport();
       }
       // The tour waits for the opening to have had its say, so the two are
       // never on screen together telling the player two different things.
@@ -924,6 +1047,40 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
         total > 0 && remaining !== null && remaining / total < TIMER_URGENT_FRACTION,
       );
       resets.textContent = view && view.retries > 0 ? `RESETS ${String(view.retries)}` : "";
+
+      // The intercom, when a new note has been played.
+      //
+      // Opened on the index changing rather than on the field being set, so
+      // dismissing one does not spring back open on the next frame, and so
+      // walking into a new room (which clears the field) closes it rather
+      // than leaving the last room's advice on screen.
+      const spoken = view?.assist ?? null;
+      if (spoken !== null && spoken.index !== shownAssist) {
+        shownAssist = spoken.index;
+        intercomText.textContent = spoken.text;
+        intercom.hidden = false;
+      } else if (spoken === null && shownAssist !== 0) {
+        shownAssist = 0;
+        intercom.hidden = true;
+      }
+
+      // The objective, and PILOT's own reading of how far in the pair is.
+      //
+      // Blank outside a chamber, where the caption band is already saying
+      // what is happening, and hidden rather than empty so the rail is one
+      // row again at ESCAPED - which is the height the ending strip's top
+      // padding is measured against.
+      const goal = view?.objective ?? null;
+      objective.hidden = goal === null;
+      if (goal !== null) {
+        const reading = view?.progress ?? null;
+        objectiveText.textContent = goal;
+        objectiveCount.textContent = reading
+          ? `${reading.label.toUpperCase()} ${String(reading.done)}${
+              reading.total === null ? "" : `/${String(reading.total)}`
+            }`
+          : "";
+      }
 
       // The landing screen follows the phase, and takes attract mode with it.
       // It is the only thing on the page that decides whether it is on the

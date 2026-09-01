@@ -152,6 +152,24 @@ describe("the machine fields beside the facts", () => {
     expect(pilotView(at("archive"), NOW).facts).toEqual({});
   });
 
+  it("says what the room is for, and says nothing about it outside a room", () => {
+    // The objective travels beside the facts rather than inside them, so it
+    // has to be gated on the same predicate the facts are or it would name a
+    // chamber the pair has walked out of.
+    expect(pilotView(begun(), NOW).objective).toContain("outer door");
+    expect(pilotView(at("archive"), NOW).objective).toBeNull();
+    expect(pilotView(newSession("s_none", "empty-seed", NOW), NOW).objective).toBeNull();
+  });
+
+  it("counts only what PILOT can perceive, in a room whose parties count differently", () => {
+    // The Blind Panel is the whole reason `progressIn` reads a projection
+    // rather than a state: PILOT counts needles on their marks, and there is
+    // no reading of that KEEPER could have. A frame reporting "rotations
+    // made" here would mean the projection had been reached around.
+    const session = at("blind_panel");
+    expect(pilotView(session, NOW).progress?.label).toBe("needles on mark");
+  });
+
   it("still draws the room after a deadlock, because only PILOT can reset it", () => {
     const session = begun();
     const dead = settleSession(session, session.chamberDeadlineMs! + 1).session;

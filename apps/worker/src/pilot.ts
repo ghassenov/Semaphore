@@ -16,12 +16,13 @@
  * template later. `pilot.test.ts` asserts that for all four chambers.
  */
 
-import type { GhostTrack, Phase, PilotView } from "@semaphore/protocol";
+import type { GhostTrack, Phase, PilotView, Progress } from "@semaphore/protocol";
 import { GHOST_LOG, pilotTrack } from "./archive/index.js";
 import * as airlock from "./chambers/airlock.js";
 import * as signalRoom from "./chambers/signal_room.js";
 import * as blindPanel from "./chambers/blind_panel.js";
 import * as concordLock from "./chambers/concord_lock.js";
+import { objectiveFor, progressIn } from "./objective.js";
 import { projectForPilot } from "./projection.js";
 import type { PersistedSession } from "./reducer.js";
 
@@ -96,16 +97,42 @@ function chamberFacts(session: PersistedSession, nowMs: number): Record<string, 
   return {};
 }
 
+/**
+ * What the room is asking for, and how far in the pair is, for PILOT.
+ *
+ * Both are computed from `facts` **after** it has been through
+ * `projectForPilot`, never from the chamber's raw state. That is the whole
+ * safety argument and it is one line long: `progressIn` cannot report a fact
+ * that is not in the object it was handed, and the object it is handed is the
+ * same one the frame is drawn from.
+ */
+function objectiveOf(
+  session: PersistedSession,
+  facts: Readonly<Record<string, unknown>>,
+): Pick<PilotView, "objective" | "progress"> {
+  const { chamber, phase } = session.machine;
+  if (!chamber || !inTheRoom(phase)) return { objective: null, progress: null };
+  const progress: Progress | null = progressIn(chamber, facts);
+  return { objective: objectiveFor(chamber), progress };
+}
+
 /** Everything the client may render, for one session at one instant. */
 export function pilotView(session: PersistedSession, nowMs: number): PilotView {
+  const facts = chamberFacts(session, nowMs);
   return {
     ...stateSummary(session, nowMs),
     retries: session.machine.retries,
-    facts: chamberFacts(session, nowMs),
+    facts,
+    ...objectiveOf(session, facts),
     // Beside the facts, not inside them. A note is `SHARED` by construction -
     // one of the two parties wrote it for the other to read - so there is no
     // channel for `projectForPilot` to strip and nothing it could hide.
     notes: session.notes,
+    // The intercom, beside the notepad and for the same reason: authored
+    // `SHARED` text that KEEPER asked for and both parties were told. An
+    // assist that reached only the agent would hand one party the other's
+    // half of the room.
+    assist: session.assist,
     ghost: ghostFor(session.machine.phase),
     // The event counter, so the client can tell one rotation from the next
     // when both produce the same facts. See `PilotView.seq`.

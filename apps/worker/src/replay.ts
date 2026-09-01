@@ -64,6 +64,23 @@ export interface ReplayChamber {
   readonly chamber: ChamberId;
 }
 
+/**
+ * A run that ran out of clock, which is the only kind of failure a session can
+ * carry and still be finished.
+ *
+ * Projected for the same reason `concordBits` already is: it is the pair's own
+ * record of what happened to them, it is on the KEEPER track already (the
+ * failure follows a call the agent watched fail), and it holds no chamber
+ * state. Without it a replay of a run with two deadlocks in it is
+ * indistinguishable from a clean one.
+ */
+export interface ReplayFailure {
+  readonly t: number;
+  readonly chamber: ChamberId;
+  /** Ambiguity still unresolved when the clock ran out, in bits. */
+  readonly concordBits: number;
+}
+
 /** A finished session, as much of it as may leave the server. */
 export interface Replay {
   readonly sessionId: string;
@@ -79,8 +96,14 @@ export interface Replay {
   readonly calls: readonly ReplayCall[];
   readonly beats: readonly ReplayBeat[];
   readonly chambers: readonly ReplayChamber[];
+  /** Every deadlock this run took. Empty for a run that never stalled. */
+  readonly failures: readonly ReplayFailure[];
   /** What the pair wrote to each other, which is the only record of that. */
-  readonly notes: readonly { readonly t: number; readonly author: NoteAuthor; readonly text: string }[];
+  readonly notes: readonly {
+    readonly t: number;
+    readonly author: NoteAuthor;
+    readonly text: string;
+  }[];
   /**
    * The room, as the station's own monitor draws it.
    *
@@ -110,6 +133,7 @@ export function projectReplay(log: readonly SessionEvent[]): Replay | null {
   const calls: ReplayCall[] = [];
   const beats: ReplayBeat[] = [];
   const chambers: ReplayChamber[] = [];
+  const failures: ReplayFailure[] = [];
   const notes: { t: number; author: NoteAuthor; text: string }[] = [];
   let end: Extract<SessionEvent, { type: "session_end" }> | null = null;
   let last = start.t;
@@ -157,6 +181,9 @@ export function projectReplay(log: readonly SessionEvent[]): Replay | null {
           chamber: event.chamber,
         });
         break;
+      case "failure":
+        failures.push({ t: event.t, chamber: event.chamber, concordBits: event.concordBits });
+        break;
       case "session_end":
         end = event;
         break;
@@ -179,6 +206,7 @@ export function projectReplay(log: readonly SessionEvent[]): Replay | null {
     calls,
     beats,
     chambers,
+    failures,
     notes,
     track: pilotTrack(log),
   };

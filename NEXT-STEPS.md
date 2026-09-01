@@ -11,16 +11,17 @@ It answers three questions and only three: where the repo is right now, what to 
 | | |
 |---|---|
 | **Last updated** | 2026-09-01, Ahmed Saad |
-| **Branch** | `feat/web-layer-redesign`, off `main` at `bc84552` |
-| **Pipeline** | Green: **748 tests**, typecheck, lint, format, both builds plus the bundle budget and the palette check |
+| **Branch** | `feat/game-feel`, off `main` at `10097f0` |
+| **Pipeline** | Green: **788 tests**, typecheck, lint, format, both builds plus the bundle budget and the palette check. Entry bundle 43.9KB of 400KB. |
 | **Deployed** | **Live on Cloudflare and fully verified (D-074, D-075).** Game: `https://semaphore.ahmedxsaad.me`. Archive: `https://semaphore-archive.ahmedxsaad.me`. Worker: `https://semaphore.ahmedxsaad.workers.dev`. Both custom domains active; the DNS records landed and the full cross-origin delegation proof passes 27/27 against the real domains, ending replay link included. Production D1 migrated to `0002_deep_linked.sql`. Nothing left open on this. |
+| **Game feel** | **Three things the game did not have, built and played** (D-076 to D-079). **The ending grades the shift**: `apps/game/src/report.ts` is a pure function over the worker's existing replay projection, and `reportCard` in `ui/parts.ts` draws it in two homes - the strip at `ESCAPED` and the header of a shared replay. Three marks rather than one score, because a single number would silently grade whichever half of the pair the formula measured; notes written are reported and deliberately **not** graded. **Every room says what it is asking for**: `apps/worker/src/objective.ts`, one authored `SHARED` line per chamber plus a `progressIn` that reads whatever projection it is handed, so PILOT counts needles and KEEPER counts rotations from one function that cannot reach across. **A stalled pair has the station intercom**: `request_assistance`, a fifteenth tool, three escalating notes per room, `ASSIST_COST_MS` off the clock, and **both parties hear it** - a hint that reached only KEEPER would hand one party the other's half. Playing it found five defects that 788 passing tests could not (D-079). |
 | **Sound** | **Built and heard** (D-050, D-051). Listened to on a real machine on 2026-08-30 and signed off. Plan phase 5.2 in full: eight mechanism cues, the ambience bed, four timer-keyed tension layers, a behind-the-wall thump per KEEPER tool call, and a mix with a mute. Plus **a warm unresolved theme** on top, always on, which is a deliberate departure from doc 06's chiptune direction (D-051). All synthesised in `apps/game/src/audio/`; still no asset file of any kind. `PilotView` gained `seq`, without which the detents cannot repeat. |
 | **Doors and the way back** | **Every door stands in an opening you can actually walk through, and PILOT can go back through one** (D-053 to D-055). `doorways.ts` holds each room's openings room-local and its test derives the real ones from `stationCells`; two openings could not carry a door (a south face, and eleven metres of gauge bank) so the **corridors were rerouted**, not the doors. `Q` at an open door walks PILOT back into a room the pair has already cleared, drawn from the last frame the server sent for it with its doors opened by `asCleared`. Nothing crosses the wire: the clock keeps running, KEEPER's 14 tools are untouched, and KEEPER's body is not drawn in a room the session has left. Every room also got a decoration and ambient-motion pass, including the two that had never had a composition pass. |
 | **Web layer** | **Redesigned from scratch, its bugs fixed, and then made to be looked at** (D-066, D-068, D-069). `ui.ts` is now `src/ui/` - `parts.ts`, `landing.ts`, `console.ts`, plus `reveal.ts` and `motion.ts` - with its own CLAUDE.md. The landing screen is a **surface laid over the console** rather than a card inside its deck, with its own scroll: identity, thesis, the split as one full-bleed editorial band, a rule with the split lamp between sections, then a numbered two-step start. **Picking a session length no longer fails silently.** A self-hosted display typeface (Fraunces, OFL, the one deliberate exception to no-asset-files, `LICENSE` carries the carve-out), scroll-driven reveals, a cursor-reactive light on the hero and a bounded tilt on the three cards a reader actually chooses between - all verified with a simulated pointer over CDP, not only read as code, because the light's first version measured as working and was genuinely invisible on screen. The gate is built from the same parts in the same order; `heroBlock` and `whyAndKey` are now shared functions rather than duplicated a third time. Reduced motion was checked with the emulated media feature set *before navigation*: every section is visible at `opacity: 1` with zero scrolling. The tab rails are rails, a drawer is as tall as its contents, the mixer is a housing, the replay's dead end is a page, and everything works down to 390px. **The camera stopped compounding its own idle drift** (D-067), found by playing it: holding a movement key, or leaning with `E` then moving, put the camera outside the station. The station's own room and its assets were otherwise not touched. |
 | **Console** | **Rebuilt around the room** (D-052). The room fills the deck and is centred; panels live behind labelled tabs on the two edges, open on demand, one per edge, resizable by drag or arrow keys, closed with Escape. Deeper ground, a grain layer, a beacon sweep on the start card and the gate, and PILOT has four poses and a flickering lamp. Channel colours untouched. |
 | **Interface** | **Rebuilt in real-time 3D** (D-042 to D-045). Phaser and the tile renderer are gone. The station is a lit cutaway model: rooms open at the top and on their south face, camera always to the south, four lights and no post-processing. New colour language (D-043), procedural assets and **no asset files at all** (D-044), and a console laid out as two surfaces with the room between them (D-045). |
 | **Licence** | **MIT throughout again.** The vendored art pack went with the tile renderer, so `LICENSE` has no carve-out (D-044). |
-| **Toured** | **25 of 25 browser checks and eleven frames, on Chrome 151, 2026-08-30.** The tour now waits on the camera's own `data-settled` flag instead of a copied `WALK_MS + SHOT_MS` (D-056), which had already gone wrong: the Archive's frame was taken at 2000ms against a 2400ms arrival, so every tour since the doors landed photographed that beat as the station from four hundred metres up, with all twenty-one assertions green. It also checks the ending's replay link, and runs a third faster. Earlier: **21 of 21 on Chrome 151.** The tour now walks back through a door and forward again, and checks the key, the cached room, the console header and that the session never notices. It found four defects, all of them in the frames and none in 700 passing tests: `E` held at a door hijacking the lean-in (it is `Q` now, edge-triggered), arriving in a chamber standing PILOT in the doorway and dragging the camera onto the outside of a wall, `BACK TO AIRLOCK` printed across `PAGE MARKED`, and the console growing a horizontal scrollbar when a room name got eight characters longer. All fixed, and captions are now checked by projection as well as by anchor. |
+| **Toured** | **34 of 34 browser checks and thirteen frames, on Chrome 151, 2026-09-01.** Three checks are new (D-076 to D-079): the objective on screen and in `get_status`, the intercom answering both parties, and the report card whole at `ESCAPED` with the run's own intercom call counted. That last one exists only because the first run of it reported `0 intercom` on a session that had just used the intercom. Earlier: **25 of 25 on Chrome 151, 2026-08-30.** The tour now waits on the camera's own `data-settled` flag instead of a copied `WALK_MS + SHOT_MS` (D-056), which had already gone wrong: the Archive's frame was taken at 2000ms against a 2400ms arrival, so every tour since the doors landed photographed that beat as the station from four hundred metres up, with all twenty-one assertions green. It also checks the ending's replay link, and runs a third faster. Earlier: **21 of 21 on Chrome 151.** The tour now walks back through a door and forward again, and checks the key, the cached room, the console header and that the session never notices. It found four defects, all of them in the frames and none in 700 passing tests: `E` held at a door hijacking the lean-in (it is `Q` now, edge-triggered), arriving in a chamber standing PILOT in the doorway and dragging the camera onto the outside of a wall, `BACK TO AIRLOCK` printed across `PAGE MARKED`, and the console growing a horizontal scrollbar when a room name got eight characters longer. All fixed, and captions are now checked by projection as well as by anchor. |
 | **Played** | A full session end to end in Chrome 152 against a live `wrangler dev`: all four chambers, the Archive, the finale, the ending. 17/17 browser checks green on the single-origin path. **A second pass on a real machine found five more defects, all of them things a frame shows and no test does** (D-046, D-047): neighbouring rooms crowding a room shot, hidden masonry left as lit plates, the Archive's beams across its own monitor, KEEPER's body sharing a wall with a shelf rack, and every fixture carrying two stacked captions. All fixed. **A third pass then found six more in the two beats nobody had inspected** (D-048): the finale drew an empty room for its last two phases, an open door showed a crack instead of its opening, the bolt ring floated over the lintel, its count printed on top of the door sign, the room lit itself flat with the door open, and a pendant hung between the camera and the Archive monitor. All fixed. The tour now also presses `E`. **A fourth pass was *played* rather than looked at** - one person as PILOT in the browser, one driving KEEPER over the worker's HTTP tool surface - and found a twelfth that no frame could show (D-049): the Blind Panel drew `DIAL n` directly beneath `GAUGE n`, asserting the one thing that chamber exists to withhold. Fixed. |
 | **Judge path** | **Built, and phase 4 is now complete** (D-058, D-059, D-062). SPECTATE on the gate screen, attract mode after twenty seconds on the landing screen, the ablation folded into the start card, and `?chamber=N` deep links that walk the real transitions rather than assigning a state. All three recorded-session surfaces share one painter, `render/monitor.ts`, which uses a 2D context so the gate never fetches Three.js. The starter prompt card is a **station requisition slip** now, doc 04's own art direction: one builder for both homes, open on the landing screen, and it hands the room over when the shift starts. |
 | **Replay viewer** | **Built** (D-060). `/replay?id=<session>` reads the gzipped D1 row and draws two tracks over one axis - amber PILOT, cyan KEEPER - with the CONCORD trace underneath and the station's own monitor beside it, scrubbable. The ending links to it. It is a **projection**: `state_delta` never leaves the server, because a seed is reproducible and a replay URL is meant to be shared. |
@@ -48,6 +49,9 @@ It answers three questions and only three: where the repo is right now, what to 
 | `apps/game/src/render/monitor.ts` | **Pure-ish. New** (D-058). One recorded-session picture, drawn with a 2D context and nothing else. The Archive's CRT, SPECTATE, attract mode and the replay viewer all use it, which is what keeps Three.js off the gate screen's path. |
 | `apps/game/src/ui.ts` (`promptCard`) | **New** (D-062). The requisition slip, built once for the gate screen and the console drawer. The tour asserts it is whole and on screen, not merely present. |
 | `apps/game/src/render/mirror.ts` | **Pure. New** (D-061). The room in words, for the accessibility mirror. Never names a glyph; `mirror.test.ts` asserts that for every chamber. |
+| `apps/game/src/report.ts` | **Pure. New** (D-076). Grades a finished session off the worker's replay projection: three marks, five bands, and the shareable text block. Owns the `Replay` shape, which `replay.ts` now imports rather than declaring a second copy of. |
+| `apps/worker/src/objective.ts` | **Pure. New** (D-077). One authored line per chamber, and `progressIn`, which reads whatever projection it is handed and answers null for a key that is not in it. That is the whole leak argument. |
+| `apps/worker/src/chambers/hints.ts` | **Pure. New** (D-078). Three escalating intercom notes per room, authored constants with nothing interpolated. Its test holds every line to naming no glyph and saying nothing the manual does not. |
 | `apps/game/src/replay.ts` | **New** (D-060). The `/replay?id=` viewer: two tracks, the CONCORD trace, the monitor and a native range scrubber. `replayIdFrom` is the route match and refuses the path form. |
 | `apps/worker/src/replay.ts` | **Pure. New** (D-060). Projects a finished session for the viewer. Drops every `state_delta`, which is where the `HIDDEN` fields are. |
 | `apps/game/public/_redirects` | **New.** Pages routing for `/replay`, and only that shape. Its comment says why the nested one is not routed. |
@@ -70,7 +74,38 @@ It answers three questions and only three: where the repo is right now, what to 
 
 ---
 
-## What landed on 2026-09-01
+## What landed on 2026-09-01 (second session)
+
+**The three things that made it feel like a game rather than a demo**
+(D-076 to D-079), each shippable on its own and each played before it was
+called done.
+
+**The ending grades the shift.** It used to draw one sentence and a link.
+`report.ts` is pure arithmetic over the replay projection the link already
+pointed at, and `reportCard` draws it in two homes. Three marks - pace,
+precision, resolve - because one number would silently grade whichever half of
+the pair the formula happened to measure. The notepad is reported and
+deliberately not scored: two people in one room talk out loud and write
+nothing.
+
+**Every room says what it is asking for**, on its own row in the rail and at
+the top of `get_status`. `progressIn` reads whatever projection it is handed,
+so the Blind Panel honestly reports needles to PILOT and rotations to KEEPER
+from one function neither can reach across.
+
+**A stalled pair has the station intercom.** Three escalating notes a room,
+45s off the clock, and both parties hear it. An empty shelf is free and a
+clock that cannot pay is refused rather than half-charged. `pnpm ablation &&
+pnpm benchmark` came back byte-identical, which is the check that a new
+reducer action left the run's random stream alone.
+
+**Then playing it found five defects that 788 green tests could not** (D-079),
+including one the report card was the first thing ever able to see: local D1
+was two migrations behind, and the only writer swallows its own failure on
+purpose. A write whose failure is deliberately silent stays broken until
+something reads it back.
+
+## What landed on 2026-09-01 (first session)
 
 **Deployed to Cloudflare for the first time and fully verified (D-074, D-075).**
 The worker, both Pages projects, both custom domains and the production D1
@@ -123,7 +158,29 @@ behind the old check and eleven of them silently kept the previous palette.
 
 ## Do this next
 
-### 1. Play it, with two people, and fix what that finds [start here]
+### 1. Play the three new things with two people [start here]
+
+**Built, toured, and never played by anybody who did not write them**
+(D-076 to D-079). Each has a question a script cannot answer:
+
+- **The intercom.** Is 45 seconds the right price? Does a pair reach for it
+  when they are genuinely stuck, or as a first move? Do the three notes for a
+  room actually escalate, or does the first one already give it away? And the
+  one that matters most: does hearing it read out to *both* of you feel like
+  the station talking, or like the game apologising?
+- **The objective line.** Does it shorten the first minute in a room, or does
+  it flatten the discovery the room was built around? The Blind Panel is the
+  one to watch: "bring all four needles onto their marks" may be the whole
+  puzzle stated, or may be the thing that lets a pair start.
+- **The grade.** Is an S reachable by a real pair, or only by a script? The
+  tour scores S on pace alone because it plays at machine speed; a real full
+  session is about sixteen minutes against twenty of par, which lands pace
+  near 0.4. Nobody has seen a human run's grade. If every real pair gets C,
+  the curve is wrong, not the pair.
+- **The report at the ending.** Does it land after the three closing beats, or
+  does it arrive over them? It is fetched while the story plays, deliberately.
+
+### 1b. Play the rest of it, and fix what that finds
 
 **The redesign is done (D-066, D-068, D-069) and it has not met a person.**
 Every surface in it was checked by one person who knew where everything
@@ -406,6 +463,10 @@ seconds with zero tokens. Budget the tokens before running, not after.
 
 ### The instruments that watch the game
 
+- **A write whose failure is deliberately silent stays broken until something reads it back** (D-079). The D1 flush swallows its own error on purpose, correctly, so the game keeps working when the instrument recording it does not. The local database in this checkout was two migrations behind and had been for as long as anybody had played locally, and nothing anywhere reported it: the ending offered its replay link, the link 404'd, and no check had ever followed it. If you add a route or a card that *reads* a row back, expect it to be the first thing that finds the write broken. `npx wrangler d1 execute semaphore-sessions --local --file migrations/000N_*.sql`, from `apps/worker/`, for each migration.
+- **`bench/ablation.test.ts` and `bench/benchmark.test.ts` carry a fixed 30-second budget and are the first two things to fail on a loaded machine.** They run twenty seeds through the real reducer and are by far the slowest tests in the repo. At load 22 on eight cores they time out inside the full suite and pass in isolation, which reads exactly like a real regression and is not one. Check `uptime` before believing a bench failure, and run the two files alone to confirm.
+
+
 - **A stale dev server is the most expensive bug in this repo and it does not look like a bug.** A `vite` from a previous session on 5173 and a Chrome on 9222 made a fresh tour report seven failures that existed in nobody's checkout. Check the ports and use `--strictPort`; Vite silently walking to 5175 is what makes this survivable-looking.
 - **A number copied out of another module cannot hear it change** (D-056). The tour's screenshot wait was a hand-typed `WALK_MS + SHOT_MS` living in a different package from the constants, and it was already 400ms short. It now polls `data-settled`, which the stage sets from the easing itself.
 - **A prop is not an error** (D-058). `NO TAPE` is what the monitor is *meant* to draw for a null recording, so a broken fetch produced a screen nothing reported and a check asking "is anything lit" passed on it. Assert the thing, never its brightness.
@@ -413,6 +474,11 @@ seconds with zero tokens. Budget the tokens before running, not after.
 - **A key event without its `char` half does not activate a button.** A keyboard-accessibility check reported the drawer unreachable when the drawer was fine. Dispatch `rawKeyDown`, `char` and `keyUp`, or the harness is testing itself.
 
 ### The console
+
+- **`.replay` is a named-area grid, so a child with no `grid-area` is invisible rather than misplaced** (D-079). It lands in an implicit row after every named one - the shift report's first build sat two thousand pixels down the page, below the transcript, with every check green. Anything appended to that page either gets an area or goes inside an element that already has one.
+- **`--rail-width` is `auto` below 46rem, and `calc(auto + 1rem)` is not a length** (D-079). The whole declaration is dropped, so a panel inset from the tab rails that way goes edge to edge on a phone with its corners clipped. There is no rail to clear at that size; use a plain inset in a media query below.
+- **A nowrap line puts its ellipsis at the end, so whatever is last is what a phone deletes** (D-079). The objective's live reading was written after its sentence and "BOLTS ALIGNED 0/3" was the half that disappeared - the identical fault already on record against the room name one row above it. Whichever half changes is the half that must not shrink.
+
 
 - **A CSS override goes below what it overrides, and this cost two rounds in one session** (D-066). Source order breaks specificity ties, so a narrow-window block written next to the rule it is *about* rather than below the rule it *changes* does nothing at all - silently, with every check still green. The proof graphic never stacked on a phone and the skip hint never cleared the foot, both for this reason, both found by looking at a frame.
 - **Five things are absolutely positioned over one viewport and each one has to be told which edge it owns**: the rail, the ending strip, the caption band, the foot and the story. A band told only "top" or "bottom" is printed through whichever of the other four shares it. That has now produced four separate defects; the last three were on the last frame of the game, which is the frame fewest people ever reach.
@@ -468,7 +534,7 @@ seconds with zero tokens. Budget the tokens before running, not after.
 
 | Item | Owner | Note |
 |---|---|---|
-| Playtesters | Human | Doc 08 section 0.1 wants six. The one task that does not parallelise. The web layer has been redesigned (D-066) and has met nobody but its author. |
+| Playtesters | Human | Doc 08 section 0.1 wants six. The one task that does not parallelise. The web layer (D-066) and now the three game-feel features (D-076 to D-078) have met nobody but their author. The intercom's price, the objective's effect on discovery and the grade curve are all questions only a person can answer. |
 | Spike in ChatGPT's in-app browser | Human | Still the only thing keeping `ARCHIVE_ORIGIN` at `same`. Now also the only way to know whether the 3D renderer performs there. |
 | A real agent session | Human | Doc 11 sections 6 and 7 stay empty until a model meets the page. |
 | Doc 06 section 11 rewritten | Whoever holds the design | It still describes a chiptune score. The client plays a warm instrumental with chiptune tension over it (D-051), heard and signed off. The doc is the half that has to move. |

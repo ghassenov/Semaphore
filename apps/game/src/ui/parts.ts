@@ -24,8 +24,9 @@
  * repository is MIT throughout.
  */
 
-import type { GhostTrack } from "@semaphore/protocol";
-import { LEGEND } from "../render/hud.js";
+import { CHAMBER_NAMES, type GhostTrack } from "@semaphore/protocol";
+import { LEGEND, formatTimer } from "../render/hud.js";
+import { cellsOf, shareText, type ShiftReport } from "../report.js";
 import { CHANNEL, hex } from "../render/palette.js";
 import { GLYPHS, glyphCanvas } from "../render/glyphs.js";
 import { paintMonitor } from "../render/monitor.js";
@@ -622,4 +623,129 @@ export function fill<T>(
   make: (item: T) => HTMLElement,
 ): void {
   list.replaceChildren(...items.map(make));
+}
+
+/**
+ * The shift report, as the ending strip and the replay viewer both draw it.
+ *
+ * Doc 08 phase 3.2's "and only then offer the stats". Two surfaces show it -
+ * the strip along the foot of the room at ESCAPED, and the header of a shared
+ * replay - and they are the same element for the same reason the requisition
+ * slip is: two hand-written copies of one card drift, and this one carries a
+ * grade, which is the kind of thing that must never read differently in two
+ * places for the same session.
+ *
+ * All of it is `SHARED` by construction. Every number comes off the worker's
+ * own replay projection, which is already the thing that may leave the server,
+ * so nothing here has a channel to strip. It names no mechanism and no glyph:
+ * the rooms are named by `CHAMBER_NAMES`, which is public copy on the landing
+ * screen already.
+ *
+ * The caller appends its own actions to `.report-actions`, because the two
+ * surfaces offer different ones: the ending offers the replay, and the replay
+ * cannot offer itself.
+ */
+export function reportCard(report: ShiftReport): {
+  section: HTMLElement;
+  actions: HTMLElement;
+} {
+  const section = el("section", { class: "report" });
+
+  const head = el("div", { class: "report-head" });
+  head.append(
+    el("p", { class: "report-grade", "data-grade": report.grade }, report.grade),
+    el("div", { class: "report-summary" }),
+  );
+  const cleared = report.splits.filter((split) => split.cleared).length;
+  head.lastElementChild?.append(
+    el("p", { class: "eyebrow" }, "SHIFT REPORT"),
+    el(
+      "p",
+      { class: "report-line" },
+      `${String(cleared)} of ${String(report.splits.length)} chambers, ` +
+        `${formatTimer(report.durationMs)} on the clock.`,
+    ),
+  );
+  section.append(head);
+
+  // The three axes. Each bar is five cells because the shareable text block
+  // is five characters wide, and a reader who pastes their result should see
+  // the same shape they were looking at.
+  const marks = el("dl", { class: "report-marks" });
+  for (const [name, mark] of [
+    ["PACE", report.marks.pace],
+    ["PRECISION", report.marks.precision],
+    ["RESOLVE", report.marks.resolve],
+  ] as const) {
+    marks.append(el("dt", {}, name));
+    const value = el("dd", {});
+    const bar = el("span", {
+      class: "report-bar",
+      role: "img",
+      "aria-label": `${name.toLowerCase()}, ${String(cellsOf(mark))} of five`,
+    });
+    for (let cell = 0; cell < 5; cell++) {
+      bar.append(el("i", cell < cellsOf(mark) ? { class: "on" } : {}));
+    }
+    value.append(bar);
+    marks.append(value);
+  }
+  section.append(marks);
+
+  // One row per room, with the clock it was designed around beside the clock
+  // it actually took. A split on its own says nothing; a split against par is
+  // the whole of "was that fast".
+  const splits = el("ul", { class: "report-splits" });
+  for (const split of report.splits) {
+    const row = el("li", split.cleared ? {} : { class: "unsolved" });
+    row.append(
+      el("span", { class: "report-room" }, CHAMBER_NAMES[split.chamber]),
+      el("span", { class: "report-split" }, formatTimer(split.ms)),
+      el("span", { class: "report-par" }, `par ${formatTimer(split.parMs)}`),
+    );
+    splits.append(row);
+  }
+  section.append(splits);
+
+  // The counts the marks were derived from, so a grade is never a number
+  // somebody has to take on trust.
+  section.append(
+    el(
+      "p",
+      { class: "report-stats" },
+      [
+        `${String(report.calls)} calls`,
+        `${String(report.wasted)} wasted`,
+        `${String(report.assists)} intercom`,
+        `${String(report.deadlocks)} deadlocks`,
+        `${String(report.notes)} notes`,
+      ].join("  /  "),
+    ),
+  );
+
+  const actions = el("div", { class: "report-actions" });
+  section.append(actions);
+  return { section, actions };
+}
+
+/**
+ * A button that puts the shareable result on the clipboard and says so.
+ *
+ * The clipboard API rejects without a user gesture and in insecure contexts,
+ * and a button that silently does nothing is worse than no button, so the
+ * failure path says what happened rather than staying on "COPY RESULT".
+ */
+export function copyResultButton(report: ShiftReport, url: string): HTMLButtonElement {
+  const button = el("button", { type: "button", class: "spectate" }, "COPY RESULT");
+  button.addEventListener("click", () => {
+    void navigator.clipboard
+      .writeText(shareText(report, url))
+      .then(() => {
+        button.textContent = "COPIED";
+      })
+      .catch(() => {
+        button.textContent = "COPY FAILED";
+      });
+  });
+  return button;
 }

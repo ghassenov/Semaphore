@@ -296,6 +296,62 @@ export interface GhostTrack {
   readonly outcome: "escaped" | "abandoned" | "deadlocked" | "cut";
 }
 
+/**
+ * What the station's intercom costs, in milliseconds off the chamber clock.
+ *
+ * Enough that asking is a decision and not a reflex, and small enough that a
+ * pair three minutes into a six-minute room can afford two. Charged only when
+ * the intercom actually has something left to say: a shelf that is empty
+ * takes nothing, because a clock spent on silence is a punishment for asking.
+ *
+ * Here rather than on the worker because the tool description has to state
+ * the price, and a tool that lies about what it costs is worse than no tool.
+ */
+export const ASSIST_COST_MS = 45_000;
+
+/** How many assists one chamber's intercom holds before the shelf is empty. */
+export const ASSISTS_PER_CHAMBER = 3;
+
+/**
+ * One thing the intercom said, as both parties are told it.
+ *
+ * `SHARED` by construction: KEEPER asked for it, the room played it out loud,
+ * and both of them heard the same sentence. It rides beside the facts rather
+ * than inside them for the same reason a `Note` does - it is authored text
+ * with no chamber state in it, so there is no channel to strip.
+ *
+ * Delivering it to both is the whole design of the thing. An assist that
+ * reached only KEEPER would hand one party the other's half of the room.
+ */
+export interface Assist {
+  readonly text: string;
+  /** Which of the room's assists this was, from one. */
+  readonly index: number;
+  /** How many the shelf still holds after this one. */
+  readonly remaining: number;
+}
+
+/**
+ * How far into a room a party can see the pair to be.
+ *
+ * `total` is nullable, and that is a puzzle decision rather than a convenience:
+ * the Signal Room's sequence length is derived from the glyphs this session
+ * drew, so publishing it would hand both parties a fact the chamber exists to
+ * withhold. A progress with no total counts up and never says how far it has
+ * to go.
+ *
+ * `label` travels with the numbers because a count with no noun is not a
+ * reading: "3 of 4" says nothing, and the party being told may have no other
+ * word for what is being counted.
+ */
+export interface Progress {
+  readonly done: number;
+  /** How many there are in all, or null where saying so would give the room away. */
+  readonly total: number | null;
+  /** What is being counted, in words both parties already have. */
+  readonly label: string;
+}
+
 export interface PilotView {
   readonly phase: Phase;
   readonly chamber: ChamberId | null;
@@ -316,6 +372,28 @@ export interface PilotView {
   readonly retries: number;
   /** `projectForPilot` of the active chamber's facts. Empty outside a chamber. */
   readonly facts: Readonly<Record<string, unknown>>;
+  /**
+   * What this room is asking for, and null in every phase with no room in it.
+   *
+   * `SHARED` by construction and authored rather than derived (see
+   * `apps/worker/src/objective.ts`), so it sits beside the facts rather than
+   * inside them: there is no channel for a projection to strip.
+   */
+  readonly objective: string | null;
+  /**
+   * How far in the pair is, **as PILOT can perceive it**.
+   *
+   * Computed over the already-projected facts, so a reading PILOT has no way
+   * to see comes back null rather than as a number nobody could have known.
+   * KEEPER's own reading is computed separately from its own projection and
+   * is not this field.
+   */
+  readonly progress: Progress | null;
+  /**
+   * The last thing the intercom said in this room, or null if it has not
+   * spoken. Cleared on entering a chamber, so it is never the previous room's.
+   */
+  readonly assist: Assist | null;
   /** The shared notepad, oldest first. Empty until somebody writes. */
   readonly notes: readonly Note[];
   /**

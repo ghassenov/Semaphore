@@ -227,6 +227,8 @@ export interface StatusReport extends StateSummary {
   /** How many times this chamber has been reset after a deadlock. */
   readonly retries: number;
   readonly archiveEntriesRead: number;
+  /** What the room is asking for, with KEEPER's own reading of how far in the pair is. */
+  readonly objective: string | null;
 }
 
 /**
