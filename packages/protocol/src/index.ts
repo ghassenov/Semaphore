@@ -27,6 +27,8 @@ export { ERROR_CODES, GameError, errors } from "./errors.js";
 export type { ErrorCode } from "./errors.js";
 
 export {
+  ASSIST_COST_MS,
+  ASSISTS_PER_CHAMBER,
   CHAMBER_NAMES,
   CHAMBER_ORDER,
   CHAMBER_TIMER_MS,
@@ -52,6 +54,7 @@ export type {
   Note,
   NoteAuthor,
   Phase,
+  Assist,
   PilotView,
   Progress,
   SessionMode,

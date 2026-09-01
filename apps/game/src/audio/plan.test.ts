@@ -31,6 +31,7 @@ function viewOf(over: Partial<PilotView>): PilotView {
     facts: {},
     notes: [],
     ghost: null,
+    assist: null,
     objective: null,
     progress: null,
     seq: 0,

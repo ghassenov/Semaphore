@@ -24,7 +24,7 @@
  * asymmetry in how they are wired is exactly that fact showing through.
  */
 
-import { READ_MANUAL } from "@semaphore/protocol";
+import { ASSIST_COST_MS, ASSISTS_PER_CHAMBER, READ_MANUAL } from "@semaphore/protocol";
 import type { SessionClient } from "../net/sessionClient.js";
 import { readNoteTool } from "./tools.notepad.js";
 import { NO_INPUT, type GameTool } from "./tool.js";
@@ -37,7 +37,43 @@ export function persistentTools(client: SessionClient): readonly GameTool[] {
     describeChamberTool(client),
     inspectTool(client),
     readNoteTool(client),
+    assistTool(client),
   ];
+}
+
+/**
+ * `request_assistance`, the station intercom.
+ *
+ * In the session tier rather than a chamber's, because it is a faculty KEEPER
+ * carries between rooms rather than a mechanism inside one. The worker refuses
+ * it outside a chamber with text that says what to do instead.
+ *
+ * It is the one tool here that is not read-only: it takes time off the
+ * chamber clock, and `budgets.test.ts` pins that deliberately, so a tool that
+ * moved the station while claiming to be a read would fail the build.
+ *
+ * The description states the price. An agent deciding whether it can afford
+ * a hint is the whole of what makes this a mechanic rather than a button, and
+ * a tool that lies about its cost cannot be reasoned about at all.
+ */
+function assistTool(client: SessionClient): GameTool {
+  return {
+    name: "request_assistance",
+    title: "Ask the station for help",
+    description:
+      `Play one of the previous keeper's notes for this room over the intercom. PILOT hears ` +
+      `it too. It costs ${String(Math.round(ASSIST_COST_MS / 1000))} seconds off this ` +
+      `chamber's clock and there are only ${String(ASSISTS_PER_CHAMBER)} for each room, so ` +
+      `use it when you and PILOT are genuinely stuck rather than as a first move. It will ` +
+      `never tell you an answer: each one is more specific than the last about what to ask ` +
+      `PILOT for.`,
+    inputSchema: NO_INPUT,
+    annotations: { readOnlyHint: false },
+    async run(_input, signal) {
+      const { text } = await client.post("request_assistance", {}, signal);
+      return text;
+    },
+  };
 }
 
 /**

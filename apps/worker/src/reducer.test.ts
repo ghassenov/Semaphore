@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  ASSIST_COST_MS,
+  ASSISTS_PER_CHAMBER,
   DIFFICULTIES,
   GameError,
   MODE_CHAMBERS,
@@ -14,6 +16,7 @@ import * as signalRoom from "./chambers/signal_room.js";
 import * as blindPanel from "./chambers/blind_panel.js";
 import * as concordLock from "./chambers/concord_lock.js";
 import * as archive from "./archive/index.js";
+import { ASSISTS } from "./chambers/hints.js";
 import { newSession, reduce, type PersistedSession } from "./reducer.js";
 
 const NOW = 1_000_000;
@@ -1527,5 +1530,87 @@ describe("the shared notepad", () => {
       reduce(inArchive, { type: "write_note", text: "plan for the lock", author: "KEEPER" }, 4_000)
         .session.notes,
     ).toHaveLength(1);
+  });
+});
+
+describe("request_assistance", () => {
+  it("plays the room's first note and charges the clock for it", () => {
+    const session = begunSession();
+    const before = session.chamberDeadlineMs!;
+    const {
+      session: after,
+      events,
+      toolText,
+    } = reduce(session, { type: "request_assistance" }, NOW);
+
+    expect(after.assist?.index).toBe(1);
+    expect(after.assist?.remaining).toBe(ASSISTS_PER_CHAMBER - 1);
+    expect(after.assist?.text).toBe(ASSISTS.airlock[0]);
+    expect(toolText).toContain(ASSISTS.airlock[0]!);
+    expect(before - after.chamberDeadlineMs!).toBe(ASSIST_COST_MS);
+    // Both parties hear it, and the cue is one that already exists rather
+    // than a ninth for the synth table to learn.
+    expect(events.some((e) => e.type === "audible" && e.cue === "chime")).toBe(true);
+  });
+
+  it("escalates, then empties the shelf without charging for silence", () => {
+    let session = begunSession();
+    for (let i = 0; i < ASSISTS_PER_CHAMBER; i++) {
+      session = reduce(session, { type: "request_assistance" }, NOW).session;
+      expect(session.assist?.index).toBe(i + 1);
+    }
+    expect(session.assist?.remaining).toBe(0);
+
+    const spent = session.chamberDeadlineMs!;
+    const {
+      session: after,
+      events,
+      toolText,
+    } = reduce(session, { type: "request_assistance" }, NOW);
+    // Charging for an empty shelf would make the fourth press a punishment
+    // for having asked three times.
+    expect(after.chamberDeadlineMs).toBe(spent);
+    expect(events).toEqual([]);
+    expect(toolText).toContain("nothing follows");
+  });
+
+  it("refuses rather than ending the room when the clock cannot pay", () => {
+    // Reaching for help must never be the thing that deadlocks a pair. It
+    // takes nothing and says so, instead of half-charging or expiring.
+    const session = begunSession();
+    const late = session.chamberDeadlineMs! - ASSIST_COST_MS / 2;
+    const {
+      session: after,
+      events,
+      toolText,
+    } = reduce(session, { type: "request_assistance" }, late);
+    expect(after).toBe(session);
+    expect(events).toEqual([]);
+    expect(toolText).toContain("not enough left on this clock");
+  });
+
+  it("costs nothing in an untimed session, and still speaks", () => {
+    const { session: begun } = reduce(fresh(), { type: "begin_shift", designation: "K" }, NOW);
+    const { session } = reduce(begun, { type: "start", difficulty: "practice", mode: "full" }, NOW);
+    const { session: after } = reduce(session, { type: "request_assistance" }, NOW);
+    expect(after.chamberDeadlineMs).toBeNull();
+    expect(after.assist?.index).toBe(1);
+  });
+
+  it("hands each room its own shelf and never the last room's advice", () => {
+    // `chamberEntryFields` clears it. A new room opening with the previous
+    // room's note still on screen would be worse than no intercom at all.
+    const session = reduce(begunSession(), { type: "request_assistance" }, NOW).session;
+    expect(session.assist).not.toBeNull();
+    const correct = correctLever(session.airlock!.params);
+    const { session: next } = reduce(session, { type: "pull_lever", leverId: correct }, NOW);
+    expect(next.machine.chamber).toBe("signal_room");
+    expect(next.assist).toBeNull();
+  });
+
+  it("is refused outside a chamber, with words rather than a bare rejection", () => {
+    expect(() => reduce(fresh(), { type: "request_assistance" }, NOW)).toThrow(GameError);
+    const archived = archiveSession();
+    expect(() => reduce(archived, { type: "request_assistance" }, NOW)).toThrow(GameError);
   });
 });

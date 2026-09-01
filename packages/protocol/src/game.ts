@@ -297,6 +297,41 @@ export interface GhostTrack {
 }
 
 /**
+ * What the station's intercom costs, in milliseconds off the chamber clock.
+ *
+ * Enough that asking is a decision and not a reflex, and small enough that a
+ * pair three minutes into a six-minute room can afford two. Charged only when
+ * the intercom actually has something left to say: a shelf that is empty
+ * takes nothing, because a clock spent on silence is a punishment for asking.
+ *
+ * Here rather than on the worker because the tool description has to state
+ * the price, and a tool that lies about what it costs is worse than no tool.
+ */
+export const ASSIST_COST_MS = 45_000;
+
+/** How many assists one chamber's intercom holds before the shelf is empty. */
+export const ASSISTS_PER_CHAMBER = 3;
+
+/**
+ * One thing the intercom said, as both parties are told it.
+ *
+ * `SHARED` by construction: KEEPER asked for it, the room played it out loud,
+ * and both of them heard the same sentence. It rides beside the facts rather
+ * than inside them for the same reason a `Note` does - it is authored text
+ * with no chamber state in it, so there is no channel to strip.
+ *
+ * Delivering it to both is the whole design of the thing. An assist that
+ * reached only KEEPER would hand one party the other's half of the room.
+ */
+export interface Assist {
+  readonly text: string;
+  /** Which of the room's assists this was, from one. */
+  readonly index: number;
+  /** How many the shelf still holds after this one. */
+  readonly remaining: number;
+}
+
+/**
  * How far into a room a party can see the pair to be.
  *
  * `total` is nullable, and that is a puzzle decision rather than a convenience:
@@ -354,6 +389,11 @@ export interface PilotView {
    * is not this field.
    */
   readonly progress: Progress | null;
+  /**
+   * The last thing the intercom said in this room, or null if it has not
+   * spoken. Cleared on entering a chamber, so it is never the previous room's.
+   */
+  readonly assist: Assist | null;
   /** The shared notepad, oldest first. Empty until somebody writes. */
   readonly notes: readonly Note[];
   /**

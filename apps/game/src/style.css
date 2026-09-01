@@ -4334,3 +4334,69 @@ button[hidden] {
     font-size: 2rem;
   }
 }
+
+/**
+ * The station intercom, when KEEPER has asked it for one of the previous
+ * keeper's notes.
+ *
+ * It owns the space under the rail. Five things are absolutely positioned
+ * over this viewport and each one has to be told which edge it owns, so this
+ * is worth being explicit about: the top edge already belongs to the rail and
+ * to the ending strip, and this sits below the first and is **exclusive by
+ * phase** with the second. An assist exists only in `IN_CHAMBER` - the worker
+ * refuses it anywhere else - and the ending strip appears only at `ESCAPED`.
+ * They cannot be on screen together, and that is a property of the state
+ * machine rather than of a stacking order.
+ *
+ * The sides clear the two tab rails from `--rail-width`, which is
+ * authoritative for exactly this.
+ */
+.intercom {
+  position: absolute;
+  top: 5.4rem;
+  right: calc(var(--rail-width) + 1rem);
+  left: calc(var(--rail-width) + 1rem);
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 0.9rem 1.1rem;
+  border: var(--edge);
+  border-radius: var(--radius);
+  /* Brass, not a channel hue. The intercom is the station talking, and the
+     two channel colours are reserved for who can perceive what. */
+  border-left: 3px solid var(--brass);
+  background: color-mix(in srgb, var(--abyss) 92%, transparent);
+  box-shadow: var(--sheen);
+}
+
+.intercom[hidden] {
+  display: none;
+}
+
+.intercom-text {
+  margin: 0;
+  color: var(--mist);
+  max-width: 60ch;
+}
+
+.intercom-close {
+  align-self: start;
+  padding: 0.2rem 0.6rem;
+  border: var(--edge);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--pearl-dim);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  cursor: pointer;
+}
+
+.intercom-close:hover,
+.intercom-close:focus-visible {
+  color: var(--pearl);
+  border-color: var(--mist);
+}
