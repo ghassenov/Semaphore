@@ -28,6 +28,7 @@ import * as airlock from "@semaphore/worker/chambers/airlock";
 import * as signalRoom from "@semaphore/worker/chambers/signal_room";
 import * as blindPanel from "@semaphore/worker/chambers/blind_panel";
 import * as concordLock from "@semaphore/worker/chambers/concord_lock";
+import { INVERTED_PERCEPTION, PERCEIVED_BY, projectFacts } from "@semaphore/protocol";
 import { canonicalise, projectForKeeper, projectForPilot } from "@semaphore/worker/projection";
 import {
   consistentWorlds,
@@ -863,5 +864,92 @@ describe("Chamber III: the asymmetry is real, not a language puzzle", () => {
     const f = concordLock.facts(state, 6000);
     expect(projectForPilot(f).staminaRemainingMs).toBe(projectForKeeper(f).staminaRemainingMs);
     expect(projectForKeeper(f).staminaRemainingMs).toBe(15_000);
+  });
+});
+
+/**
+ * THE INVERTED PASS: does the proof still hold with the parties exchanged?
+ *
+ * The Blackout (`apps/worker/src/blackout.ts`) trades the two roles for one
+ * window, which is a claim about the architecture rather than about a beat: if
+ * the asymmetry is really a perception model and not a convention, the same
+ * proof should run against the model's inverse. This block is that pass, and it
+ * is the block that decided where the Blackout could live.
+ *
+ * **Three of the four chambers do not survive inversion, and that is the
+ * finding, not a failure.** Their secrets live on `VISUAL`, so handing `VISUAL`
+ * to KEEPER hands KEEPER the answer - the Airlock collapses from six worlds to
+ * one, the Concord Lock from twenty-six to one, and the Signal Room's state is
+ * not even spanned from the other side. The Blind Panel does not collapse,
+ * because its secret is on **neither** channel: inverting a two-party model
+ * exchanges two lists and cannot invent a channel neither list names, so
+ * `HIDDEN` stays hidden. It measures identically in both directions.
+ *
+ * So this block asserts two things, and the second is as important as the
+ * first: that the Blind Panel holds inverted, and that the other three are
+ * asserted to collapse. The second is a **guard on the placement**. If a later
+ * change made the Airlock survive inversion, that would mean a `VISUAL` fact
+ * had stopped being decisive there, and somebody should find out on purpose
+ * rather than by discovering the Blackout had quietly become portable.
+ */
+describe("the inverted pass: the proof with the two parties exchanged", () => {
+  it("holds for the Blind Panel, for both parties, on every seed", () => {
+    for (const seed of SEEDS) {
+      const state = blindPanelAt(seed);
+      for (const party of ["KEEPER", "PILOT"] as const) {
+        expect(isUnderdetermined(BLIND_PANEL, state, party, INVERTED_PERCEPTION)).toBe(true);
+      }
+    }
+  });
+
+  it("leaves the Blind Panel exactly as hard from the other side", () => {
+    // The claim this earns is stronger than "it still works". The room is not
+    // easier inverted and it is not harder: it is the same room, entered from
+    // the opposite door, and that is only true because the wiring is nobody's.
+    for (const seed of SEEDS) {
+      const state = blindPanelAt(seed);
+      const law = measure(BLIND_PANEL, state, "KEEPER", PERCEIVED_BY);
+      const inverted = measure(BLIND_PANEL, state, "KEEPER", INVERTED_PERCEPTION);
+      expect(inverted).toEqual(law);
+      expect(inverted.worlds).toBe(384);
+    }
+  });
+
+  it("keeps the wiring out of both projections under the inverted model too", () => {
+    // The one property that makes the beat safe to ship, asserted rather than
+    // reasoned about: an inversion cannot reach `HIDDEN`.
+    for (const seed of SEEDS) {
+      const f = blindPanel.facts(blindPanelAt(seed));
+      for (const party of ["KEEPER", "PILOT"] as const) {
+        const view = projectFacts(f, party, INVERTED_PERCEPTION);
+        expect("dialToGauge" in view).toBe(false);
+        expect("inversions" in view).toBe(false);
+        expect("crossLink" in view).toBe(false);
+      }
+    }
+  });
+
+  it("gives KEEPER the gauges and takes away the dials, and nothing more", () => {
+    const f = blindPanel.facts(blindPanelAt(SEEDS[0] as string));
+    const dark = projectFacts(f, "KEEPER", INVERTED_PERCEPTION);
+    expect("gaugeValues" in dark).toBe(true);
+    expect("targets" in dark).toBe(true);
+    expect("dialFeel" in dark).toBe(false);
+    // The shared half is shared in both models, or the pair could not talk.
+    expect("lastClicks" in dark).toBe(true);
+    expect("rotationCount" in dark).toBe(true);
+  });
+
+  it("collapses the other three chambers, which is why the Blackout is not portable", () => {
+    for (const seed of SEEDS) {
+      expect(
+        isUnderdetermined(AIRLOCK, reachableStates(seed)[0]!, "KEEPER", INVERTED_PERCEPTION),
+      ).toBe(false);
+      expect(isUnderdetermined(CONCORD_LOCK, freshLock(seed), "KEEPER", INVERTED_PERCEPTION)).toBe(
+        false,
+      );
+      const signal = signalRoom.initial(signalRoom.generate(new Rng(seed)));
+      expect(isUnderdetermined(SIGNAL_ROOM, signal, "KEEPER", INVERTED_PERCEPTION)).toBe(false);
+    }
   });
 });

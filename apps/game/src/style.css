@@ -3958,6 +3958,50 @@ button[hidden] {
   color: var(--lamp);
 }
 
+/* ------------------------------------------ PILOT's hands, in the dark -- */
+
+/*
+ * The Blackout's one control (`apps/worker/src/blackout.ts`).
+ *
+ * Cyan rather than amber, and that is information rather than decoration: for
+ * these three rotations the mechanism is KEEPER's half of the room being
+ * operated by PILOT's hands, and the panel says which half it belongs to. It is
+ * the only place in the console where the two hues meet on one control, because
+ * it is the only moment in the game where the two roles do.
+ */
+.dark-panel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+  margin: var(--gap) 0;
+  padding: var(--gap);
+  border: 1px solid color-mix(in srgb, var(--tide) 45%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--tide-deep) 22%, var(--abyss));
+}
+
+/* `display: grid` beats the user agent's `[hidden]`, every time. */
+.dark-panel[hidden] {
+  display: none;
+}
+
+.dark-panel .note {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--tide-bright);
+}
+
+.dark-panel button {
+  grid-column: 1 / -1;
+  border-color: color-mix(in srgb, var(--tide) 70%, transparent);
+  color: var(--tide-bright);
+}
+
+.dark-panel button:hover {
+  border-color: var(--tide);
+  background: color-mix(in srgb, var(--tide) 12%, transparent);
+}
+
 /* ------------------------------------------------------------- the story -- */
 
 /*

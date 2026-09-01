@@ -394,6 +394,20 @@ export interface PilotView {
    * spoken. Cleared on entering a chamber, so it is never the previous room's.
    */
   readonly assist: Assist | null;
+  /**
+   * Whether the station's lamps are out and the two roles have traded places.
+   *
+   * `SHARED` by construction, like the phase and the clock: both parties are
+   * told that the lamps failed, because a beat one party discovered by finding
+   * their tools missing would read as a bug rather than as the station. What is
+   * *not* shared is what either of them can perceive while it is true - that is
+   * the perception model, and it lives on the server.
+   *
+   * The client needs it for three separate things and would otherwise infer it
+   * three ways: the room goes dark, PILOT's dial control appears, and the tool
+   * director drops `rotate_dial` from KEEPER's registry.
+   */
+  readonly blackout: boolean;
   /** The shared notepad, oldest first. Empty until somebody writes. */
   readonly notes: readonly Note[];
   /**

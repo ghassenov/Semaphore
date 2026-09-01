@@ -116,7 +116,7 @@ export interface DirectorHooks {
 type Tier =
   | { readonly kind: "entry" }
   | { readonly kind: "session" }
-  | { readonly kind: "chamber"; readonly chamber: ChamberId }
+  | { readonly kind: "chamber"; readonly chamber: ChamberId; readonly dark: boolean }
   | { readonly kind: "archive" }
   | { readonly kind: "finale" }
   | { readonly kind: "ended" }
@@ -131,7 +131,9 @@ function tierFor(state: StateSummary): Tier {
     case "DEADLOCK":
       return { kind: "session" };
     case "IN_CHAMBER":
-      return state.chamber ? { kind: "chamber", chamber: state.chamber } : { kind: "session" };
+      return state.chamber
+        ? { kind: "chamber", chamber: state.chamber, dark: state.blackout ?? false }
+        : { kind: "session" };
     case "ARCHIVE":
       return { kind: "archive" };
     case "FINALE":
@@ -148,11 +150,21 @@ function tierFor(state: StateSummary): Tier {
   }
 }
 
-/** Two tiers are the same tier only if they name the same room. */
+/**
+ * Two tiers are the same tier only if they name the same room, **with the
+ * lamps in the same state**.
+ *
+ * The second half is what makes the Blackout a `toolchange` rather than a
+ * refusal. Without it the tier is unchanged when the lamps fail, nothing is
+ * torn down, and KEEPER keeps a `rotate_dial` the server has already started
+ * refusing - the registry disagreeing with the server, which is the one thing
+ * the director exists to prevent (D-021).
+ */
 function sameTier(a: Tier | null, b: Tier): boolean {
   if (!a) return false;
   if (a.kind !== b.kind) return false;
-  return a.kind !== "chamber" || b.kind !== "chamber" || a.chamber === b.chamber;
+  if (a.kind !== "chamber" || b.kind !== "chamber") return true;
+  return a.chamber === b.chamber && a.dark === b.dark;
 }
 
 export class ToolDirector {
@@ -266,7 +278,7 @@ export class ToolDirector {
         await this.#startSession();
         return;
       case "chamber":
-        await this.#enterChamber(chamberTools(this.client, next.chamber));
+        await this.#enterChamber(chamberTools(this.client, next.chamber, next.dark));
         this.#tier = next;
         return;
       case "archive":
