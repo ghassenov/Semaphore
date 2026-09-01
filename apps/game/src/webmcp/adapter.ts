@@ -80,12 +80,21 @@ export interface RegisteredTool {
   execute(input: Record<string, unknown>, context?: ExecuteContext): Promise<ToolResult>;
 }
 
-/** The slice of the registry this app uses. Deliberately not the whole surface. */
-interface ModelContext extends EventTarget {
+/**
+ * The slice of the registry this app uses. Deliberately not the whole surface.
+ *
+ * The listener pair is **optional**, and that is not defensive typing: the
+ * deployed site met a host exposing `registerTool` and `getTools` on a plain
+ * object that is not an `EventTarget`, and assuming otherwise threw during
+ * startup and cost the page its whole station (D-085).
+ */
+interface ModelContext {
   registerTool(tool: RegisteredTool, options?: { signal?: AbortSignal }): Promise<unknown>;
   getTools(options?: {
     fromOrigins?: readonly string[];
   }): Promise<readonly { readonly name: string }[]>;
+  addEventListener?: EventTarget["addEventListener"];
+  removeEventListener?: EventTarget["removeEventListener"];
 }
 
 /** Hosts that expose the registry in either of the two documented places. */
@@ -179,10 +188,13 @@ export async function listToolNames(
  */
 export function onToolChange(listener: () => void): () => void {
   const mc = getModelContext();
-  if (!mc) return () => {};
+  // A host can implement the registry without being an EventTarget, and one
+  // in production does. It still plays; it just cannot announce a change, so
+  // the callers that need a live manifest refresh on state instead.
+  if (typeof mc?.addEventListener !== "function") return () => {};
   mc.addEventListener("toolchange", listener);
   return () => {
-    mc.removeEventListener("toolchange", listener);
+    mc.removeEventListener?.("toolchange", listener);
   };
 }
 
