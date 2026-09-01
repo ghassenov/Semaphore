@@ -45,6 +45,9 @@ const MUTATING_TOOLS = [
   "align_bolt",
   "speak_passphrase",
   "open_the_door",
+  // Not a read: it takes time off the chamber's clock, and an agent planning
+  // around a `readOnlyHint` on it would be planning around a lie.
+  "request_assistance",
 ];
 
 describe("character budgets", () => {

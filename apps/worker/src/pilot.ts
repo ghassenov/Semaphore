@@ -128,6 +128,11 @@ export function pilotView(session: PersistedSession, nowMs: number): PilotView {
     // one of the two parties wrote it for the other to read - so there is no
     // channel for `projectForPilot` to strip and nothing it could hide.
     notes: session.notes,
+    // The intercom, beside the notepad and for the same reason: authored
+    // `SHARED` text that KEEPER asked for and both parties were told. An
+    // assist that reached only the agent would hand one party the other's
+    // half of the room.
+    assist: session.assist,
     ghost: ghostFor(session.machine.phase),
     // The event counter, so the client can tell one rotation from the next
     // when both produce the same facts. See `PilotView.seq`.

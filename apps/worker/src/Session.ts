@@ -109,6 +109,8 @@ function labelFor(action: Action): string {
       return "opening the outer door";
     case "retry_chamber":
       return "resetting the chamber";
+    case "request_assistance":
+      return "asking the station for help";
     case "write_note":
       return "writing to the notepad";
   }
@@ -184,6 +186,9 @@ export class Session {
     // local development takes down wrangler's proxy and with it the whole dev
     // session. Reading here means no route can forget.
     const body = await readBody(request);
+    if (pathname.endsWith("/request_assistance")) {
+      return this.#act({ type: "request_assistance" });
+    }
     if (pathname.endsWith("/begin_shift")) {
       return this.#act({ type: "begin_shift", designation: String(body.designation ?? "") });
     }

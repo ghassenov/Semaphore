@@ -585,6 +585,34 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
     }
   }
 
+  /*
+   * The station intercom, when KEEPER has asked it for something.
+   *
+   * Under the rail rather than on one of the four edges the rail, the foot,
+   * the caption band and the ending strip already own. It is safe there
+   * because it is **exclusive by phase** with the only other thing that owns
+   * the top: an assist exists only in `IN_CHAMBER` (the worker refuses it
+   * anywhere else) and the ending strip appears only at `ESCAPED`. The two
+   * can never be on screen together, and that is a property of the machine
+   * rather than of a z-index.
+   *
+   * It is `SHARED` text and may be a DOM node for the same reason the notepad
+   * may: it is authored copy the worker sent to both parties, and KEEPER read
+   * the identical sentence out of its own tool response.
+   */
+  const intercom = el("aside", { class: "intercom", "aria-live": "polite" });
+  intercom.hidden = true;
+  const intercomText = el("p", { class: "intercom-text" });
+  const intercomClose = el(
+    "button",
+    { type: "button", class: "intercom-close", "aria-label": "Dismiss the intercom" },
+    "DISMISS",
+  );
+  intercomClose.addEventListener("click", () => {
+    intercom.hidden = true;
+  });
+  intercom.append(el("p", { class: "eyebrow" }, "STATION INTERCOM"), intercomText, intercomClose);
+
   const audible = el("p", { class: "audible", "aria-live": "polite" });
 
   /**
@@ -858,7 +886,7 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   // is hidden and zero-sized when it exists at all.
   const archiveHost = el("div", { class: "archive-host", "aria-hidden": "true" });
 
-  console_.append(rail, deck, foot, archiveHost);
+  console_.append(rail, intercom, deck, foot, archiveHost);
   /*
    * The landing screen goes *first*, and that is not a paint decision.
    *
@@ -911,6 +939,15 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
    */
   let tour: TourHandle | null = null;
   let offered = false;
+  /**
+   * Which of this room's assists is currently on screen, or 0 for none.
+   *
+   * The index rather than a boolean, because "has this one already been
+   * shown" and "is the panel open" are different questions: a dismissed
+   * assist must stay dismissed for the rest of the frames that still carry
+   * it, and the next one must still open the panel.
+   */
+  let shownAssist = 0;
   /*
    * The two sequences that bracket a shift, each played once.
    *
@@ -996,6 +1033,22 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
         total > 0 && remaining !== null && remaining / total < TIMER_URGENT_FRACTION,
       );
       resets.textContent = view && view.retries > 0 ? `RESETS ${String(view.retries)}` : "";
+
+      // The intercom, when a new note has been played.
+      //
+      // Opened on the index changing rather than on the field being set, so
+      // dismissing one does not spring back open on the next frame, and so
+      // walking into a new room (which clears the field) closes it rather
+      // than leaving the last room's advice on screen.
+      const spoken = view?.assist ?? null;
+      if (spoken !== null && spoken.index !== shownAssist) {
+        shownAssist = spoken.index;
+        intercomText.textContent = spoken.text;
+        intercom.hidden = false;
+      } else if (spoken === null && shownAssist !== 0) {
+        shownAssist = 0;
+        intercom.hidden = true;
+      }
 
       // The objective, and PILOT's own reading of how far in the pair is.
       //

@@ -62,6 +62,7 @@ function viewOf(over: Partial<PilotView>): PilotView {
     mode: "full",
     designation: "TESTER",
     remainingMs: 60_000,
+    assist: null,
     objective: null,
     progress: null,
     seq: 0,
