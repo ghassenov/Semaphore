@@ -2769,3 +2769,157 @@ and returning real content, the Archive beat, the Concord Lock, the finale,
 the registry draining to empty on both origins, and the ending's replay link
 pointing at `https://semaphore.ahmedxsaad.me/replay?id=...` - the real
 domain, not a fallback. Deployment is complete and nothing remains open on it.
+
+---
+
+### D-076 The ending stopped rather than ended, so the shift is graded now
+
+**2026-09-01.** `ESCAPED` drew one sentence and a replay link. No time, no
+score, no breakdown, nothing to compare or take away. A session that stops is
+not a session that ends, and doc 08 phase 3.2 had already asked for "and only
+then offer the stats" - the stats were the half nobody had built.
+
+**Options.** (a) Leave it and spend the last days playing. (b) Add a report on
+the ending. (c) Add a report and a public leaderboard off the D1 corpus.
+
+**Chosen: (b).** Every number needed already existed inside `projectReplay`,
+which the ending's own link already points at, so the whole feature is a pure
+function and a card. The leaderboard was dropped for the deadline rather than
+on merit: nothing is public before the freeze and an empty board is worse than
+none.
+
+**Three marks, not one score.** The game is two people holding different
+halves of a room, so a single number would silently be a score for whichever
+half the formula happened to measure. **Pace** is the pair's, against the par
+clocks the rooms were designed around. **Precision** is KEEPER's, from
+`wasted`, which is the one logged field that separates an agent that reasoned
+from one that pressed keys until something worked. **Resolve** is the pair's
+again: deadlocks taken and intercom calls spent.
+
+**Notes written are reported and deliberately not graded.** It was the obvious
+third axis and it is the wrong one: two people in one room talk out loud and
+write nothing, and marking them down for the most natural way to play the
+game would be the metric punishing the player for the metric's convenience.
+`report.test.ts` moves each of the three axes on its own and asserts only that
+mark moves, because this project has already built and deleted two metrics
+that did not separate what they claimed to.
+
+**The card is additive and never destructive.** The D1 write swallows its own
+failure on purpose (doc 07 section 3.1), so the row can legitimately never
+arrive. Two retries, and then the ending is exactly what it was before this
+existed.
+
+`projectReplay` also carries the deadlocks now. Without them a run that
+stalled twice graded identically to a clean one.
+
+---
+
+### D-077 The room never said what it was for
+
+**2026-09-01.** The console showed a room name, a clock and a set of facts,
+and never once said what any of it was *for*. KEEPER at least had
+`describe_chamber` and the manual. PILOT had nothing equivalent, so the first
+minute in a new room went on working out what the game was asking rather than
+on playing it.
+
+**`objective.ts` holds one authored line per chamber.** Authored rather than
+derived, for the reason `Note` gives for itself: a constant with nothing
+interpolated into it has no channel for a projection to strip, and the
+cheapest way for a goal line to start leaking is for somebody to interpolate a
+count into it. None names a glyph, and the test says so.
+
+**`progressIn` reads keys off whatever projection it is handed** and answers
+null for a key that is not there. PILOT's frame gets "needles on mark" and
+KEEPER's `get_status` gets "rotations made", from one function, and neither
+can reach the other's half because neither projection contains it. That is the
+safety argument in one sentence instead of two lists that have to be audited
+against each other.
+
+**`total` is nullable, and that is a puzzle decision.** The Signal Room's
+sequence length is a function of which glyphs this session drew, so publishing
+"3 of 4 keys" would hand both parties the answer in a different shape. It
+counts up and never says how far it has to go.
+
+**Placed in the rail on a row of its own.** Not beside the room name, which
+already ellipsises below 800px. Not as a sixth band over the viewport either:
+five things are absolutely positioned there, each has to be told which edge it
+owns, and that arrangement has produced four separate defects. Hidden rather
+than blank outside a chamber, so the rail is one row again at `ESCAPED`, which
+is the height the ending strip's top padding is measured against.
+
+---
+
+### D-078 A stalled pair had one exit, and it was the clock running out
+
+**2026-09-01.** Sitting in silence watching a timer drain is not difficulty.
+It is dead air, and it is the one failure state in this game that teaches
+nobody anything.
+
+**Options.** (a) Nothing: stalling is the cost of an asymmetric game. (b) A
+free hint button. (c) A costed, capped, escalating intercom that both parties
+hear.
+
+**Chosen: (c).** (a) leaves the most likely bad session unimproved. (b) is the
+one that would actually damage the game, and not because it is easy: a hint
+delivered to KEEPER alone hands one party the other's half of the room, which
+is the single class of change this project never accepts.
+
+**Three decisions are what make it a mechanic rather than a cheat button.**
+Both parties hear it, so the split survives. An empty shelf is free, because
+charging for silence makes the fourth press a punishment for having asked
+three times. And it refuses rather than ending the room: asking with less than
+the price left on the clock takes nothing and says so, instead of
+half-charging or deadlocking the pair the instant they reach for help.
+
+**The lines say nothing the manual has not already established.** That is the
+constraint that was easy to lose. The Blind Panel's page mentions inverted
+linkages and says nothing at all about the cross-link, so neither does its
+third line. An assist is the previous keeper being helpful, not the designer
+breaking cover.
+
+`chime` rather than a ninth cue: the synth table stays shut, and that sound
+already means "the station accepted that".
+
+**The ablation and the benchmark were re-run and came back byte-identical**,
+which is the check that this left the run's random stream alone.
+
+---
+
+### D-079 Five defects, and the tests were green for all of them
+
+**2026-09-01.** One browser tour and two frames read at 390px, against a
+suite that had just gone green at 788.
+
+**The intercom never reached the session log.** It wrote its audible event and
+no `tool_call`, so the report read "0 intercom" on a run that had just used
+it, the replay drew nothing on the cyan track, and the benchmark corpus would
+have recorded a pair that asked three times a room as identical to one that
+never asked. Found by the tour asserting a number, not by a unit test
+asserting a shape.
+
+**The report card was auto-placed at the bottom of the replay page.**
+`.replay` is a named-area grid, and a child with no `grid-area` lands in an
+implicit row after every named one - two thousand pixels down, below the
+transcript. **And `.replay-head` had two rules six hundred lines apart**, the
+later `display: grid` winning the tie on source order, so the flex row the
+layout asked for never existed at all. That is the third time this file has
+done exactly that, and the second time in this session.
+
+**The share row and the report wanted the same corner**, printing a URL box
+through "SHIFT REPORT".
+
+**The objective's live half was the half a phone cut.** One nowrap line with
+the reading at the end ellipsises "BOLTS ALIGNED 0/3" and keeps the sentence,
+which is precisely the fault already on record against the room name one row
+above it. And the intercom panel was edge-to-edge at 390px, because
+`--rail-width` is `auto` below 46rem and `calc(auto + 1rem)` is not a length,
+so the whole declaration was being dropped.
+
+**Local D1 was two migrations behind and nothing had ever noticed**, because
+the only writer swallows its own failure on purpose. The report card is the
+first thing that ever reads that row back on the ending screen, so it is the
+first thing that could surface it. Worth stating as a general point: a write
+whose failure is deliberately silent stays broken until something reads it.
+
+Tour is at 34 checks. Three of them are new and one exists only because the
+first run of it reported "0 intercom".
