@@ -96,6 +96,14 @@ export function describeRoom(view: PilotView | null): readonly string[] {
   if (plan === null) return [];
 
   const lines: string[] = [roomTitle(view)];
+  // What the room is asking for, first.
+  //
+  // Somebody reading the room through this mirror has exactly the problem the
+  // objective was added for and has it worse: no frame, no captions, and a
+  // list of fixtures that says what is there and never what it is for. It is
+  // authored `SHARED` copy that names no glyph (`apps/worker/src/objective.ts`
+  // and its test), so it passes this module's own rule unchanged.
+  if (view.objective !== null) lines.push(view.objective);
   lines.push(
     `A room ${String(Math.round(plan.size.width))} metres across and ` +
       `${String(Math.round(plan.size.depth))} deep. ` +

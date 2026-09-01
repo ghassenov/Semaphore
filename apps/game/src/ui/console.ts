@@ -396,7 +396,29 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
     { class: "clock", title: "Time left in this chamber. UNTIMED in practice mode." },
     "--:--",
   );
-  rail.append(mark, room, resets, gauge, clock);
+  /*
+   * What the room is asking for, on its own line under the readouts.
+   *
+   * Its own line rather than beside the room name, which already ellipsises
+   * below about 800px: two competitors for one row is how the marker on
+   * "CONCORD LOCK - REVISITED" got cut. And inside the rail rather than as a
+   * sixth band over the viewport, because five things are already absolutely
+   * positioned there and each has to be told which edge it owns - that
+   * arrangement has produced four separate defects and none of them was worth
+   * a text line.
+   *
+   * `SHARED` and safe to be a text node for the reason the header's audit
+   * gives: it is authored copy the worker sends to both parties, and KEEPER
+   * reads the same sentence off `get_status`. The reading beside it is
+   * PILOT's own, computed on the server from the projection this frame was
+   * drawn from, so it can only ever count something PILOT can see.
+   */
+  const objective = el("p", { class: "rail-objective" });
+  objective.hidden = true;
+
+  const railTop = el("div", { class: "rail-top" });
+  railTop.append(mark, room, resets, gauge, clock);
+  rail.append(railTop, objective);
 
   // ---- The deck: the room, with everything else folded into its two edges. -
   const deck = el("main", { class: "deck" });
@@ -974,6 +996,23 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
         total > 0 && remaining !== null && remaining / total < TIMER_URGENT_FRACTION,
       );
       resets.textContent = view && view.retries > 0 ? `RESETS ${String(view.retries)}` : "";
+
+      // The objective, and PILOT's own reading of how far in the pair is.
+      //
+      // Blank outside a chamber, where the caption band is already saying
+      // what is happening, and hidden rather than empty so the rail is one
+      // row again at ESCAPED - which is the height the ending strip's top
+      // padding is measured against.
+      const goal = view?.objective ?? null;
+      objective.hidden = goal === null;
+      if (goal !== null) {
+        const reading = view?.progress ?? null;
+        objective.textContent = reading
+          ? `${goal}  ${reading.label.toUpperCase()} ${String(reading.done)}${
+              reading.total === null ? "" : `/${String(reading.total)}`
+            }`
+          : goal;
+      }
 
       // The landing screen follows the phase, and takes attract mode with it.
       // It is the only thing on the page that decides whether it is on the

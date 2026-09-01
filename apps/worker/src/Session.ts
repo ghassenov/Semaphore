@@ -30,7 +30,14 @@ import {
   type PersistedSession,
 } from "./reducer.js";
 import { ActionSemaphore } from "./semaphore.js";
-import { describeChamber, inspectObject, lockState, readCiphertext, readNotes } from "./views.js";
+import {
+  describeChamber,
+  inspectObject,
+  keeperObjective,
+  lockState,
+  readCiphertext,
+  readNotes,
+} from "./views.js";
 import { inTheRoom, pilotView, stateSummary } from "./pilot.js";
 import { MANUAL_SECTIONS, isManualSection, manualSection } from "./manual.js";
 import { percentile, staminaWindowMs } from "./latency.js";
@@ -471,6 +478,10 @@ export class Session {
       staminaWindowMs: staminaWindowMs(session.observedLatencyMs),
       retries: session.machine.retries,
       archiveEntriesRead: session.archiveEntriesRead.length,
+      // What the room is asking for. Null outside a chamber, which is the
+      // honest answer in the lobby, the Archive and the finale - all three of
+      // which `describe_chamber` already answers with a next action.
+      objective: keeperObjective(session, Date.now()),
     });
   }
 
