@@ -278,6 +278,30 @@ describe("instrumentation", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("fires onRegistryMoved once on a genuine tier change and not on a repeat", async () => {
+    // The substitute signal for a host that never fires `toolchange`
+    // (D-085). It has to fire after `#register`/abort has resolved for the
+    // tier that changed, and only then, or the fix it replaced regresses:
+    // reading the registry before the transition finished, and refreshing on
+    // every response instead of only when the registry actually moved
+    // (D-086).
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(body("IN_CHAMBER", "airlock"));
+    const moved: number[] = [];
+    const client = new SessionClient("s_test");
+    const d = new ToolDirector(client, { onRegistryMoved: () => moved.push(moved.length) });
+    await d.mountEntry();
+    expect(moved).toEqual([]);
+
+    await registry.call("begin_shift", { designation: "KEEPER" });
+    // Let the queued tier change settle.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(moved).toEqual([0]);
+
+    // The same chamber reported again is not a tier change.
+    await d.applyState(state("IN_CHAMBER", "airlock"));
+    expect(moved).toEqual([0]);
+  });
+
   it("reports every call to the page, with a duration", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(body("LOBBY"));
     const calls: string[] = [];

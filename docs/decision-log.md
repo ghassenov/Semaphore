@@ -3150,3 +3150,68 @@ the registry, and it arrives on a channel every host has.
 
 Test in `adapter.test.ts` alongside the no-registry one: both methods present,
 no listener pair, still supported, still does not throw.
+
+---
+
+### D-086 D-085's substitute signal fired at the wrong moment, and on the wrong schedule
+
+**2026-09-01.** A review of D-085 before it reached the live site, not a second
+production report. Two problems in the fix, both in `setState`'s new call to
+`refreshTools`.
+
+**Wrong moment.** `station.setState` is wired to the director's `onState`
+hook, and `#applyState` calls that hook as its very first line, before it
+computes the tier the state implies and before any of that tier's
+`registerTool` or abort calls have run. `refreshTools` read the registry
+*before* the transition it was meant to report, not after. On an `EventTarget`
+host this was invisible, because the real `toolchange` fired later and
+corrected it. On the host D-085 exists for, nothing corrects it: the manifest
+and KEEPER's body showed the *previous* room's tools for as long as the
+player stood in a new one with nothing yet called in it, and on the session's
+last state - `ESCAPED`, `endSession()` - nothing ever fires again, so the
+registry never visibly drained on exactly the beat doc 08 says may never be
+cut.
+
+**Wrong schedule.** `onState` fires on every response, not on every tier
+change - `#applyState`'s own docstring says as much. `setState` calling
+`refreshTools` unconditionally meant a fully compliant `EventTarget` host,
+the common case, now paid for a `getTools()` round trip and a full render on
+every tool call, duplicating what `toolchange` already did correctly whenever
+the registry actually moved.
+
+Both trace to the same cause: the fix was placed in `setState`, which fires on
+the wrong event for what it needed to know (a tier change, not a state push),
+because that event is easy to reach from a renderer file and the right one is
+not.
+
+Moved the decision to where it belongs. `ToolDirector` already computes
+`sameTier` to decide whether to register or tear down anything; a new
+`onRegistryMoved` hook fires once, from `#applyState`, after the switch that
+does that work has resolved - so it fires only on a genuine tier change, and
+only once that change is actually reflected in the registry. `station.ts`'s
+`setState` goes back to only setting state. `main.ts` wires the hook to
+`station.refreshTools()`, alongside the one direct call site
+(`director.mountEntry()` at boot, which does not run through `applyState` and
+needs its own explicit refresh for the same reason).
+
+Two more found alongside it, both narrow. `refreshTools` had no protection
+against two calls racing: with the registry now read from three places
+(`onToolChange`'s listener, `onRegistryMoved`, the archive frame's own
+callback) an earlier call's promise could resolve after a later one's and
+overwrite fresher data with stale. A sequence number fixes it: only the most
+recently *started* call's result is ever applied. And `onToolChange` required
+only `addEventListener`, so a host offering that much but not
+`removeEventListener` would subscribe successfully and hand back a teardown
+with nothing to call - both methods are required now, and both the
+subscribe and the unsubscribe are wrapped so neither can throw, matching this
+module's own stated contract that no function in it does.
+
+`listToolNames`'s retry path had the same gap one level down: the fallback
+`await mc.getTools()` could itself reject, and nothing caught that second
+failure. Wrapped.
+
+Three new tests: `onRegistryMoved` fires once on a real tier change and not on
+a repeat (`director.test.ts`), and in `adapter.test.ts`, a host with
+`addEventListener` and no `removeEventListener` never subscribes, and a host
+whose `addEventListener` throws on an event it does not recognise still does
+not throw.

@@ -202,9 +202,19 @@ export async function startStation(
    * Reading `getTools()` inside the listener is the point: a body drawn from a
    * parallel record of intended registrations would grow a limb for a tool that
    * failed to register, which is exactly the bug the manifest exists to expose.
+   *
+   * Called from more than one place now (`onToolChange`'s listener, the
+   * director's tier-change hook, the archive frame's own registration
+   * callback), so two calls can be in flight at once. A sequence number is
+   * the guard: only the result of the most recently *started* call is ever
+   * applied, so an earlier call's promise resolving late can never overwrite
+   * a fresher read with a stale one.
    */
+  let refreshSeq = 0;
   const refreshTools = (): void => {
+    const seq = ++refreshSeq;
     void listToolNames(toolOrigins).then((names) => {
+      if (seq !== refreshSeq) return;
       model.tools = names;
       onChange(model);
     });
@@ -225,13 +235,16 @@ export async function startStation(
 
   return {
     setState(state: StateSummary) {
+      // Only the state is set here. Refreshing the registry belongs to
+      // `onRegistryMoved` (director.ts), which fires after a tier change has
+      // actually finished registering and tearing down, not on every one of
+      // the several responses a single room produces (D-086). Doing it here
+      // instead read the registry before that work had run, so a host with
+      // no `toolchange` showed the previous room's tools on arrival, and it
+      // never fires again for a host that has just been told the session is
+      // over, so the ending never drained on screen.
       model.state = state;
       onChange(model);
-      // A tier change is the other thing that moves the registry, and on a
-      // host that is not an EventTarget it is the only signal there is: no
-      // `toolchange` ever arrives, so without this the manifest plate and
-      // KEEPER's body would freeze on the tools of the first room (D-085).
-      refreshTools();
     },
     setView(view: PilotView) {
       // A new room resets the derived clock, so a long chamber following a

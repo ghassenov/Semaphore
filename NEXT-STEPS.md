@@ -11,10 +11,10 @@ It answers three questions and only three: where the repo is right now, what to 
 | | |
 |---|---|
 | **Last updated** | 2026-09-01, Ahmed Saad |
-| **Branch** | `fix/modelcontext-not-eventtarget`, off `main` at `95cc846`. One commit, **not deployed yet** - the live site still carries the crash. |
-| **Pipeline** | Green: **859 tests**, typecheck, lint, format, both builds plus the bundle budget and the palette check. Entry bundle 45.8KB of 400KB. |
+| **Branch** | `fix/webmcp-review-findings`, off `fix/modelcontext-not-eventtarget` at `d2e98d4`. **Not deployed yet** - the live site still carries the crash. |
+| **Pipeline** | Green: **863 tests**, typecheck, lint, format, both builds plus the bundle budget and the palette check. Entry bundle 45.9KB of 400KB. |
 | **Deployed** | **Live on Cloudflare and fully verified (D-074, D-075).** Game: `https://semaphore.ahmedxsaad.me`. Archive: `https://semaphore-archive.ahmedxsaad.me`. Worker: `https://semaphore.ahmedxsaad.workers.dev`. Both custom domains active; the DNS records landed and the full cross-origin delegation proof passes 27/27 against the real domains, ending replay link included. Production D1 migrated to `0002_deep_linked.sql`. Nothing left open on this. |
-| **Live site fix** | **The deployed page threw on load and drew no station** (D-085): a host whose `modelContext` has `registerTool` and `getTools` but is not an `EventTarget` passed feature detection and then died in `onToolChange`. The listener pair is optional now, and `setState` refreshes the manifest so such a host still sees KEEPER's body change. **Redeploy `apps/game` to clear it.** |
+| **Live site fix** | **The deployed page threw on load and drew no station** (D-085): a host whose `modelContext` has `registerTool` and `getTools` but is not an `EventTarget` passed feature detection and then died in `onToolChange`. The listener pair is optional now. **A review before deploy found D-085's own substitute signal fired at the wrong moment and on the wrong schedule** (D-086): it read the registry before the tier transition it was meant to report, and it fired on every tool response rather than only when the registry actually moved. Moved to a new `onRegistryMoved` hook the tool director fires once, after a genuine tier change has actually resolved; `refreshTools` also gained a sequence guard against two calls racing, and `onToolChange` now requires both listener methods and never throws from either. **Redeploy `apps/game` to clear both.** |
 | **The kit** | **The proof is a package** (D-080). `packages/asymmetry` is the channel model, the projector and the possible-worlds proof with nothing in them that knows what a lever is: zero dependencies, a CLI that prints the bits table and sets an exit code, and one worked example that is a **support console rather than a game** - an agent that routes on a city and must not be able to reconstruct the address. `LEAK=1` adds the convenience field a refactor always adds and the audit turns red. `packages/protocol` and `apps/worker` are the game's *binding* of it; one implementation still, one directory further down. This is doc 01 section 4's tier-1 Impact claim stopping being a sentence. |
 | **The Blackout** | **The roles invert for one window, and the proof holds inverted** (D-081). In the Blind Panel the lamps fail: KEEPER can see the gauges and cannot find the dials, PILOT is at the panel in the dark. `rotate_dial` leaves KEEPER's registry for the duration - **a `toolchange` firing inside a room rather than at its boundary**, which nothing else in the game does - and PILOT gets the panel through a plain route, never a tool. **Where it lives was measured**: the proof runs a third pass under the inverted map and three of the four chambers collapse (their secrets are `VISUAL`); the Blind Panel measures 384/384 in both directions because its wiring is `HIDDEN`. The inverted pass asserts the other three collapse too, so nobody later discovers the beat had quietly become portable. Off in the benchmark, for doc 07 section 2.3's reason. |
 | **Sound, again** | **The station is a place you can hear** (D-082). Panned voices from the room's own mechanism, KEEPER's thump from the east wall where the body is drawn, a listener that follows PILOT every frame, an impulse response built per room, a low-pass on KEEPER's thump that opens as you walk toward the alcove, authored tool notes in A natural minor held apart by a test, and **a theme that resolves on the CONCORD reading rather than on the clock**. Still no asset file of any kind. |
@@ -78,6 +78,31 @@ It answers three questions and only three: where the repo is right now, what to 
 | `bench/` | Ablation and Cooperative Benchmark, both **re-run this session and byte-identical**, which is the determinism check passing. `benchmark.md` was a version behind on disk and is regenerated. Both entrypoints now resolve their paths from `import.meta.dirname`, so `pnpm ablation` and `pnpm benchmark` work from any directory - they used to write into `bench/bench/results` or crash. |
 
 ---
+
+## What landed on 2026-09-01 (fourth session)
+
+**A review of D-085 before it deployed, on a fresh branch off
+`fix/modelcontext-not-eventtarget`** (D-086). The fix itself was sound - the
+listener pair really does need to be optional - but its substitute signal for
+a host with no `toolchange` was wired to the wrong event: `station.setState`,
+which fires on every tool response, before that response's tier transition
+had registered or torn down anything. On the host D-085 exists for, that meant
+the manifest and KEEPER's body showed the *previous* room's tools on arrival
+in a new one, and never drained on the session's last state at all.
+
+**Moved to `ToolDirector`.** A new `onRegistryMoved` hook fires once, from
+`#applyState`, after a genuine tier change has actually resolved - reusing the
+`sameTier` check the director already had rather than refreshing on every
+response. `station.ts`'s `setState` is state-only again. Two narrower fixes
+alongside it: `refreshTools` now carries a sequence number so two calls racing
+can no longer let a stale read overwrite a fresh one, and `onToolChange`
+requires both `addEventListener` and `removeEventListener` (a host with only
+the first would otherwise leak the listener) and never throws from either.
+`listToolNames`'s retry path got the same never-throws treatment one level
+down.
+
+Three new tests. Pipeline still green: 863 tests, typecheck, lint, format,
+both builds, bundle budget 45.9KB of 400KB.
 
 ## What landed on 2026-09-01 (third session)
 

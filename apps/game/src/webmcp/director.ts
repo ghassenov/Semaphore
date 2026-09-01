@@ -71,6 +71,21 @@ export interface DirectorHooks {
   /** Fired when the server's machine state moves. Drives the HUD. */
   readonly onState?: (state: StateSummary) => void;
   /**
+   * Fired after a genuine tier change has finished registering and tearing
+   * down, whatever tier it moved to or from, including the ending.
+   *
+   * `toolchange` is the primary signal and the only one most hosts need; this
+   * is the substitute for a host that implements the registry without being
+   * an `EventTarget` (D-085) and therefore never fires it at all. It has to
+   * come from here rather than from every `onState` call: `onState` fires on
+   * every response, most of which change nothing about the registry, and it
+   * fires *before* this class has registered or torn down anything for the
+   * tier that response just announced (D-086). Firing this hook only once
+   * the tier's own `#register`/abort work has resolved is what keeps a
+   * host with no `toolchange` from reading the registry mid-transition.
+   */
+  readonly onRegistryMoved?: () => void;
+  /**
    * Where the notepad form is put when the session tier mounts.
    *
    * The director owns the element because a declaratively registered tool's
@@ -273,25 +288,30 @@ export class ToolDirector {
     switch (next.kind) {
       case "entry":
         await this.mountEntry();
-        return;
+        break;
       case "session":
         await this.#startSession();
-        return;
+        break;
       case "chamber":
         await this.#enterChamber(chamberTools(this.client, next.chamber, next.dark));
         this.#tier = next;
-        return;
+        break;
       case "archive":
         await this.#enterChamber(archiveBeatTools(this.client));
         this.#tier = next;
-        return;
+        break;
       case "finale":
         await this.#enterFinale();
-        return;
+        break;
       case "ended":
         this.endSession();
-        return;
+        break;
     }
+    // Every branch above just finished registering or tearing down the
+    // registry for a tier that actually changed (the `hold`/`sameTier` guard
+    // above already returned for everything else), so this is the one place
+    // that knows the registry has settled into its new shape.
+    this.hooks.onRegistryMoved?.();
   }
 
   /**
