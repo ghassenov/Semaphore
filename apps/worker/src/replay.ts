@@ -31,7 +31,7 @@
  * wrote - so a replay cannot disagree with the session it replays.
  */
 
-import type { ChamberId, GhostTrack, SessionEvent } from "@semaphore/protocol";
+import type { ChamberId, GhostTrack, NoteAuthor, SessionEvent } from "@semaphore/protocol";
 import { pilotTrack } from "./archive/index.js";
 
 /** One thing KEEPER did, on the cyan track. */
@@ -80,7 +80,7 @@ export interface Replay {
   readonly beats: readonly ReplayBeat[];
   readonly chambers: readonly ReplayChamber[];
   /** What the pair wrote to each other, which is the only record of that. */
-  readonly notes: readonly { readonly t: number; readonly text: string }[];
+  readonly notes: readonly { readonly t: number; readonly author: NoteAuthor; readonly text: string }[];
   /**
    * The room, as the station's own monitor draws it.
    *
@@ -110,7 +110,7 @@ export function projectReplay(log: readonly SessionEvent[]): Replay | null {
   const calls: ReplayCall[] = [];
   const beats: ReplayBeat[] = [];
   const chambers: ReplayChamber[] = [];
-  const notes: { t: number; text: string }[] = [];
+  const notes: { t: number; author: NoteAuthor; text: string }[] = [];
   let end: Extract<SessionEvent, { type: "session_end" }> | null = null;
   let last = start.t;
 
@@ -129,12 +129,17 @@ export function projectReplay(log: readonly SessionEvent[]): Replay | null {
         });
         break;
       case "pilot_action":
-        beats.push({ t: event.t, kind: "action", what: event.target });
-        // A note's text is the pair talking to each other, and it is the most
-        // valuable thing in the log (`reducer.ts`, on why the pad is
-        // server-side). The event carries the target rather than the line, so
-        // the pad itself is what the viewer would need; until it carries one,
-        // the beat says a note was written and not what it said.
+        // A note goes to its own track, not the amber one: `event.target` for
+        // `write_note` is the author, and a beat reading "PILOT" with no text
+        // told a viewer nothing (this loop's own comment used to explain why,
+        // rather than fix it). `event.text` is the line itself, `SHARED`
+        // channel by construction, and now carried on the event for exactly
+        // this reason (`reducer.ts`, on why it is safe to duplicate here).
+        if (event.action === "write_note" && event.text !== undefined) {
+          notes.push({ t: event.t, author: event.target as NoteAuthor, text: event.text });
+        } else {
+          beats.push({ t: event.t, kind: "action", what: event.target });
+        }
         break;
       case "audible":
         beats.push({

@@ -3124,10 +3124,26 @@ button[hidden] {
   align-self: end;
 }
 
-.replay > .replay-log {
+/*
+ * The key and the transcript, one flex column filling the "log" cell. A
+ * second grid item sharing that cell (the key, sized to its own content,
+ * `align-self: start`) has the identical collision the tracks' own cell has
+ * three of already: nothing forces it clear of `.replay-log`, which stretches
+ * to fill the whole cell by default. Flex settles it by construction instead
+ * of by a coordinate: the key takes what it needs and the list gets the rest.
+ */
+.replay > .replay-column {
   grid-area: log;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.replay-column > .replay-log {
+  flex: 1 1 auto;
+  min-height: 0;
   max-height: none;
-  margin: 0;
+  margin: 0.6rem 0 0;
 }
 
 .replay > .replay-share {
@@ -4025,4 +4041,41 @@ button[hidden] {
   color: var(--mist);
   font-size: 0.7rem;
   text-align: right;
+}
+
+/*
+ * The chart's own key. Sits between the tracks and the transcript: close
+ * enough to the marks it explains that a viewer connects the two without
+ * hunting for it, but out of the transcript's own flow so it reads once
+ * rather than being repeated down the list.
+ */
+.replay-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.4rem;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+  color: var(--mist);
+}
+
+.replay-legend li {
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+}
+
+.replay-legend .pilot .marker {
+  color: var(--lamp);
+}
+
+.replay-legend .keeper .marker {
+  color: var(--tide);
+}
+
+.replay-legend .concord .marker {
+  color: var(--pearl-dim);
 }
