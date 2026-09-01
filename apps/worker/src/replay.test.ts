@@ -48,11 +48,19 @@ function log(): SessionEvent[] {
     },
     { t: 2100, seq: 4, type: "audible", cue: "detent", count: 3 },
     { t: 2200, seq: 5, type: "pilot_action", action: "move", target: "concord_lock_door" },
-    { t: 2400, seq: 6, type: "tool_cancel", tool: "press_key", elapsedMs: 40 },
-    { t: 2500, seq: 7, type: "chamber_solved", chamber: "airlock" },
+    {
+      t: 2300,
+      seq: 6,
+      type: "pilot_action",
+      action: "write_note",
+      target: "PILOT",
+      text: "the third lever sticks",
+    },
+    { t: 2400, seq: 7, type: "tool_cancel", tool: "press_key", elapsedMs: 40 },
+    { t: 2500, seq: 8, type: "chamber_solved", chamber: "airlock" },
     {
       t: 3000,
-      seq: 8,
+      seq: 9,
       type: "session_end",
       outcome: "escaped",
       chambersCleared: 4,
@@ -88,6 +96,15 @@ describe("projectReplay", () => {
     expect(serialised).not.toContain("linkage");
     expect(serialised).not.toContain("state_delta");
     expect(serialised).not.toContain("gauge");
+  });
+
+  it("puts a written note on its own track, not the amber one", () => {
+    // `target` on a write_note event is the author, not a thing PILOT moved
+    // or gripped; drawing it on the beats track read as an unlabelled action
+    // with no text. The note belongs with its own line, not the room actions.
+    const replay = projectReplay(log());
+    expect(replay!.notes).toEqual([{ t: 2300, author: "PILOT", text: "the third lever sticks" }]);
+    expect(replay!.beats.some((beat) => beat.what === "PILOT")).toBe(false);
   });
 
   it("does not blame KEEPER for a tool the registry took away", () => {

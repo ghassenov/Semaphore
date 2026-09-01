@@ -53,7 +53,7 @@ export interface Step {
 /**
  * The guided shift.
  *
- * Eight beats, and it ends on the sentence the whole game is an argument for
+ * Nine beats, and it ends on the sentence the whole game is an argument for
  * rather than on a control.
  */
 export const TOUR: readonly Step[] = [
@@ -88,6 +88,21 @@ export const TOUR: readonly Step[] = [
     say: "There is no button that names this shape. You have to put it into words your agent can act on, and it has to decide whether it believes you.",
     focus: { kind: "fixture", id: "lever_b" },
     mark: null,
+  },
+  {
+    id: "ambiguity",
+    title: "Watch AMBIGUITY drain",
+    // Not "look at the gauge": the point is what makes it move, and that it is
+    // a consequence of the words landing rather than of time passing. The gauge
+    // itself never appears anywhere else the camera can reach - it is a HUD
+    // readout, not a fixture - so the spotlight (`mark`) is doing work no
+    // `focus` value could: this is the one beat in the tour about the console
+    // rather than the room.
+    say:
+      "That gauge counts what your agent still does not know, in bits. It only falls " +
+      "when what you tell it actually narrows things down, so watch it while you talk.",
+    focus: { kind: "pilot" },
+    mark: '[data-tour="gauge"]',
   },
   {
     id: "walk",

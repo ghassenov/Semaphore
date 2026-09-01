@@ -2132,3 +2132,640 @@ so cyan fell on brass and the hazard chevrons came back green, in a palette
 whose test forbids green so that success cannot be signalled with one. A lit
 surface is not a palette entry. Moving the hue to a blue fixed it, and only the
 frame could have said so.
+
+---
+
+### D-066 The web layer is rebuilt, and the start button did nothing
+
+**2026-08-31.** Item 1 of the handoff, from a fresh session: redesign the web
+page completely, and fix the bugs in it. The station itself is untouched -
+`render/` has not been opened.
+
+**The worst thing on the page was not a design problem.** Picking a session
+length did nothing at all. `start` answers `E_NO_SESSION: Your shift has not
+started` until the agent has called `begin_shift`, and the landing card sent
+that refusal to `onNote`, which writes to the activity log, which lives inside a
+*closed drawer*. So a visitor clicked `full`, nothing whatsoever moved, and the
+only conclusion available to them was that the page was broken. Every judge who
+opened this without an agent already pointed at it met that. It survived because
+no test drives the page's own buttons and the browser proof calls `begin_shift`
+over HTTP first, which is a path nobody arriving at the page ever takes.
+
+The choice is remembered now, the step says what it is waiting for and why, and
+the shift starts by itself when the agent opens the door. Beside it is a second
+path that opens its own door - a demonstration is allowed to, and the button
+says so.
+
+**Then the composition.** The landing screen *was the console*, with a card laid
+over the viewport, and four separate defects came out of that one fact. It
+inherited a rail reading `CONNECTING`, an ambiguity gauge with no session behind
+it, seven tab stubs and three audio faders, all live, above the first sentence
+about what the page is. It inherited the deck, which has a definite height and
+clips rather than scrolls, so opening the ablation - never-cut - cut the bottom
+off the chart and the requisition slip together. And it inherited the console's
+breakpoints, which is most of why 430px was not merely unpolished but broken.
+
+It is its own surface now, laid over everything, with its own scroll. The
+console keeps its measured size underneath the whole time, because the camera
+frames against the viewport's shape and a console hidden with `display: none`
+comes back at zero by zero.
+
+**A previous pass made the page the split and it was right about the idea.**
+What it got wrong was that every element then had to live in one of two
+arbitrary columns, and the two halves of the graphic carrying the entire pitch
+were two hundred pixels out of vertical alignment with each other. *A comparison
+whose two sides do not line up is not a comparison; it is two unrelated
+illustrations.* So the split is the **graphic** - one full-bleed band, warm
+field against cold, a lit seam with the mark on it - and the rest of the page is
+a reading column. The two halves are `subgrid` rows of one grid, so the captions
+share a line, the payloads share a row and the notes share a baseline whatever
+either of them contains. That is structural rather than tuned, which is the
+whole point: it cannot drift back out.
+
+**Three bugs the split-into-modules found on its own.**
+
+The requisition slip was on the gate screen **twice** - `promptCard()` called
+directly and again inside the graphic that embeds it. D-062 made it one builder
+to stop two copies drifting; nothing stopped one page rendering the builder
+twice.
+
+`.note`, `.eyebrow` and `.lede` were declared inside sections that the redesign
+replaced, and each is used by a surface that was not being redesigned. The
+replay viewer lost its type entirely. **A type role more than one surface uses is
+declared once, globally**, and they are now.
+
+And **CSS resolves ties by source order**, which cost two rounds: a narrow-window
+block written next to the rule it was *about* sat six hundred lines above the
+rule it was overriding, so the proof graphic never stacked on a phone and the
+skip hint never cleared the foot. Overrides go below what they override, and the
+comment in the file now says so.
+
+**The tour found three more, and none of them was in a test.** The ending strip
+owns the top edge of the viewport and the rail is laid over the same pixels, so
+"the whole shift is on the station's log" printed straight through
+SEMAPHORE - ESCAPED - AMBIGUITY. The caption band owns the bottom edge and the
+mixer is laid over that, so "COLD AIR, AND THE SOUND OF THE SEA" lost its second
+half behind the faders on the last frame of the game. And the caption's own side
+padding did not clear the tab rails, so THE DOOR IS OPEN was missing its first
+letter behind ACCESS. All three are the same shape - **two absolutely positioned
+bands over one viewport have to be told which edge each one owns** - which this
+file already recorded once and which recurred anyway because the rule was
+written about two of the bands and there are five.
+
+The skip hint stopped being pinned to an edge three other things share and moved
+under the line it skips, where it belongs and where it cannot collide with
+anything.
+
+**The console chrome had never had a composition pass and it showed.** The two
+tab rails were four rounded chips floating down each side with three tenths of a
+rem between them; they are one framed rail with hairlines between members now.
+A drawer pinned `top` *and* `bottom` was full height, so a five-line keyboard
+legend opened a panel with six hundred pixels of empty box over the room - the
+room being the thing the player is trying to look at. It takes what it needs.
+The mix was four controls drifting along the foot and is a housing.
+
+**Nothing in the design law moved.** The channel hues are untouched, so the
+colourblind guarantee D-061 measured is untouched. The palette is the same
+twenty colours and `check-palette.mjs` passed on every commit of this work,
+including its rule that no hex may be written into a rule - everything new is a
+token, a `color-mix` against one, or a white/black percentage. No asset file was
+added. Puzzle-critical values are still canvas-only.
+
+**Result.** 735 tests, typecheck, lint, format and both builds green. **25 of 25
+browser checks** on Chrome 152 against live servers, and the frames read. Entry
+39.0KB gzipped of a 400KB budget, up from 30.4KB, all of it stylesheet; Three.js
+is still a chunk the gate screen never fetches. The start flow was verified the
+only way it could be: a length chosen with no agent, then `begin_shift` called
+from outside the page, and the shift opened itself into the Airlock.
+
+*One thing worth keeping.* The browser proof's slip check failed after the
+split, correctly, and for a reason no amount of looking at the design would have
+found: there are two slips on the page and the console's is first in the
+document. The instrument was right and the page was wrong. The proof now waits
+for the landing screen to be gone before measuring, polling for the element
+rather than sleeping a hand-typed duration - the same lesson as D-056, arriving
+at a different band.
+
+---
+
+### D-067 The camera was compounding its own drift
+
+**2026-08-31.** Found by playing, in the first two minutes, by the person who
+owns the interface: *"when i press e then immediatly move after the camera is
+super bugged and out of the map and when i keep pressing a button a long time it
+is also out of the map."* Both reproduced literally on the first try. This is
+the fifth time the instrument has been a person walking around rather than a
+test, and the sixth thing it has found that 735 passing tests could not.
+
+**Two faults, and they multiplied.**
+
+`frame()` keyed the camera transition on the shot's **coordinates**. A room shot
+leans toward PILOT, so its eye moves every frame anybody is walking - and every
+one of those frames therefore read as a brand new shot. `shotAt` reset sixty
+times a second, the easing sat permanently at zero, and the camera never
+arrived anywhere. The follow, which is the whole reason `roomShot` takes a
+`follow` argument, has never once worked.
+
+On its own that would have been a camera that simply does not move. What made it
+leave the building is the second fault: the idle drift is added straight into
+`camera.position` at the end of each frame, and a restarting transition took its
+starting point from `camera.position`. So each frame began from a position that
+already had a drift on it and then had another added. **The drift compounded
+instead of oscillating**, at 0.22 metres a frame, which is roughly thirteen
+metres a second. Hold a movement key for two seconds and you are outside the
+station looking at the sea. Press `E` and then move and the runaway starts from
+a lean-in eye, which is why that one ends up inside the geometry.
+
+The fix is one idea in two places. **The transition is keyed on the shot's
+identity** - which room, which fixture, the wide shot - and the shot itself is
+updated every frame, so a follow tracks continuously without being mistaken for
+a new shot. And **`baseEye` holds the position with no drift on it**, which is
+what a transition starts from; `camera.position` is that plus the drift, and the
+drift is never an input to anything.
+
+**The general rule, and it is the one worth carrying:** *a value the render loop
+writes into a live object every frame must never be read back as a starting
+point.* It is a feedback loop with no damping term, and the symptom is not a
+wrong value - it is a value that leaves the world.
+
+**The regression check is in the browser proof, and it was verified to fail
+without the fix.** `data-settled` is the assertion because it is the exact thing
+that was false: a transition that restarts every frame never settles. It is read
+*while the movement key is still down*, because continuous tracking is not a
+transition. Re-introducing the coordinate in the key takes the tour from 27 of 27
+to 26 of 27.
+
+*And a check written beside it was deleted as written and kept as measured.* It
+claimed the camera was "still framing the same room" and read the room name off
+the rail - which passed happily through the run where the camera was four
+hundred metres outside the building. It measures that a held movement key does
+not trip the edge-triggered door transit, which is worth asserting, so it says
+that instead. A metric that does not separate the thing it names is not evidence
+for it (D-040's rule, arriving in a new place).
+
+*One stale fact found on the way.* `NEXT-STEPS.md` told the next person that the
+worker's "route names are the tool names". They are not, for the read-only half:
+`get_status` is `GET /status`, `describe_chamber` is `/describe`, `read_manual`
+is `/manual?section=`. Corrected there, because the handoff is trusted and a
+trusted handoff that is wrong costs more than no handoff.
+
+---
+
+### D-068 One typeface, deliberately
+
+**2026-08-31.** Asked for directly, mid-session, after the constraint was
+stated: "forget about the 3 constraints" - no asset files, no webfonts, no
+images. The three are load-bearing for different reasons and were weighed
+separately rather than dropped as a set.
+
+**Images stayed off, for a reason that is not taste.** There is no way to
+source photography or artwork in this environment with rights clean enough to
+ship under MIT - no image-generation tool, no licensed stock access, and
+downloading an arbitrary image off the web and redistributing it in a public
+hackathon submission is a real liability, not a style choice. So the ceiling
+this pass raises is typographic, not photographic: light, motion, composition
+and one real typeface, which is also closer to what the "editorial poster"
+direction (D-069) actually wanted.
+
+**Fonts came back, once, for the landing screen's display type only.**
+Fraunces, a variable typeface, SIL Open Font License 1.1. Self-hosted in
+`apps/game/public/fonts/` as two `.woff2` files (the upright weight axis and
+one italic cut) plus the licence text beside them, `font-display: swap`, and
+one `--display` custom property so nothing structural - a control, a label, an
+identifier - can quietly start depending on it. `LICENSE` carries the
+carve-out this reintroduces, in the same place and the same voice D-044's
+carve-out used to live, because that section exists precisely so this decision
+would have to be written down rather than slipped in.
+
+**What stayed exactly as it was.** No puzzle-critical value, no gameplay
+geometry, no game texture depends on the font; removing the two files leaves
+every fallback stack this project already had. `check-palette.mjs` and the
+twenty-colour lock are untouched - this was never a colour question. And it is
+real network weight the project's own performance target should know about:
+roughly 150KB combined, fetched once and cached, behind `swap` so it never
+blocks the headline from rendering - but it is not the zero the client's
+`no asset requests for media` law used to guarantee, and the in-app-browser
+spike (item 4, `NEXT-STEPS.md`) should note it when it runs.
+
+---
+
+### D-069 The landing screen, made to be looked at
+
+**2026-08-31.** Asked for directly, after D-066: the structural redesign fixed
+what was broken, and this pass is the one that makes the result something a
+judge would call beautiful rather than merely correct. Three concrete
+directions were put to the person who owns the interface with ASCII previews
+rather than guessed at - cinematic (the live station as the hero background),
+editorial (a designed poster), interactive-proof (the split graphic reacting
+to the cursor) - because this project has already burned three sessions on
+exactly this ambiguity (D-063 to D-065) and a fourth pass built on a guess
+would have been the same mistake with better paint. **Editorial** was chosen.
+
+**One typeface (D-068) and four signature moments**, also chosen from a menu
+rather than assumed: scroll-driven reveals, a cursor-reactive light, redrawn
+SVG motifs, and custom micro-interactions on the things a reader is actually
+choosing between.
+
+- **Scroll reveals** (`ui/reveal.ts`). One `IntersectionObserver`, every
+  `[data-reveal]` element gets `.is-revealed` the first time it crosses in and
+  never loses it again - a reveal is an entrance, not a toggle. Under
+  `prefers-reduced-motion`, or with no `IntersectionObserver` at all, every
+  element is marked visible synchronously and nothing is ever observed:
+  verified against real `getComputedStyle().opacity`, not only the class, with
+  no scroll performed at all.
+- **The pointer light** (`ui/motion.ts`, `wirePointerLight`). Two custom
+  properties written on `pointermove`, confined to the hero; everything about
+  what the light actually looks like is `style.css`'s decision, which is the
+  same split `wireReveals` keeps. The first pass measured as *functioning* -
+  the coordinates genuinely tracked the pointer - and *invisible*: a single
+  10% ring at 38rem read as nothing against the existing hero gradients. It is
+  two rings now, a dense inner one and a faint outer one, verified by cropping
+  the frame with and without a simulated pointer over the headline.
+- **Redrawn motifs** (`sectionRule`, `parts.ts`). A rule between sections that
+  grows from its centre and fades the split lamp up inside it on scroll,
+  rather than a divider that was simply always there.
+- **Bounded tilt** (`wireTilt`, `ui/motion.ts`). A five-degree lean toward the
+  pointer on the three things a reader chooses between - the session-length
+  cards, the "look around" offer, the requisition slip - one delegated
+  listener per page rather than one per card. The slip's tilt rule is shared
+  with the copy of the same card that lives in the console's drawer
+  (`promptCard`, one builder, D-062): the custom properties it reads are unset
+  there, so the rule is a no-op on that copy rather than a second rule to keep
+  in step.
+- **Typography.** `--display` (Fraunces) on the headline, the start section's
+  subhead and its step numerals; one italic clause in the thesis - "the same
+  room" - carrying the actual asymmetry the sentence turns on, which is doing
+  with weight and slant what a spoken reading would do with stress.
+
+**`heroBlock` and `whyAndKey` are shared between the landing screen and the
+gate**, extracted rather than duplicated a third time, for the reason every
+shared builder in `parts.ts` exists: this project has paid twice already
+(D-062, D-066) for a composition existing as two copies that quietly stopped
+agreeing.
+
+**Nothing here touches the design law.** The channel hues, the twenty-colour
+lock, `check-palette.mjs`, the canvas-only rule for puzzle-critical values -
+none of it was in scope and none of it moved. The 3D station was never opened.
+
+**Verified, not asserted.** Both cursor effects were checked with a simulated
+pointer over CDP and their actual custom-property values read back, not just
+"the code looks right" - the light's first version passed that check and was
+still invisible, which is exactly why the check has to read pixels as well as
+state. `wireReveals`, `wirePointerLight` and `wireTilt` each have unit tests
+for their two branches (reduced-motion / coarse-pointer inert, otherwise
+wired-and-disposed); what a real intersection or a real drag does on a real
+screen is, as this file's own rule says, the browser tour's job, and the tour
+stayed at 27 of 27 through every step of this pass. 747 tests, entry 40.5KB
+gzipped of a 400KB budget (up from 39.0KB - the two new TypeScript modules,
+not the fonts, which are not part of the JS bundle at all).
+
+---
+
+### D-070 The light was scoped to a box, and the buttons did not look like buttons
+
+**2026-08-31.** Reported back after D-069, plainly and mid-session: "not bad
+but... full of bugs," "the cursor is stuck in a little box where the effects
+are only there," "lets the judges try it out in an easy way and see the
+buttons easily." Two of the three were investigated literally before anything
+was changed, which is the rule this file has stated before and is worth
+restating: a report of what somebody sees is an observation, not a hypothesis.
+
+**"Full of bugs" turned out to be true, and not one bug was in the redesign.**
+The worker (`wrangler dev`) crashed twice mid-session with an internal
+miniflare proxy error, both times traced to the same cause: roughly sixty
+Chrome processes had accumulated from the session's own testing scripts, each
+one a throwaway tab that opened a live game session, subscribed to its socket
+and polled `/concord` every 2.5 seconds, and was never closed. Closing every
+leftover tab on the two test browsers (never the user's own) brought the
+process count back to normal and the worker has not crashed since. **Neither
+crash cost the user's actual progress** - the Durable Object's local state
+persists to disk across a `wrangler dev` restart - but each restart did drop
+`?seed=play-1` from the user's own tab, because a lost HMR connection
+resurfaces as a reload of the bare origin and `sessionIdFrom` mints a fresh
+random id when there is no `seed` param. Both times the fix was a `Page.navigate`
+back to the seeded URL, over CDP, on the user's own tab, done and reported
+rather than done and left unmentioned.
+
+**"The cursor is stuck in a little box" was checked before being reinterpreted,
+and it was not a trapped click.** A grid sweep of the whole first viewport,
+reading `document.elementFromPoint` at every cell, found every point
+hit-testing to the real element underneath it - nothing was eating a click
+meant for something else. What was true is that the pointer light
+(`wirePointerLight`, D-069) was scoped to `.landing-head`, a box roughly the
+height of the hero, and nowhere else on the page reacted to the cursor at all.
+A light that exists in one rectangle reads as broken even though nothing is,
+because the rest of the page then has no reason to have a cursor. It is wired
+on `.landing` now - the fixed, full-viewport surface everything scrolls
+inside - so it holds its position on screen while the reader scrolls past it,
+like a ceiling lamp, verified by moving the pointer to the open background
+space beside the session-length cards, well past the hero, and confirming the
+glow appears there and not at the old default.
+
+**"See the buttons easily" was a real gap, not a vibe.** The three
+session-length buttons carried a name at the same size as their own caption,
+no icon, and nothing marking which of the three a first-time visitor should
+take. They are a CTA now rather than an information card: the name is a full
+size step up and set in the display face, a chevron says "this goes
+somewhere" the one time this page uses an icon at all, the card gets a lit
+floor edge that reads as raised rather than flat, and Full Shift carries a
+`RECOMMENDED` badge so three equally weighted options do not have to be
+independently adjudicated by somebody who does not yet know the game.
+
+**Nothing about the design law moved**, again: the twenty-colour lock, the
+channel hues, `check-palette.mjs`, the canvas-only rule. 747 tests, 27 of 27
+browser checks, entry 40.7KB gzipped of a 400KB budget.
+
+*One operational lesson, for whoever runs the next long session against live
+`wrangler dev` and `vite`.* A throwaway CDP tab that opens a real game session
+is a live WebSocket and a 2.5-second poll loop that outlives the script that
+opened it, unless the script closes its own target when it is done. Sixty of
+those took the worker down twice. Close what you open.
+
+---
+
+### D-071 The ambiguity gauge is a real number and had no way in
+
+**2026-08-31.** Asked for directly: "make the ambiguity score and everything
+more understandable and better." Checked what it actually measures before
+touching the copy, since the number is not decorative - it is
+`log2(|consistent worlds|)`, the Possible-Worlds Proof's own reporting unit
+(doc 03 section 6), computed live and polled from the worker's `/concord`
+route. It falls in real time as PILOT's descriptions narrow what KEEPER can be
+consistent with. That is the project's actual headline claim, running during
+play, and the fix was to explain it rather than to soften or hide it.
+
+**What it lacked was a way in, not a better number.** "AMBIGUITY 1.58 bits" on
+its own gives no cue for which direction is good, that it is a live
+consequence of how the conversation is going, or what "bits" means to somebody
+who has not read doc 03. Three additions, none of them touching the rail's own
+layout - the rail has broken from added text before (D-054) and nothing here
+risked that again:
+
+- **A `title` tooltip** on the gauge, the room name and the clock, each stating
+  in one sentence what the reading means and, for the gauge, which direction is
+  good.
+- **A ninth guided-shift beat**, "Watch AMBIGUITY drain" - the tour's own
+  mechanism for pointing at one thing while dimming the rest, used for the
+  first time on a HUD readout rather than a fixture or a drawer tab. It could
+  not use `mark: '[data-tab="..."]'`, because the gauge is not a drawer tab, so
+  `plan.test.ts`'s selector rule was widened to accept `data-tour` as well -
+  the same "an attribute is a promise, a class name is not" reasoning the
+  original rule gives, extended to a second stable target rather than loosened
+  in place.
+- **A durable paragraph in the Station panel**, for anybody who skipped the
+  tour or wants the definition again mid-session without hovering.
+
+**Verified against a browser that could actually reach the beat.** The first
+verification pass ran against the wrong headless instance - the one launched
+without WebMCP flags, for testing the gate screen - and reported `.solo` as
+missing, which was correctly the gate screen showing no start flow at all, not
+a defect. Caught before it was reported as one, by checking which browser was
+actually being asked. Re-run against a browser that could reach the landing
+screen: the tooltip attributes are present, the tour advances to "5 of 9" and
+spotlights exactly the gauge, and 27 of 27 browser checks pass unaffected -
+confirmed separately that the automated proof deliberately marks the tour
+"already seen" before it runs, so nothing about the new beat could have broken
+it silently.
+
+**The verification browser was closed the moment it was no longer needed**,
+per D-070's own lesson from three commits ago: a live game session left open
+in a test browser is a live socket and a poll loop, and the fix for the CPU
+spike that caused was "close what you open," not "remember to, eventually."
+
+*One more instance of the pattern D-070 already named.* Editing live source
+while the user's own tab is open triggers Vite HMR, and a big enough module
+change forces a full reload rather than a hot swap - which drops `?seed=` from
+the URL the same way a dead server connection does. Restored a second time,
+the same way: `Page.navigate` back to the seeded URL over CDP, done and
+reported. Worth writing down as its own trigger, distinct from a server crash.
+
+747 tests, 27 of 27 browser checks, entry 41.0KB gzipped of a 400KB budget.
+
+---
+
+### D-072 A ceiling beam and a doorway never knew about each other
+
+**2026-09-01.** Reported as an observation, not a hypothesis (repo CLAUDE.md
+section 4): "in room one somethings are overflowing into the wall." Reproduced
+it before reinterpreting it, per the same rule, and it held up - the Airlock's
+south-east ceiling beam ran straight through the lintel of its own OUT door.
+Queried the live Three.js scene graph over CDP for both objects' true world
+coordinates rather than guessing from a screenshot, then reproduced the clash
+in a plain Python simulation of `spread()` and `beams()` to confirm the exact
+cause: `beams()` in `chamber.ts` places ceiling beams from a room's depth
+alone, and has never known where a door stands. The two were built by
+different code with no shared coordinate, so wherever a beam's own z happened
+to fall inside a door's reach along its wall, it ran through the frame.
+
+**Not only the Airlock.** Checked every room's doorway table against the same
+math: the Signal Room's ring door catches a beam on both sides at once (one
+`along` value shared by both walls, doc 02's own "straight through"), the
+Blind Panel's east door catches every beam it has, and the Concord Lock's does
+in brief mode. Four of the game's five rooms, latent since the doors moved
+into the building's real openings (D-053) and beams gained no knowledge of it.
+
+**Fixed by retraction, not by dropping the beam.** `beams()` now takes the
+room's doors and pulls back whichever end would cross one, by a fixed margin
+generous enough to read as deliberate rather than as a beam that got lucky.
+The room keeps a ceiling everywhere a doorway is not, which a dropped beam
+would not have.
+
+**Consolidated the door's own dimensions while fixing this**, because the beam
+now needs to know a door's width and reach along its wall, and that number had
+three independent copies before this fix: `fixtures.ts`'s `buildDoor`,
+`chamber.test.ts`'s bolt-ring check, and the one `chamber.ts` needed and did
+not have. `DOOR_WIDTH` and `DOOR_HEIGHT` are now `chamber.ts`'s own exported
+constants, the same pattern `MONITOR_DEPTH` already set for the Archive's
+screen - three numbers that could quietly disagree the first time any one of
+them changed is now one.
+
+Two things that looked like the same bug were not. The sliver of orange still
+visible near the Airlock's OUT door after the fix is the door's own copper
+leaf material at a grazing viewing angle - confirmed by sampling its pixel
+colour against the palette's `--copper` swatch, not by re-reading the geometry
+a second time. A second orange block seen over the ambiguity gauge in one
+close-up screenshot did not reproduce anywhere in the live DOM across three
+independent checks (element-under-cursor, ancestor-chain walk, full-document
+search for warm-coloured elements near the top of the viewport) and is
+concluded to be a compositing artefact specific to headless CDP capture over
+software WebGL, not a defect a player would see.
+
+748 tests (45 in `chamber.test.ts`), typecheck and lint clean across every
+workspace, palette lock holds at 20 colours, 27 of 27 browser checks.
+
+---
+
+### D-073 A replay with no notes was a replay with no conversation
+
+**2026-09-01.** Reported plainly: the replay viewer "doesn't give any useful
+info." Traced it to one specific, well-documented gap rather than a vague
+redesign. The shared notepad's own worker code already said why: `replay.ts`'s
+`case "pilot_action"` carried a comment explaining that a `write_note` event's
+`target` field holds the author, not the line, so "the beat says a note was
+written and not what it said." The reducer's internal `write_note` action
+already carries the note's `text` at the exact point the event is built
+(`reducer.ts`); it was simply never assigned to the event. The client's
+`Replay` interface did not even declare a `notes` field to receive one.
+
+**The pair's own writing to each other is described in this project's own
+design docs as the most valuable thing in the log**, and it was the one thing
+missing from a viewer built to show what happened. Threaded the note's text
+the whole way: an optional `text` field on `PilotActionEvent` (`log.ts`,
+present only when `action` is `"write_note"`, documented as `SHARED`-channel
+by construction and therefore carrying none of `state_delta`'s risk to a
+shareable replay URL), populated at the one call site that already has the
+line (`reducer.ts`), routed into the worker's `notes` array instead of the
+generic beats track (`replay.ts` - a beat reading bare "PILOT" with no text
+told a viewer nothing, so a written note now gets its own line rather than an
+unlabelled action), and rendered as the actual quoted line, coloured by
+whichever party wrote it, in the client transcript (`replay.ts`).
+
+**A test asserted the old, wrong behaviour on purpose** ("logs the author
+without duplicating the text", reasoning that `session.notes` was already the
+text's one home) and had to be corrected rather than only the code: that
+reasoning missed that `session.notes` is capped at `NOTE_CAPACITY` and evicts
+its oldest lines, so an early note in a long session had no other home once
+the session ended and the log is what the replay viewer reads. Renamed and
+rewritten to assert the field is now present, plus a new worker-side test
+that a written note lands on its own track rather than the amber one.
+
+**Added a legend, not only the notes.** Nothing on the page taught a
+first-time viewer which colour was which party without reading source - the
+explanation lived only in a code comment and a screen-reader `aria-label`.
+A compact key sits under the transcript now, in the same "teach it in a key,
+not a panel" idiom `legendRow()` already uses elsewhere. Fitting it in cost a
+layout fix of its own: the tracks' own grid cell already carries three
+same-area children told apart by `align-self` alone, and a fourth item sized
+to its own content collided with the two pinned to that cell's bottom edge.
+Moved the key to sit with the transcript instead, in one flex column
+(`.replay-column`) rather than a fifth same-cell alignment rule - settled by
+normal document flow rather than by a coordinate two unrelated rules both had
+to agree on, the same class of fix `apps/game/CLAUDE.md` already names for
+this exact failure mode on the console's own bands.
+
+**Verified without touching the live worker.** Rather than play a session
+through four chambers to reach a real replay row in D1, intercepted the
+client's own `fetch` to `/replay/:id` over CDP (`Fetch.enable` /
+`Fetch.fulfillRequest`) and fed it a synthetic `Replay` payload with notes
+from both parties, one of them near the 240-character cap. Measured every
+element's real bounding box before trusting a screenshot, since the first
+layout attempt looked identical in two consecutive screenshots for a reason
+the coordinates explained and the picture did not. Confirmed the intercepting
+tab was the only one closed and the worker was never touched: no live session
+was ever created, so nothing here could have put the load a leftover test tab
+already has twice (D-070, D-071).
+
+748 tests, typecheck and lint clean across every workspace, palette lock holds
+at 20 colours.
+
+---
+
+### D-074 First deployment, and a bug only a real deployment could show
+
+**2026-09-01.** Asked directly: prepare Cloudflare deployment at a subdomain of
+`ahmedxsaad.me`, named `semaphore.ahmedxsaad.me`, and confirm it actually works
+once deployed. The stack was designed for this from D-005 onward but had never
+been deployed at all - `wrangler whoami` found an authenticated account and
+`wrangler deploy --dry-run` had never been run against it before today.
+
+**What is live.** The worker, at `https://semaphore.ahmedxsaad.workers.dev`
+(the default `workers.dev` subdomain: no DNS footprint needed for an API
+nobody browses directly, and it is what `ALLOWED_ORIGINS` and
+`VITE_WORKER_ORIGIN` both point at). Two Cloudflare Pages projects, `semaphore`
+(the game) and `semaphore-archive` (the second origin D-033 needs), both
+building from the same `dist/` output this repo already produces and both
+deployed to their production branch. The production D1 database
+`semaphore-sessions` had only migration `0001` applied since its provisioning
+on 2026-08-27; `0002_deep_linked.sql` was missing, so `deep_linked` did not
+exist on the live schema until this session applied it. `VITE_ARCHIVE_ORIGIN`
+is set to the custom domain, not the `.pages.dev` fallback, so the shipped
+build already asks for cross-origin delegation rather than the same-origin
+path - the production configuration the project actually wants, not a
+placeholder.
+
+**What is not, and why not from here.** Both custom domains
+(`semaphore.ahmedxsaad.me`, `semaphore-archive.ahmedxsaad.me`) are registered
+on their Pages projects and both answer `CNAME record not set`. Wrangler's own
+OAuth token, confirmed via `whoami`, carries `zone (read)` but no
+`dns_records` scope of any kind - not even read. Creating the two CNAME
+records is the one step in this deployment that could not be done from this
+session; exact records are in `NEXT-STEPS.md` item 7.
+
+**A production-only bug, found by actually deploying rather than by reasoning
+about the config.** `apps/game/public/_redirects` carried `/replay
+/index.html  200` since D-060, verified only under `vite preview`, which had
+never been the same code path as a real Cloudflare Pages deployment. On the
+actual edge, requesting `/replay?id=...` came back a bare `308` to `/?id=...`
+- the query string survived, the path did not, and the ending's own replay
+link would have landed every visitor on the landing screen instead. Isolated
+with a disposable one-file Pages project (`redirects-probe`, deleted after)
+that proved the rewrite's *target* was the cause: `/index.html` as a
+destination resolves through the same clean-URL canonicalisation that turns
+`/index.html` into `/`, and that canonicalisation's redirect was not staying
+internal to the rewrite. `/replay  /  200` - target `/`, not `/index.html` -
+fixed it, confirmed by curl against the live deployment before touching
+anything else. Nothing in the test suite could have caught this: it is
+Cloudflare's own edge routing, which does not exist until something is
+actually deployed to it, which is the whole argument for the repo's own rule
+that the game is the test, extended one layer further than a browser.
+
+**The cross-origin proof was re-run against the live stack, and two of its own
+checks failed for a reason that turns out to be the test's, not the product's.**
+Run with `WORKER`/`GAME`/`ARCHIVE` pointed at the deployed `.workers.dev` and
+`.pages.dev` origins: the registry lifecycle, `fromOrigins` visibility, the
+Airlock, a door walk-back, the Signal Room and the Archive beat's tool
+appearing on the correct origin and nowhere else all verified clean against
+the real worker's Durable Object over the actual internet, not local
+`workerd`. The two checks that invoke a delegated tool by CDP frame id failed
+with `No frame for given id found`. Diagnosed rather than dismissed: a direct
+`Page.getFrameTree()` query mid-session showed the archive iframe correctly
+set in the DOM (`src`, `allow="tools"` both right) but absent from
+`childFrames` entirely, and `pages.dev` is a public suffix - two different
+`*.pages.dev` subdomains are different *sites* under Chrome's site isolation,
+so the archive frame becomes an out-of-process frame this script's plain
+`Page.getFrameTree()` call cannot see without `Target.setAutoAttach`.
+`semaphore.ahmedxsaad.me` and `semaphore-archive.ahmedxsaad.me` share one
+registrable domain and should not trigger this once DNS is live - the same
+reason `localhost:5173` and `localhost:5175` never did in every prior local
+run of this exact proof. Left as the first thing to re-check once the DNS
+records land (`NEXT-STEPS.md` item 7), rather than patched into the test with
+`Target.setAutoAttach` on a hypothesis not yet confirmed against the real
+domains.
+
+**Verification used no local session state and touched no running server
+this checkout depends on.** All browser-side checks ran in disposable headless
+Chrome instances on their own debugging ports, closed the moment they were no
+longer needed (D-070's lesson, still holding); the throwaway `redirects-probe`
+Pages project was deleted after use; nothing here touched the local `wrangler
+dev` or the user's own browser tab.
+
+748 tests, typecheck and lint clean across every workspace, palette lock holds
+at 20 colours, worker and both Pages projects live and smoke-tested.
+
+---
+
+### D-075 The DNS records landed, and the OOPIF hypothesis held
+
+**2026-09-01.** The two CNAME records D-074 was waiting on were added to the
+`ahmedxsaad.me` zone. Both custom domains show `status: active` on their Pages
+projects, and both serve the deployed apps directly.
+
+**The cross-origin delegation proof was re-run against `semaphore.ahmedxsaad.me`
+and `semaphore-archive.ahmedxsaad.me` rather than their `.pages.dev` fallbacks,
+and all 27 checks pass, including the two that failed under `.pages.dev`.**
+Confirms D-074's diagnosis exactly: `pages.dev` is a public suffix, so the two
+`.pages.dev` origins were different *sites* under Chrome's site isolation and
+the archive frame became an out-of-process frame a plain
+`Page.getFrameTree()` could not see; `semaphore.ahmedxsaad.me` and
+`semaphore-archive.ahmedxsaad.me` share one registrable domain and behave
+exactly like `localhost:5173`/`localhost:5175` always did. Nothing in the
+product needed changing - only the origins the test was pointed at - which is
+the outcome the hypothesis predicted rather than a fix arrived at by trial.
+
+The full loop is now proved against the live worker and both live Pages
+projects on their real domains: the registry, the Airlock, a door walk-back,
+the Signal Room, `read_manual` and `read_station_log` both crossing origins
+and returning real content, the Archive beat, the Concord Lock, the finale,
+the registry draining to empty on both origins, and the ending's replay link
+pointing at `https://semaphore.ahmedxsaad.me/replay?id=...` - the real
+domain, not a fallback. Deployment is complete and nothing remains open on it.

@@ -1467,18 +1467,25 @@ describe("the shared notepad", () => {
     expect(after.lastRespondedAtMs).toBe(session.lastRespondedAtMs);
   });
 
-  it("logs the author without duplicating the text", () => {
-    // The line itself lives in `notes` on the session and reaches replay
-    // through the state it produced. A second home for the same sentence is a
-    // second thing that can disagree.
+  it("logs the author and the text, both from this one call", () => {
+    // `session.notes` is capped at NOTE_CAPACITY (see the eviction test
+    // above), so an early note that scrolls off the pad has no other home
+    // once the session ends - the log is the only place it survives, and the
+    // log is what the replay viewer reads (D-073). Both fields are written
+    // here and nowhere else, so there is no second write that could let them
+    // disagree.
     const result = reduce(
       inChamber(),
       { type: "write_note", text: "the page is scratched over", author: "PILOT" },
       2_000,
     );
     const event = result.events.at(-1);
-    expect(event).toMatchObject({ type: "pilot_action", action: "write_note", target: "PILOT" });
-    expect(JSON.stringify(event)).not.toContain("scratched");
+    expect(event).toMatchObject({
+      type: "pilot_action",
+      action: "write_note",
+      target: "PILOT",
+      text: "the page is scratched over",
+    });
   });
 
   it("refuses before the shift has begun", () => {

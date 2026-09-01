@@ -12,4 +12,13 @@
 # and would ask for `/replay/assets/index-*.js`, which does not exist. Routing
 # that shape here would turn a 404 into a blank page, which is worse. The
 # canonical link is `/replay?id=...` and it is what the viewer hands out.
-/replay  /index.html  200
+#
+# The target is `/`, not `/index.html`. Both serve the same bytes locally
+# under `vite preview`, which is the only place this rule had ever been
+# checked before the first real Cloudflare Pages deployment - production
+# resolves `/index.html` through the same clean-URL step that canonicalises
+# it to `/`, and that step's own 308 was leaking out as this rule's answer
+# instead of staying internal to the rewrite. `/replay?id=...` came back
+# redirected to `/?id=...`, losing the route, on every real deployment this
+# rule had ever reached (D-074).
+/replay  /  200

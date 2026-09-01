@@ -10,11 +10,13 @@ It answers three questions and only three: where the repo is right now, what to 
 
 | | |
 |---|---|
-| **Last updated** | 2026-08-31, Ahmed Saad |
-| **Branch** | `feat/judge-path-replay-access`, off `main` at `84bbcb0` |
-| **Pipeline** | Green: **726 tests**, typecheck, lint, format, both `vite build`s plus the bundle budget and the palette check |
+| **Last updated** | 2026-09-01, Ahmed Saad |
+| **Branch** | `feat/web-layer-redesign`, off `main` at `bc84552` |
+| **Pipeline** | Green: **748 tests**, typecheck, lint, format, both builds plus the bundle budget and the palette check |
+| **Deployed** | **Live on Cloudflare and fully verified (D-074, D-075).** Game: `https://semaphore.ahmedxsaad.me`. Archive: `https://semaphore-archive.ahmedxsaad.me`. Worker: `https://semaphore.ahmedxsaad.workers.dev`. Both custom domains active; the DNS records landed and the full cross-origin delegation proof passes 27/27 against the real domains, ending replay link included. Production D1 migrated to `0002_deep_linked.sql`. Nothing left open on this. |
 | **Sound** | **Built and heard** (D-050, D-051). Listened to on a real machine on 2026-08-30 and signed off. Plan phase 5.2 in full: eight mechanism cues, the ambience bed, four timer-keyed tension layers, a behind-the-wall thump per KEEPER tool call, and a mix with a mute. Plus **a warm unresolved theme** on top, always on, which is a deliberate departure from doc 06's chiptune direction (D-051). All synthesised in `apps/game/src/audio/`; still no asset file of any kind. `PilotView` gained `seq`, without which the detents cannot repeat. |
 | **Doors and the way back** | **Every door stands in an opening you can actually walk through, and PILOT can go back through one** (D-053 to D-055). `doorways.ts` holds each room's openings room-local and its test derives the real ones from `stationCells`; two openings could not carry a door (a south face, and eleven metres of gauge bank) so the **corridors were rerouted**, not the doors. `Q` at an open door walks PILOT back into a room the pair has already cleared, drawn from the last frame the server sent for it with its doors opened by `asCleared`. Nothing crosses the wire: the clock keeps running, KEEPER's 14 tools are untouched, and KEEPER's body is not drawn in a room the session has left. Every room also got a decoration and ambient-motion pass, including the two that had never had a composition pass. |
+| **Web layer** | **Redesigned from scratch, its bugs fixed, and then made to be looked at** (D-066, D-068, D-069). `ui.ts` is now `src/ui/` - `parts.ts`, `landing.ts`, `console.ts`, plus `reveal.ts` and `motion.ts` - with its own CLAUDE.md. The landing screen is a **surface laid over the console** rather than a card inside its deck, with its own scroll: identity, thesis, the split as one full-bleed editorial band, a rule with the split lamp between sections, then a numbered two-step start. **Picking a session length no longer fails silently.** A self-hosted display typeface (Fraunces, OFL, the one deliberate exception to no-asset-files, `LICENSE` carries the carve-out), scroll-driven reveals, a cursor-reactive light on the hero and a bounded tilt on the three cards a reader actually chooses between - all verified with a simulated pointer over CDP, not only read as code, because the light's first version measured as working and was genuinely invisible on screen. The gate is built from the same parts in the same order; `heroBlock` and `whyAndKey` are now shared functions rather than duplicated a third time. Reduced motion was checked with the emulated media feature set *before navigation*: every section is visible at `opacity: 1` with zero scrolling. The tab rails are rails, a drawer is as tall as its contents, the mixer is a housing, the replay's dead end is a page, and everything works down to 390px. **The camera stopped compounding its own idle drift** (D-067), found by playing it: holding a movement key, or leaning with `E` then moving, put the camera outside the station. The station's own room and its assets were otherwise not touched. |
 | **Console** | **Rebuilt around the room** (D-052). The room fills the deck and is centred; panels live behind labelled tabs on the two edges, open on demand, one per edge, resizable by drag or arrow keys, closed with Escape. Deeper ground, a grain layer, a beacon sweep on the start card and the gate, and PILOT has four poses and a flickering lamp. Channel colours untouched. |
 | **Interface** | **Rebuilt in real-time 3D** (D-042 to D-045). Phaser and the tile renderer are gone. The station is a lit cutaway model: rooms open at the top and on their south face, camera always to the south, four lights and no post-processing. New colour language (D-043), procedural assets and **no asset files at all** (D-044), and a console laid out as two surfaces with the room between them (D-045). |
 | **Licence** | **MIT throughout again.** The vendored art pack went with the tile renderer, so `LICENSE` has no carve-out (D-044). |
@@ -68,9 +70,25 @@ It answers three questions and only three: where the repo is right now, what to 
 
 ---
 
-> **The interface is the open question.** Three passes were called a redesign
-> and the person who owns it says none of them was. Item 1 below is a full
-> redesign from a fresh session, and it is the first thing to pick up.
+## What landed on 2026-09-01
+
+**Deployed to Cloudflare for the first time and fully verified (D-074, D-075).**
+The worker, both Pages projects, both custom domains and the production D1
+migration are all live. Along the way, found and fixed a real production bug
+`vite preview` could never have shown: `_redirects`'s `/replay -> /index.html
+200` rewrite 308-redirected to `/` on real Cloudflare Pages, silently dropping
+every `?id=` and breaking the replay link the ending hands out. Fixed by
+rewriting to `/` instead of `/index.html` - see "Things that will bite you".
+The full cross-origin delegation proof passes 27/27 against the real deployed
+domains, ending replay link included - nothing left open on this.
+
+**Also fixed two things the user reported directly.** A ceiling beam ran
+through a doorway's lintel in four of five rooms, because `beams()` placed
+beams from room depth alone with no knowledge of where a door stood (D-072).
+And the replay viewer's transcript never showed what the pair actually wrote
+to each other: the shared notepad's text was available in the reducer at the
+exact point the event was logged and simply never carried onto it (D-073). Both
+threaded through, tested, and verified in a live browser before committing.
 
 ## What landed on 2026-08-31
 
@@ -82,7 +100,17 @@ no longer scrolls on a window that fits it: the console had a definite row plan
 but only a `min-height`, so `minmax(0, 1fr)` had no space to divide and the deck
 sized itself to the canvas's drawing buffer.
 
-Then the redesign (D-063, D-064): a landing screen and a gate screen that lead
+**The web layer was then redesigned from scratch and its bugs fixed (D-066).**
+`ui.ts` split into `src/ui/`; the landing screen became a surface of its own
+rather than a card inside the console's deck, which is where four separate
+defects were coming from; and the start flow stopped failing silently. Three
+more bugs came out of the split itself (the slip rendered twice on the gate,
+three type roles declared inside sections that were being replaced, and two
+rounds lost to CSS source order), and the browser tour found three collisions
+between absolutely positioned bands that no test could see. 25 of 25 checks, and
+the frames read.
+
+Earlier the same day (D-063, D-064): a landing screen and a gate screen that lead
 with the thesis and prove it with the split graphic, the ground palette retuned
 and the type lifted, real elevation on every surface, **a guided first shift in
 two layers**, and **told sequences opening and closing a shift**.
@@ -95,82 +123,42 @@ behind the old check and eleven of them silently kept the previous palette.
 
 ## Do this next
 
-### 1. Redesign the website and the UI/UX completely, from a fresh session [start here]
+### 1. Play it, with two people, and fix what that finds [start here]
 
-**This is the top of the list and it wants a new Claude Code session**, because
-the context that produced the current interface is the same context that kept
-mistaking a reskin for a redesign. Three passes were called a redesign and none
-of them was one: the first moved ground colours by a few points and type by a
-pixel and a half, the second made the channel hues vivid and floated the HUD,
-the third divided the landing page down the middle. The palette and the
-composition changed. **The interface is still not good**, and the person who
-owns it says so plainly.
+**The redesign is done (D-066, D-068, D-069) and it has not met a person.**
+Every surface in it was checked by one person who knew where everything
+already was, which is exactly the thing item 3 says cannot find what is wrong
+with it.
 
-*Read [docs/decision-log.md](docs/decision-log.md) D-063 to D-065 before
-touching anything, and treat them as a record of what was tried rather than as
-a design to preserve.* Nothing in the current UI is load-bearing except the
-things listed below.
+Four things in the structural pass have been proved and never played:
 
-**What is genuinely fixed and must survive any redesign.** These are laws, not
-preferences, and every one of them has a test:
+- **The waiting state.** Pick a length with no agent pointed at the page, then
+  point one at it. Does "Waiting for KEEPER" read as the page working, or as the
+  page stuck? It was verified mechanically - a length chosen, `begin_shift`
+  called from outside, the shift opening itself into the Airlock - and mechanics
+  are not the question.
+- **"Look around without an agent."** It opens its own door, which is normally
+  KEEPER's move. Does anybody take it, and does taking it teach them the game or
+  spoil the half of it that needs a second player?
+- **The proof band.** It is the whole pitch in one graphic. Does a cold reader
+  get the asymmetry from it without the paragraph underneath?
+- **The two-step start.** Does anybody actually do step one before step two.
 
-- **Puzzle-critical values render to the canvas, never to DOM.** A text node
-  holding a glyph, a gauge reading or a cipher offset is one an agent with page
-  access can scrape, and KEEPER not being able to see is the whole game. The
-  accessibility mirror is the single sanctioned exception (D-061).
-- **The two channel hues carry information**: warm is "only PILOT perceives
-  this", cold is "only KEEPER", pearl is both. A Vienot dichromat test measures
-  their separation under all three colourblindnesses with a floor of 40. Change
-  them and you are changing the legend and that guarantee together.
-- **The palette is locked at twenty colours** and `scripts/check-palette.mjs`
-  fails the build on any hex written into a rule, not only on a token
-  declaration. Adding a twenty-first is a decision-log entry.
-- **No asset files and no network requests for media** (D-044). The repository
-  is MIT throughout because of it.
-- **The starter prompt card must be whole and on screen before a shift starts.**
-  The browser proof asserts it, and it caught a version of this where the prompt
-  was copyable but not readable.
+And three more from the editorial pass, all of them cosmetic rather than
+mechanical, which is exactly the kind of thing a person feels and a check
+cannot:
 
-**What to be suspicious of.** The console chrome, the drawers and the tab rails
-have never had a composition pass of their own - they inherited tokens. The
-landing screen's split fits its band by a two-pixel margin at 1920x942 and has
-been checked at no other size. Every tuned constant in the renderer was set
-against one desktop window.
-
-**And look at frames.** Eleven defects in three sittings (D-046 to D-048) were
-each invisible to the test suite and each already present in a captured
-screenshot nobody had opened. The tour writes eleven of them in about a minute.
-
-
-
-In order. Each item ends somewhere the pipeline is green and the repo is committable.
-
-### Already closed, so nobody re-does it
-
-Doc 08 **phase 4 (the judge path), phase 6 (accessibility) and phase 7.2 (the
-replay viewer)** are built and verified in Chrome (D-056 to D-062). **Phase 4 is
-complete**, including the starter prompt card's art.
-
-Four defects were found and fixed on the way, and three of them were only
-findable by running the thing:
-
-- The tour photographed the Archive beat from four hundred metres up, in runs
-  whose twenty-one assertions were green (D-056).
-- `inspect({target})` told an agent `Received .` (D-057).
-- A failed fetch drew `NO TAPE`, which is a **prop**, so nothing reported a
-  failure and the first check passed on it (D-058).
-- The replay page was blank in production and perfect in development, twice over
-  (D-060).
-- The starter prompt card, which is on the never-cut list, existed as two
-  hand-assembled copies and the gate's had silently lost its fallback line
-  (D-062).
-
-**The stale-server trap cost the first hour and will cost yours.** Two previous
-sessions had left a `vite` on 5173 and a Chrome on 9222. The tour ran green
-against a seven-hour-old build and reported failures that were not in this
-checkout. Before trusting any browser run: `ss -ltnp | grep -E ':(5173|8787|9222)'`,
-kill what is there, and start Vite with `--strictPort` so it cannot quietly
-land on 5175.
+- **The tilt on the mode cards and the slip.** Five degrees toward the pointer,
+  verified by reading the actual custom property back over CDP. Does it read
+  as premium, or as a card that will not sit still?
+- **The pointer light on the hero.** Its first version measured as
+  functioning and was invisible; it is two rings now, checked by cropping a
+  frame with and without a simulated pointer over the headline. Does it read
+  as the room's own light finding the page, or as nothing, or as too much?
+- **The display typeface.** Fraunces is the one deliberate exception to
+  "no asset files" (D-068), ~150KB the client did not used to fetch. Nobody
+  has looked at it on a phone, and nobody has looked at it in the ChatGPT
+  in-app browser, which is also where item 4's performance question lives.
 
 ### 2. Keep playing and fixing, and play it properly this time
 
@@ -201,8 +189,12 @@ curl -sX POST $B/pull_lever -H 'content-type: application/json' \
   -d '{"lever_id":"lever_c"}'
 ```
 
-Route names are the tool names; `apps/worker/src/Session.ts` line 136 onward is
-the list. Note the order: KEEPER calls `begin_shift` **first**, and only then
+**Route names are the tool names only for the mutating half.** The read-only
+tools are GETs on shorter paths - `get_status` is `GET /status`,
+`describe_chamber` is `/describe`, `read_manual` is `/manual?section=`,
+`inspect` is `/inspect?object_id=`, plus `/ciphertext`, `/lock_state` and
+`/notes`. `apps/worker/src/Session.ts` line 139 onward is the real list, and
+this file told two people otherwise. Note the order: KEEPER calls `begin_shift` **first**, and only then
 does PILOT pick a session length, or `start` answers `E_NO_SESSION`. Pick
 `practice` to look at rooms without a clock.
 
@@ -361,11 +353,27 @@ rhythm** (4.00 of four at 4s, 3.80 at 6s, 2.00 at 9s), and **the Signal Room's
 until doc 11 sections 6 and 7 carry measured round trips; then re-run both the
 ablation and the benchmark.
 
-### 7. Deploy the archive origin as its own Pages project
+### 7. Deployment - done (D-074, D-075)
 
-The code is done and proved locally; the second Cloudflare Pages project and its
-preview-deploy wiring are not. `VITE_ARCHIVE_ORIGIN` and the worker's
-`ALLOWED_ORIGINS` are the only two settings involved.
+Both custom domains are active and the full cross-origin delegation proof
+passes 27/27 against them:
+
+```bash
+WORKER=https://semaphore.ahmedxsaad.workers.dev \
+GAME=https://semaphore.ahmedxsaad.me \
+ARCHIVE=https://semaphore-archive.ahmedxsaad.me \
+CDP=http://127.0.0.1:9222 \
+node --experimental-strip-types tests/cross-origin-delegation.ts
+```
+
+The two cross-origin invoke checks that failed against the `*.pages.dev`
+fallback origins (D-074) pass here, confirming the diagnosis: `pages.dev` is a
+public suffix, so those were two different *sites* under Chrome's site
+isolation and the archive frame was an out-of-process frame a plain
+`Page.getFrameTree()` could not see. `semaphore.ahmedxsaad.me` and
+`semaphore-archive.ahmedxsaad.me` share one registrable domain and behave like
+local dev's `localhost:5173`/`localhost:5175` always did. Nothing in the
+product needed to change.
 
 ### 8. Point a model at the benchmark [blocked on step 4]
 
@@ -376,6 +384,8 @@ seconds with zero tokens. Budget the tokens before running, not after.
 
 ### The renderer
 
+- **A value the render loop writes into a live object every frame must never be read back as a starting point** (D-067). It is a feedback loop with no damping term. The camera's idle drift was added into `camera.position` each frame and the shot transition took its origin from `camera.position`, so the drift compounded at 0.22m a frame - about thirteen metres a second - and holding a movement key put the camera outside the station. The symptom of this class of bug is not a wrong value, it is a value that leaves the world.
+- **A camera transition is keyed on the shot's identity, never on its coordinates** (D-067). A room shot leans toward PILOT, so its eye moves every frame anybody is walking; keyed on the eye, every frame was a new shot, the easing never completed, and the follow that `roomShot` was written for had never once worked.
 - **A renderer's defects are in the frame, and the only instrument that sees them is a frame.** Eleven defects across three sittings (D-046 to D-048) were each invisible to 650 passing tests, and two of them were *introduced by the fix for another*. When a room looks wrong, do not reason about the plan: take the frame, crop it, and if that is not enough, name the scene graph and dump it. Every object now carries a name (`building`, `room`, `dressing`, `dress:<kind>`, `fix:<id>`) precisely so that dump is one call rather than a bisection.
 - **A test written around a bug you already found will not find its sibling.** The dressing-overlap check compared centre points and skipped any fixture above 1.4m, which is exactly why it missed a 4m monitor with two cabinets buried in it. Widen the check to what the rule actually says, not to what reproduces the one case.
 - **A test written from the code rather than from the intent will guard the bug.** A green unit test asserted that the finale had no room to draw. That was the defect: the last two beats of the game rendered an empty shell for as long as the 3D client had existed, and the test said so approvingly.
@@ -404,6 +414,10 @@ seconds with zero tokens. Budget the tokens before running, not after.
 
 ### The console
 
+- **A CSS override goes below what it overrides, and this cost two rounds in one session** (D-066). Source order breaks specificity ties, so a narrow-window block written next to the rule it is *about* rather than below the rule it *changes* does nothing at all - silently, with every check still green. The proof graphic never stacked on a phone and the skip hint never cleared the foot, both for this reason, both found by looking at a frame.
+- **Five things are absolutely positioned over one viewport and each one has to be told which edge it owns**: the rail, the ending strip, the caption band, the foot and the story. A band told only "top" or "bottom" is printed through whichever of the other four shares it. That has now produced four separate defects; the last three were on the last frame of the game, which is the frame fewest people ever reach.
+- **`querySelector` returns the first in *document* order, and there are two requisition slips on the page** (D-066). The visible one on the landing screen and the one stowed in the closed YOUR AGENT drawer. Appending the landing screen last put the hidden one first, and the browser proof correctly reported the never-cut card as not on screen. The landing screen is the console's first child for this reason, which is also the right order for a screen reader.
+- **A refusal that goes only to the activity log goes nowhere**, because the activity log lives in a closed drawer. That is how `E_NO_SESSION` turned the three session-length buttons into controls that visibly did nothing (D-066). Anything a person's own click can be refused by has to answer where they clicked.
 - **A CSS grid column defaults to `auto`, which floors at its content's min-content width.** The console is a grid and its rail is a flex row of nowrap parts, so with no `grid-template-columns` the rail sized itself to its contents and took the page with it - a horizontal scrollbar and the east tab rail off the edge of the window, the moment a room name grew by eight characters. `min-width: 0` on the shrinkable child cannot help: the column has already grown to give it room.
 - **A drawer overlays the deck and must never push it.** The camera frames against the viewport's measured shape, so a panel that squeezed it would re-frame the shot every time somebody opened one, and the room would jump.
 - **`display: flex` beats the user agent's `[hidden]`.** The first build of the drawers came up with both of them open and empty, because `drawer.hidden = true` did nothing against `display: flex`.
@@ -446,6 +460,7 @@ seconds with zero tokens. Budget the tokens before running, not after.
 - **D1 hands a BLOB back as an array of byte numbers**, not the `ArrayBuffer` the types say or the `Uint8Array` that was written. `new Blob([thatArray])` does not fail; it stringifies it, and the only symptom is `Decompression failed` from a line that looks right.
 - **`base: "./"` means no route may be nested** (D-060). Relative asset paths resolve against the URL's directory, so `/replay/abc` asks for `/replay/assets/...` and comes up blank - in production only, since Vite serves an absolute entry in development. Any new page route is a query on an existing path, or it is a build-config decision.
 - **A page and an API may not share a URL when the API sets `cache-control`.** A navigation to a URL the page had already fetched was served the cached JSON: one request, 200, no modules loaded.
+- **A `_redirects` rewrite's target must not itself be a path Cloudflare Pages would redirect** (D-074). `/replay  /index.html  200` is a textbook rewrite rule and worked under `vite preview`, the only place it had ever been checked before the first real Pages deployment. On actual Cloudflare Pages, resolving `/index.html` goes through the same clean-URL step that canonicalises it to `/`, and that step's 308 was not staying internal to the rewrite - it came back to the client, so `/replay?id=...` answered with a redirect to `/?id=...` and the route was gone. The fix is the target `/`, not `/index.html`. Nothing in the test suite could have caught this: it is Cloudflare's own edge routing, which only exists once something is actually deployed there. Check every `_redirects`/`_headers` rule against a real Pages deployment, not only against `vite preview`, before trusting it.
 
 ---
 
@@ -453,12 +468,10 @@ seconds with zero tokens. Budget the tokens before running, not after.
 
 | Item | Owner | Note |
 |---|---|---|
-| Playtesters | Human | Doc 08 section 0.1 wants six. The one task that does not parallelise, and the interface is now the one worth testing. |
+| Playtesters | Human | Doc 08 section 0.1 wants six. The one task that does not parallelise. The web layer has been redesigned (D-066) and has met nobody but its author. |
 | Spike in ChatGPT's in-app browser | Human | Still the only thing keeping `ARCHIVE_ORIGIN` at `same`. Now also the only way to know whether the 3D renderer performs there. |
 | A real agent session | Human | Doc 11 sections 6 and 7 stay empty until a model meets the page. |
 | Doc 06 section 11 rewritten | Whoever holds the design | It still describes a chiptune score. The client plays a warm instrumental with chiptune tension over it (D-051), heard and signed off. The doc is the half that has to move. |
-| A second Pages project for `apps/archive` | Human | Needs a Cloudflare project and preview-deploy wiring. |
-| Socket behaviour through Cloudflare's edge | Human | Verified against local `workerd` only. |
 | Chamber II's drift rate | Whoever holds the design | Blocked on doc 11 sections 6 and 7. Re-run `ablation` and `benchmark` after any change. |
 | Per-model benchmark numbers | Human | Harness done and free to run. Needs a backend behind the tool surface. |
 | A real screen reader | Human | The accessibility mirror is built and checked against the accessibility tree, never against NVDA or VoiceOver. Doc 08 phase 6's last line. |

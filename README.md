@@ -8,6 +8,8 @@ A cooperative asymmetric-information escape game for the human-agent era, built 
 
 You and your AI agent are locked in a derelict signal station. You each control an avatar in the same room, but you perceive different worlds. **You** see glyphs on a panel, needles on gauges, a symbol carved into a door. **Your agent** cannot see any of it. It has the station's maintenance manual, the ability to reach mechanisms behind the walls, and the hands you do not have. Neither of you escapes alone. Each chamber you clear rewrites the agent's tool surface in real time.
 
+**Play it: [semaphore.ahmedxsaad.me](https://semaphore.ahmedxsaad.me)**. Chrome 149+ with `chrome://flags/#enable-webmcp-testing`, or ChatGPT's in-app browser.
+
 ---
 
 ## The ablation
@@ -40,21 +42,22 @@ proposal for an instrument, with its raw data, not as an established one.
 
 ## Status
 
-Playable end to end in Chrome 152 against a live worker: four chambers, the Archive, the finale
-and the ending, rendered in real-time 3D. Not yet deployed, and not yet played by a model.
+**Live on Cloudflare** (D-074, D-075) and playable end to end: four chambers, the Archive, the
+finale and the ending, rendered in real-time 3D, on the account's own custom domain. Not yet
+played by a model.
 
 | Component | State |
 |---|---|
 | Design documents (00-12) | Complete |
 | `packages/seed`, `packages/protocol` | Built and tested |
-| `apps/worker` - Durable Object, reducer, four chambers, tool surface | Built |
-| `apps/game` - Three.js client, WebMCP tool director, the station console | Built |
-| `apps/archive` - the cross-origin tool provider | Built, proved on Chrome 151 |
-| `tests/` - possible-worlds proof, cross-origin delegation | Green across all four chambers |
+| `apps/worker` - Durable Object, reducer, four chambers, tool surface | Built and deployed |
+| `apps/game` - Three.js client, WebMCP tool director, the station console | Built and deployed |
+| `apps/archive` - the cross-origin tool provider | Built and deployed, proved on Chrome 152 against the live domains |
+| `tests/` - possible-worlds proof, cross-origin delegation | Green across all four chambers, and against the live deployment |
 | `bench/` - the ablation and the Cooperative Benchmark | Built and published |
 | Art - the station, both bodies, KEEPER's anatomy | Built, procedural, no asset files |
 | Audio - synthesised, no asset files | Built and signed off |
-| The replay viewer, `/replay?id=` | Built |
+| The replay viewer, `/replay?id=` | Built and deployed |
 | Accessibility - the mirror, contrast, motion, colourblind verification | Built; not yet tested with a screen reader |
 
 [NEXT-STEPS.md](NEXT-STEPS.md) is the live handoff and says what is next and what will bite you.

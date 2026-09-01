@@ -33,6 +33,10 @@ database_id = "e8e649f2-b891-4f0f-9ff4-09419d8639e0"
 # Empty by default: local development proxies `/session` through Vite, so every
 # request is same-origin and no header is needed. Production sets the game's
 # Pages origin and the archive origin here, comma-separated. Nothing
-# environment-specific belongs in a source file (repo CLAUDE.md section 3).
+# environment-specific belongs in a source file (repo CLAUDE.md section 3) -
+# this is the configuration layer that rule points at, not an exception to it.
 [vars]
-ALLOWED_ORIGINS = ""
+# The custom domains are canonical; the *.pages.dev origins stay allowed too
+# as the fallback that's live before a custom domain's DNS record exists and
+# as a working link if the domain ever lapses.
+ALLOWED_ORIGINS = "https://semaphore.ahmedxsaad.me,https://semaphore-archive.ahmedxsaad.me,https://semaphore-q3p.pages.dev,https://semaphore-archive.pages.dev"

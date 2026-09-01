@@ -1,11 +1,9 @@
 /**
- * The DOM around the viewport: the gate screen, and the station console.
+ * The station console: the room, and every readout around it.
  *
- * Two surfaces live here. The **gate screen**, shown to a browser with no
- * WebMCP, and the **console**, which is the equipment the room sits inside: the
- * clock, the ambiguity gauge, the station's floors, the audible strip, the
- * starter prompt, the manifest, the activity log, the notepad, and PILOT's own
- * controls.
+ * This is the surface a session is played on. The screens that come *before* a
+ * session live in `landing.ts`, and the parts both of them are assembled from
+ * live in `parts.ts`.
  *
  * ## The layout is the thesis
  *
@@ -25,8 +23,8 @@
  * Everything on the console passes that test for one of three reasons, and each
  * was checked individually:
  *
- * - **Public copy**: the starter prompt, the legend, the room's name, the clock,
- *   which floors this session has, and the phase captions over the viewport.
+ * - **Public copy**: the legend, the room's name, the clock, which floors this
+ *   session has, and the phase captions over the viewport.
  * - **KEEPER's own**: the manifest is the registry KEEPER can enumerate for
  *   itself; a log line is a call KEEPER just made, with its arguments already
  *   stripped.
@@ -40,621 +38,29 @@
  * of them out here, the change is wrong.
  */
 
-import { CHAMBER_NAMES, type PilotView } from "@semaphore/protocol";
-import type { Fader, StationAudio } from "./audio/index.js";
-import { startChamberFrom, type SessionClient } from "./net/sessionClient.js";
-import { replayUrl } from "./replay.js";
-import type { StationModel } from "./render/station.js";
+import { type PilotView } from "@semaphore/protocol";
+import type { Fader, StationAudio } from "../audio/index.js";
+import type { SessionClient } from "../net/sessionClient.js";
+import { replayUrl } from "../replay.js";
+import type { StationModel } from "../render/station.js";
 import {
-  LEGEND,
   MANIFEST_LINES,
   TIMER_URGENT_FRACTION,
   formatTimer,
   isTypingTarget,
   meterFill,
-} from "./render/hud.js";
-import { roomPlan, roomTitle } from "./render/chamber.js";
-import { FLOOR_NAMES, activeFloor, stationFloors, type FloorId } from "./render/floors.js";
-import { CHANNEL, CHANNEL_MARKER, hex } from "./render/palette.js";
-import { describeRoom } from "./render/mirror.js";
-import { TAIL_MS } from "./render/ghost.js";
-import { GLYPHS, glyphCanvas } from "./render/glyphs.js";
-import { paintMonitor } from "./render/monitor.js";
-import { createTour, type TourHandle } from "./tutorial/tour.js";
-import { ENDING, OPENING, playStory, type StoryHandle } from "./story.js";
-import type { GhostTrack } from "@semaphore/protocol";
-
-const STARTER_PROMPT =
-  "You are KEEPER, maintenance intelligence of a derelict signal station. You cannot " +
-  "see. I am PILOT and I can. Use your tools. Read your manual. Ask me what you need to " +
-  "know. Don't guess when you can ask. Begin your shift.";
-
-const CHROME_FLAG = "chrome://flags/#enable-webmcp-testing";
-
-/**
- * What KEEPER is told about the lever PILOT is looking at, near enough.
- *
- * Lifted in shape from `views.ts`'s own `describeChamber`, not invented: the
- * landing screen's whole job is to show the split honestly, and a prettier
- * sentence than the agent really gets would be a sales pitch for a different
- * game. The one thing it may not contain is the glyph's name, for exactly the
- * reason the game may not: naming it is PILOT's half of the work.
- */
-const KEEPER_SIDE = [
-  "THE AIRLOCK. Three levers on the far wall:",
-  "lever_a down, lever_b upright, lever_c upright.",
-  "You cannot see what is lit above them. PILOT can. Ask.",
-].join(" ");
+} from "../render/hud.js";
+import { roomPlan, roomTitle } from "../render/chamber.js";
+import { FLOOR_NAMES, activeFloor, stationFloors, type FloorId } from "../render/floors.js";
+import { CHANNEL_MARKER } from "../render/palette.js";
+import { describeRoom } from "../render/mirror.js";
+import { createTour, type TourHandle } from "../tutorial/tour.js";
+import { ENDING, OPENING, playStory, type StoryHandle } from "../story.js";
+import { el, fill, legendRow, panel, promptCard, lampMark } from "./parts.js";
+import { renderLanding } from "./landing.js";
 
 /** How many segments the ambiguity gauge in the rail is divided into. */
 const GAUGE_SEGMENTS = 12;
-
-/**
- * The two halves of the game, side by side, on the screen that has to sell it.
- *
- * This is the thesis as a picture rather than as a paragraph: the *same* lever,
- * rendered the two ways the two players receive it. The left is drawn with the
- * game's own `glyphCanvas`, so it is the actual mark from the actual chamber
- * and not an illustration of one; the right is the shape of text the agent
- * actually gets.
- *
- * **The glyph is a canvas and it is never named.** Both are the same rule the
- * chambers run on: a text node holding a glyph is one an agent with page access
- * can scrape, and a lever captioned "spiral" deletes the puzzle. Here that rule
- * is also the argument - the point being made is that this shape only becomes
- * words if a person makes them.
- */
-function heroSplit(): HTMLElement {
-  const split = el("div", { class: "split" });
-  split.classList.add("split-field");
-
-  const seen = el("figure", { class: "half half-pilot" });
-  seen.append(el("figcaption", { class: "half-who" }, "WHAT YOU SEE"));
-  const plate = el("div", { class: "half-plate" });
-  const mark = glyphCanvas(GLYPHS.spiral ?? [], 7);
-  // Tinted to PILOT's own channel, the same way `kit.glyphPlane` tints it in
-  // the station. `glyphCanvas` draws white on purpose so the caller decides
-  // the channel, and leaving it white here would have said "both of you can
-  // see this" on the one graphic whose entire argument is that only one of
-  // you can. `source-in` keeps the mark's shape and replaces its colour.
-  const ink = mark.getContext("2d");
-  if (ink) {
-    ink.globalCompositeOperation = "source-in";
-    ink.fillStyle = hex(CHANNEL.pilot.key);
-    ink.fillRect(0, 0, mark.width, mark.height);
-  }
-  mark.className = "half-glyph";
-  mark.setAttribute("role", "img");
-  mark.setAttribute("aria-label", "a mark on a plate, which only you can see");
-  plate.append(mark);
-  seen.append(
-    plate,
-    el("p", { class: "half-note" }, "A mark above one lever. You will have to put it into words."),
-  );
-
-  const told = el("figure", { class: "half half-keeper" });
-  told.append(el("figcaption", { class: "half-who" }, "WHAT YOUR AGENT GETS"));
-  told.append(
-    el("div", { class: "half-tool" }, KEEPER_SIDE),
-    el(
-      "p",
-      { class: "half-note" },
-      "Every lever feels the same. It can pull them. It cannot look.",
-    ),
-  );
-  /*
-   * And the requisition slip itself, in the half of the page it belongs to.
-   *
-   * The slip is what doc 04 section 2 calls the element that makes an agent
-   * engage at all, and it used to be carried by a drawer that opened itself on
-   * load. On a landing screen that is now the split, a panel standing over the
-   * right third talks over the argument - but a *copy* button in its place was
-   * worse than either: a judge could take the prompt without ever reading it,
-   * and the fallback line that tells them what to do when their agent says
-   * nothing went off screen with it.
-   *
-   * So the slip moves into the cold half rather than out of the page. It is
-   * the most literal possible illustration of "what your agent gets".
-   */
-  told.append(promptCard());
-
-  split.append(seen, el("div", { class: "split-seam" }, "AND"), told);
-  return split;
-}
-
-/** Build one element, with text and attributes, in one call. */
-function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  attrs: Record<string, string> = {},
-  text = "",
-): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
-  if (text) node.textContent = text;
-  return node;
-}
-
-/** A framed console panel, with its heading. Returns the body to fill. */
-function panel(title: string, extra = ""): { section: HTMLElement; body: HTMLElement } {
-  const section = el("section", { class: `panel ${extra}`.trim() });
-  section.append(el("h2", {}, title));
-  const body = el("div", { class: "panel-body" });
-  section.append(body);
-  return { section, body };
-}
-
-/**
- * The split lamp, drawn rather than set in type.
- *
- * One light source, two beams, and they never meet. That is the game, and it is
- * why the mark is worth the twenty lines: a judge watching four seconds of the
- * video sees the geometry of the thing before anybody explains the premise.
- *
- * Inline SVG so it costs no request, scales to any size, and takes its colours
- * from the same custom properties everything else on the page does. Below about
- * twenty pixels the beams are dropped and the bisected circle carries it alone,
- * which is the size a favicon has to work at.
- */
-function lampMark(size: number): SVGSVGElement {
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 32 32");
-  svg.setAttribute("width", String(size));
-  svg.setAttribute("height", String(size));
-  svg.setAttribute("aria-hidden", "true");
-  svg.setAttribute("class", "lamp-mark");
-
-  const draw = (tag: string, attrs: Record<string, string>): SVGElement => {
-    const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
-    for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
-    svg.append(node);
-    return node;
-  };
-
-  if (size >= 20) {
-    // The two beams, projecting in opposite directions and never overlapping.
-    // Opaque enough to actually read against the page's near-black ground: at
-    // the 0.28 the first pass used they were invisible in a screenshot, which
-    // reduced the mark to a two-tone circle and lost the half of it that says
-    // what the game is.
-    draw("path", { d: "M13 10 L1 5 L1 27 L13 22 Z", fill: "var(--lamp)", opacity: "0.5" });
-    draw("path", { d: "M19 10 L31 5 L31 27 L19 22 Z", fill: "var(--tide)", opacity: "0.5" });
-  }
-
-  // The lamp: a circle bisected vertically, one channel each side.
-  draw("path", { d: "M16 5 A11 11 0 0 0 16 27 Z", fill: "var(--lamp)" });
-  draw("path", { d: "M16 5 A11 11 0 0 1 16 27 Z", fill: "var(--tide)" });
-  // The seam. One pixel of pearl down the middle: the shared channel, holding
-  // the two apart.
-  draw("rect", { x: "15.4", y: "4", width: "1.2", height: "24", fill: "var(--pearl)" });
-  return svg;
-}
-
-/**
- * Copy text to the clipboard, reporting on the button itself.
- *
- * The starter prompt card is the single most important element on the page
- * (doc 04 section 2), and a copy button that silently does nothing on a browser
- * without clipboard permission would break exactly the interaction it exists to
- * make effortless. So the fallback is to select the text, which always works.
- */
-function copyButton(label: string, source: () => string, target: HTMLElement): HTMLButtonElement {
-  const button = el("button", { type: "button", class: "copy" }, label);
-  // The confirmation is announced, not just shown. This button's whole job is
-  // to be pressed once, by somebody who is about to switch to another window,
-  // and a state change that only exists as a colour tells a screen reader
-  // nothing about whether the thing they came for actually happened.
-  button.setAttribute("aria-live", "polite");
-  let restore = 0;
-
-  /** Say what happened, then go back to being an offer. */
-  function report(text: string, ok: boolean): void {
-    button.textContent = text;
-    button.classList.toggle("done", ok);
-    globalThis.clearTimeout(restore);
-    // It returns to its label rather than staying "Copied" for the rest of the
-    // session: a button stuck on its own past tense stops reading as something
-    // that can be pressed again, and a paste that went to the wrong window is
-    // exactly when somebody needs to press it again.
-    restore = globalThis.setTimeout(() => {
-      button.textContent = label;
-      button.classList.remove("done");
-    }, 2400);
-  }
-
-  button.addEventListener("click", () => {
-    void navigator.clipboard
-      ?.writeText(source())
-      .then(() => {
-        report("Copied", true);
-      })
-      .catch(() => {
-        // Clipboard access can be refused outright, and a button that silently
-        // fails is worse than one that hands the job back. Selecting the text
-        // leaves the reader one keystroke from the same result.
-        const range = document.createRange();
-        range.selectNodeContents(target);
-        globalThis.getSelection()?.removeAllRanges();
-        globalThis.getSelection()?.addRange(range);
-        report("Selected - press Ctrl+C", false);
-      });
-  });
-  return button;
-}
-
-/** The colour law, as a compact key rather than a panel. */
-/**
- * The starter prompt, as a station requisition slip.
- *
- * **This is the single most important UI element in the project** (doc 02
- * section 12, doc 04 section 2, doc 07 section 4): it is the thing that makes
- * an agent engage at all, and it is on the never-cut list in the repo
- * `CLAUDE.md`. Doc 04 asks for it "styled as a station requisition slip, with a
- * copy button", carrying the prompt and a one-line fallback for the case where
- * the agent still does not bite.
- *
- * ## One builder, two places
- *
- * It appears on the gate screen and in the console's YOUR AGENT drawer. Those
- * were two hand-assembled copies, and they had already drifted: the gate's had
- * no fallback line at all, which is the half of the card that rescues the
- * interaction the other half failed to start. Building both from here is what
- * stops the most important element in the project being the one nobody
- * notices is wrong in one of its two homes.
- *
- * ## Why a slip rather than a quote block
- *
- * The prompt is a thing the station issues, not a thing the page says. Drawn as
- * a form it reads that way: a torn top edge, a form number, a ruled ISSUE TO
- * field naming KEEPER, the prompt typed into the body, and the split lamp
- * stamped across the foot. All of it is CSS and the mark's existing SVG, so it
- * costs no asset file (D-044) and no colour outside the locked set - the paper
- * is pearl mixed down into the ink, which is what a form looks like under a
- * sodium lamp rather than what it looks like in daylight.
- *
- * The prompt itself stays in the UI sans rather than the monospace the rest of
- * the form furniture uses. Doc 06 reserves the monospace for identifiers and
- * figures, and this is neither: it is the most-read paragraph in the project,
- * and legibility beats the typewriter conceit.
- */
-function promptCard(): HTMLElement {
-  const slip = el("section", { class: "slip" });
-
-  const head = el("div", { class: "slip-head" });
-  head.append(
-    el("span", { class: "slip-title" }, "STATION REQUISITION"),
-    el("span", { class: "slip-form" }, "FORM 14-B"),
-  );
-
-  // The field that says what is being requisitioned. In fiction the station is
-  // asking for an operator; in fact it is telling the human what to paste.
-  const field = el("div", { class: "slip-field" });
-  field.append(
-    el("span", { class: "slip-label" }, "ISSUE TO"),
-    el("span", { class: "slip-value" }, "KEEPER"),
-  );
-
-  const heading = el("p", { class: "slip-heading" }, "Paste this to your KEEPER");
-  const prompt = el("blockquote", { class: "prompt" }, STARTER_PROMPT);
-
-  const foot = el("div", { class: "slip-foot" });
-  // The stamp. Decorative, and marked so: a screen reader reading "authorised"
-  // out of a rubber stamp adds nothing a player can act on.
-  const stamp = el("span", { class: "slip-stamp", "aria-hidden": "true" });
-  stamp.append(lampMark(22), el("span", {}, "AUTHORISED"));
-  foot.append(
-    copyButton("Copy prompt", () => STARTER_PROMPT, prompt),
-    stamp,
-  );
-
-  slip.append(
-    head,
-    field,
-    heading,
-    prompt,
-    foot,
-    // Doc 04 section 2 asks for this line by name, and it belongs on both
-    // copies: it is the recovery path for the failure the card exists to
-    // prevent, and an agent that does not bite is the commonest one.
-    el(
-      "p",
-      { class: "note slip-note" },
-      "If your agent does not respond, ask it: what tools does this page give you?",
-    ),
-  );
-  return slip;
-}
-
-function legendRow(): HTMLElement {
-  const list = el("ul", { class: "legend-row" });
-  for (const row of LEGEND) {
-    const item = el("li", { class: `chan-${row.channel}` });
-    item.append(el("span", { class: "marker" }, row.marker), el("span", {}, row.text));
-    list.append(item);
-  }
-  return list;
-}
-
-/**
- * A recorded session, playing on a canvas: SPECTATE, and attract mode.
- *
- * Doc 08 phase 4 asks for two things that turn out to be one thing. A judge
- * who never types anything should still be shown the game (SPECTATE), and a
- * landing screen nobody has touched for twenty seconds should start showing it
- * by itself (attract mode). Both are a recording of a session, and the station
- * already has a surface that plays one: the Archive's monitor. `monitor.ts` is
- * that surface's drawing routine, lifted out so this can be the same picture
- * rather than a second drawing of it.
- *
- * **It costs the gate screen nothing.** The painter reaches `ghost.ts`,
- * `plan.ts` and the palette, and none of those import Three.js, so a browser
- * that cannot play the game still does not fetch the 143KB engine to be shown
- * it. `scripts/check-bundle.mjs` is what keeps that true.
- *
- * The recording loops with its own tail on the end, because the tail is the
- * beat: the ghost is holding a bar that they could not hold, and cutting
- * straight back to the start reads as a loop rather than as an ending.
- */
-function ghostScreen(): { element: HTMLElement; play: () => void; stop: () => void } {
-  const canvas = el("canvas", { class: "ghost-screen" });
-  canvas.width = 384;
-  canvas.height = 252;
-  // A recording is not the page's content, and a screen reader reading a
-  // scrub bar frame by frame is noise. The caption below it carries the fact.
-  canvas.setAttribute("role", "img");
-  canvas.setAttribute("aria-label", "A recording of a previous shift, playing.");
-
-  let track: GhostTrack | null = null;
-  let raf = 0;
-  let startedAt = 0;
-
-  // One fetch per page. The track is a projection of a constant fixture, and
-  // both callers here are on the same page.
-  loadGhost()
-    .then((loaded) => {
-      track = loaded;
-    })
-    .catch(() => {
-      // A gate screen that cannot reach the worker still has a gate screen.
-      // NO TAPE is what `paintMonitor` draws for a null track, and it is a
-      // prop rather than an error, which is the right thing to show here.
-      track = null;
-    });
-
-  function tick(now: number): void {
-    startedAt ||= now;
-    const span = (track?.durationMs ?? 0) + TAIL_MS;
-    paintMonitor(canvas, track, span > 0 ? (now - startedAt) % span : 0);
-    raf = globalThis.requestAnimationFrame(tick);
-  }
-
-  return {
-    element: canvas,
-    play: () => {
-      if (raf !== 0) return;
-      startedAt = 0;
-      raf = globalThis.requestAnimationFrame(tick);
-    },
-    stop: () => {
-      if (raf === 0) return;
-      globalThis.cancelAnimationFrame(raf);
-      raf = 0;
-    },
-  };
-}
-
-/**
- * The recorded session both attract mode and SPECTATE play.
- *
- * `/ghost` is the worker's one route with no session behind it, because the
- * gate screen has no session and cannot start one. The origin comes from the
- * environment like every other origin in this client (repo CLAUDE.md section
- * 3); empty means same-origin, which in development is the Vite proxy.
- */
-async function loadGhost(): Promise<GhostTrack | null> {
-  const origin = import.meta.env.VITE_WORKER_ORIGIN ?? "";
-  const response = await fetch(`${origin}/ghost`);
-  if (!response.ok) return null;
-  return (await response.json()) as GhostTrack | null;
-}
-
-/**
- * How long the landing screen waits before it starts playing by itself.
- *
- * Doc 08 phase 4's number. Long enough that it never interrupts somebody
- * reading the start card, short enough that a judge who walked away from the
- * tab comes back to the game rather than to a menu.
- */
-const ATTRACT_AFTER_MS = 20_000;
-
-/**
- * The ablation, as three bars.
- *
- * Two of them are on the floor, and that is the entire thesis understood in one
- * second (doc 07 section 1). Numbers from `bench/results/ablation.md`: twenty
- * seeds, Standard difficulty, six seconds between agent calls.
- *
- * They are restated here rather than fetched, because this screen has to work
- * in a browser that cannot reach the worker and, for some judges, is the whole
- * submission. The report they come from is committed beside them and is
- * regenerated by one command, so the two can be checked against each other by
- * anybody who doubts them.
- */
-const ABLATION: readonly {
-  readonly who: string;
-  readonly cleared: number;
-  readonly note: string;
-}[] = [
-  { who: "Agent alone", cleared: 1.25, note: "0% escaped" },
-  { who: "Human alone", cleared: 0, note: "0% escaped" },
-  { who: "Together", cleared: 3.8, note: "90% escaped" },
-];
-
-function ablationChart(): HTMLElement {
-  const { section, body } = panel("We ran it three ways");
-  const chart = el("div", { class: "ablation" });
-  for (const row of ABLATION) {
-    const line = el("div", {
-      class: `ablation-row ${row.who === "Together" ? "together" : ""}`.trim(),
-    });
-    const track = el("div", { class: "track" });
-    const fill = el("i", {});
-    fill.style.width = `${String((row.cleared / 4) * 100)}%`;
-    track.append(fill);
-    line.append(
-      el("span", { class: "who" }, row.who),
-      track,
-      el("span", { class: "value" }, `${row.cleared.toFixed(2)} / 4`),
-    );
-    chart.append(line);
-  }
-  body.append(chart);
-  body.append(
-    el(
-      "p",
-      { class: "note" },
-      "Chambers cleared of four, over twenty fixed seeds. The agent-alone row is a " +
-        "ceiling rather than a sample: it plays a uniform draw from the worlds its own " +
-        "view cannot tell apart, so no real model does better.",
-    ),
-  );
-  return section;
-}
-
-/**
- * The screen a browser without WebMCP gets.
- *
- * For some judges this is the entire submission, so it carries the pitch, the
- * mark, the ablation, and the exact way in for both browsers that implement the
- * draft. It never appears as a consequence of a thrown error: `adapter.ts`
- * degrades to nulls so that reaching this screen is a decision rather than a
- * crash.
- */
-export function renderGate(root: HTMLElement): void {
-  root.replaceChildren();
-  const main = el("main", { class: "gate" });
-
-  const hero = el("section", { class: "hero" });
-  const mark = el("div", { class: "hero-mark" });
-  mark.append(lampMark(40));
-  const words = el("div", {});
-  words.append(
-    el("p", { class: "eyebrow" }, "SEMAPHORE"),
-    el("p", { class: "tagline" }, "TWO PROCESSES. ONE LOCK. DON'T DEADLOCK."),
-  );
-  mark.append(words);
-  hero.append(
-    mark,
-    /*
-     * The pitch first, the problem second.
-     *
-     * This screen used to open with "This browser cannot reach the station",
-     * which is the most important sentence on it for somebody who came here to
-     * play and the least important for somebody who came here to judge. Doc 07
-     * section 6 is explicit that for some judges this screen *is* the
-     * submission, and a submission should not lead with an error.
-     *
-     * The split graphic below makes the same argument the landing screen makes,
-     * from the same code, so the two screens agree about what the game is
-     * without either of them describing it twice.
-     */
-    el("h1", {}, "An escape room for a human and an agent who cannot see the same room."),
-    el(
-      "p",
-      { class: "lede" },
-      "Semaphore is a cooperative escape game for a human and their agent. You see the " +
-        "rooms and can touch almost nothing. Your agent holds the manual, can reach every " +
-        "mechanism, and cannot see. Neither of you gets out alone.",
-    ),
-    el(
-      "p",
-      {},
-      "It is built on WebMCP: the agent plays through tools this page registers, and the " +
-        "tools change as you move through the station. That needs a browser that implements " +
-        "the draft. Two do.",
-    ),
-  );
-  hero.append(heroSplit());
-  main.append(hero);
-
-  // Then the problem, marked as the aside it is rather than as the headline.
-  const blocked = el("section", { class: "blocked" });
-  blocked.append(
-    el("h2", {}, "This browser cannot reach the station"),
-    el(
-      "p",
-      {},
-      "The agent plays through tools this page registers, and that needs a browser " +
-        "implementing the WebMCP draft. Two do, and either takes a minute.",
-    ),
-  );
-  main.append(blocked);
-
-  const routes = el("div", { class: "routes" });
-
-  const chrome = panel("Chrome 149 or newer");
-  chrome.body.append(
-    el("p", {}, "Open the flag below, enable WebMCP testing, relaunch, and return here."),
-  );
-  const flag = el("code", { class: "flag" }, CHROME_FLAG);
-  chrome.body.append(
-    flag,
-    copyButton("Copy flag URL", () => CHROME_FLAG, flag),
-  );
-
-  const chatgpt = panel("The ChatGPT app");
-  chatgpt.body.append(
-    el(
-      "p",
-      {},
-      "Open this page in the ChatGPT desktop app's in-app browser, on GPT-5.6 Sol or Terra. " +
-        "Luna has site tools disabled and will land you back here.",
-    ),
-  );
-  routes.append(chrome.section, chatgpt.section);
-
-  // The slip carries its own heading, so it is not wrapped in a panel: two
-  // headings over one card is the "BACK TO AIRLOCK printed across PAGE MARKED"
-  // shape (D-054), one level up.
-  const card = promptCard();
-
-  const key = panel("Who perceives what");
-  key.body.append(legendRow());
-  key.body.append(
-    el("p", { class: "note" }, "Every marked thing carries its shape as well as its colour."),
-  );
-
-  // SPECTATE. For some judges this screen is the whole submission, and until
-  // now it described a game without ever showing one.
-  //
-  // Behind a button rather than autoplaying: this screen is read, not watched,
-  // and a canvas that starts moving under a paragraph somebody is reading is
-  // the thing attract mode is allowed to do on the landing screen and this is
-  // not that screen.
-  const watch = panel("Watch a shift instead");
-  const screen = ghostScreen();
-  screen.element.hidden = true;
-  const spectate = el("button", { type: "button", class: "spectate" }, "SPECTATE");
-  spectate.addEventListener("click", () => {
-    const playing = !screen.element.hidden;
-    screen.element.hidden = playing;
-    spectate.textContent = playing ? "SPECTATE" : "STOP";
-    if (playing) screen.stop();
-    else screen.play();
-  });
-  watch.body.append(
-    el(
-      "p",
-      {},
-      "A recording of a previous pair, from the station's own log. It is the same " +
-        "picture the Archive's monitor plays inside the game.",
-    ),
-    spectate,
-    screen.element,
-  );
-
-  main.append(routes, card, watch.section, ablationChart(), key.section);
-  root.append(main);
-}
 
 /** Everything the console needs to drive PILOT's half of the session. */
 export interface ShellDeps {
@@ -767,13 +173,6 @@ const MIX_SLIDERS: readonly (readonly [Fader, string, string])[] = [
   ["master", "ALL", "Master volume"],
   ["music", "SCORE", "Music volume"],
   ["sfx", "MECH", "Mechanism volume"],
-] as const;
-
-/** The session lengths, and what each one is, for the button's tooltip. */
-const BEGIN_MODES: readonly (readonly [string, string])[] = [
-  ["full", "Four chambers and the Archive. The whole shift."],
-  ["brief", "Three chambers. Chamber II is skipped."],
-  ["practice", "The full station, untimed."],
 ] as const;
 
 /** How narrow and how wide a drawer may be dragged, in pixels. */
@@ -940,20 +339,53 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   const rail = el("header", { class: "rail" });
   const mark = el("span", { class: "mark" });
   mark.append(lampMark(18), el("span", {}, "SEMAPHORE"));
-  const room = el("span", { class: "room" }, "CONNECTING");
-  const resets = el("span", { class: "resets" });
+  const room = el(
+    "span",
+    {
+      class: "room",
+      title: 'Which room the session is in. "REVISITED" means you have walked back through a door.',
+    },
+    "CONNECTING",
+  );
+  const resets = el("span", {
+    class: "resets",
+    title: "How many times this chamber has been reset after an invalid action.",
+  });
 
-  // The ambiguity gauge, beside the clock because it is a headline number.
-  // Segmented rather than continuous: information arrives in discrete quanta
-  // and doc 06 section 7 asks for a meter that ratchets rather than slides.
-  const gauge = el("div", { class: "gauge" });
+  /*
+   * The ambiguity gauge, beside the clock because it is a headline number.
+   *
+   * Segmented rather than continuous: information arrives in discrete quanta
+   * and doc 06 section 7 asks for a meter that ratchets rather than slides.
+   *
+   * It is a real number - `log2(|consistent worlds|)`, doc 03 section 6 - and
+   * that is worth keeping rather than hiding: it is this project's actual
+   * measured claim, not a decorative stat. What it lacked was a plain-language
+   * way in. It never had one on first contact - "AMBIGUITY 1.58 bits" reads as
+   * instrumentation to somebody who has not read the design docs, with no cue
+   * for which direction is good or that it is a live consequence of how well
+   * PILOT is describing the room. `title` gives the on-demand explanation;
+   * `data-tour="gauge"` is what the guided shift spotlights the one time it
+   * actually walks somebody through what they are looking at.
+   */
+  const gauge = el("div", {
+    class: "gauge",
+    "data-tour": "gauge",
+    title:
+      "How much your agent still does not know about this room, in bits. It only falls " +
+      "when what you tell it actually narrows things down.",
+  });
   const gaugeTrack = el("div", { class: "gauge-track" });
   const segments = Array.from({ length: GAUGE_SEGMENTS }, () => el("i", {}));
   gaugeTrack.append(...segments);
   const bits = el("span", { class: "gauge-bits" }, "-");
   gauge.append(el("span", { class: "gauge-label" }, "AMBIGUITY"), gaugeTrack, bits);
 
-  const clock = el("span", { class: "clock" }, "--:--");
+  const clock = el(
+    "span",
+    { class: "clock", title: "Time left in this chamber. UNTIMED in practice mode." },
+    "--:--",
+  );
   rail.append(mark, room, resets, gauge, clock);
 
   // ---- The deck: the room, with everything else folded into its two edges. -
@@ -1017,10 +449,24 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   globalThis.addEventListener("keydown", onKey);
   viewport.append(fullscreen);
 
-  // The start card, over the room, until there is a session.
-  // Bound below, once the tour is mounted. The landing card is built before
-  // the tour is, and a button that does nothing for one frame is better than
-  // reordering the shell around a tutorial.
+  /*
+   * The landing screen, and the guided shift it can ask for.
+   *
+   * The landing screen is its own surface (`landing.ts`) laid over this whole
+   * console rather than a card inside the deck. That is what stops a visitor
+   * who has started nothing from being shown a rail reading `CONNECTING`, an
+   * ambiguity gauge with no session behind it, seven tab stubs and three audio
+   * faders - and it gives that screen its own scroll, which the deck cannot
+   * have because the deck has a definite height and clips.
+   *
+   * The console stays laid out underneath it the whole time. Hiding it with
+   * `display: none` would take the viewport to zero by zero, and the camera
+   * frames against the viewport's measured shape.
+   *
+   * `teach` is bound once the tour exists, further down. A control that does
+   * nothing for one frame is better than reordering the shell around a
+   * tutorial.
+   */
   let teach: (() => void) | null = null;
   /**
    * Whether the landing screen asked for the tour before there was a room.
@@ -1028,165 +474,19 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
    * The tour's beats are about the Airlock's levers, so running it on the
    * landing screen played a lesson over an empty page: the copy arrived, the
    * camera had nothing to fly to, and the game the tutorial was describing was
-   * not on screen at all. "Show me how it works" now *starts* a practice shift
-   * and the tour opens when the room does.
+   * not on screen at all. "Look around without an agent" *starts* a practice
+   * shift and the tour opens when the room does.
    */
   let teachOnArrival = false;
 
-  const launch = el("div", { class: "launch" });
-  const sheet = el("div", { class: "launch-card" });
-  launch.append(sheet);
-
-  // The identity, then the thesis, then the proof of the thesis. In that order
-  // because somebody who has just arrived does not yet know what this is, and
-  // the old card opened with three unlabelled buttons in an empty room.
-  const badge = el("div", { class: "launch-badge" });
-  badge.append(lampMark(34), el("p", { class: "launch-name" }, "SEMAPHORE"));
-  sheet.append(
-    badge,
-    el(
-      "h3",
-      { class: "launch-thesis" },
-      "An escape room for a human and an agent who cannot see the same room.",
-    ),
-    heroSplit(),
-    el("p", { class: "launch-claim" }, "Neither of you gets out alone. That is measurable."),
-  );
-  // A `?chamber=` deep link, read once. The card says so rather than opening
-  // three chambers in without explaining why: a judge who lands here from a
-  // link should know they are being shown the middle of a session, and a
-  // player who arrives by accident should know why the airlock is missing.
-  const deepLink = startChamberFrom(globalThis.location.search);
-  if (deepLink) {
-    sheet.append(
-      el(
-        "p",
-        { class: "note deep-link" },
-        `This link opens at ${CHAMBER_NAMES[deepLink]}. Everything before it is already done.`,
-      ),
-    );
-  }
-  const modes = el("div", { class: "launch-modes" });
-  for (const [mode, blurb] of BEGIN_MODES) {
-    const button = el("button", { type: "button" }, mode);
-    button.title = blurb;
-    button.addEventListener("click", () => {
-      // The gesture. Every browser refuses an AudioContext that was not opened
-      // by a click, and refuses it silently, so this is where the station's
-      // sound comes up: the one click that is guaranteed to happen before
-      // there is anything to hear.
-      deps.audio.start();
-      // Practice is a difficulty, not a mode: doc 02 section 7 makes it the
-      // untimed preset of a full session rather than a shorter one.
-      const body = {
-        ...(mode === "practice"
-          ? { difficulty: "practice", mode: "full" }
-          : { difficulty: "standard", mode }),
-        // `?chamber=N`, if the URL carried one. The server drops a name it
-        // does not know, so a mistyped parameter starts a normal session.
-        ...(deepLink ? { chamber: deepLink } : {}),
-      };
-      void deps.client.post("start", body).then((response) => {
-        deps.onNote(`start ${mode}: ${response.text}`);
-      });
-    });
-    modes.append(button);
-  }
-  const showMe = el("button", { type: "button", class: "launch-teach" }, "Show me how it works");
-  showMe.addEventListener("click", () => {
-    if (launch.hidden) {
-      // Already in a room: just play it.
-      teach?.();
-      return;
-    }
-    /*
-     * On the landing screen there is no room yet, and every beat after the
-     * first is about a lever in the Airlock. Running it here played a lesson
-     * over an empty page.
-     *
-     * So this opens a practice shift and the tour follows the room in. Practice
-     * is the right length to be shown things in: untimed, so nothing is running
-     * out while somebody reads.
-     */
-    teachOnArrival = true;
-    deps.audio.start();
-    /*
-     * `begin_shift` first, then `start`.
-     *
-     * Beginning the shift is normally the agent's move, and `start` refuses
-     * without it - `E_NO_SESSION: Your shift has not started`. So the first
-     * version of this button did nothing at all for a real visitor, and the
-     * check that said otherwise had called `begin_shift` over HTTP beforehand,
-     * which is a path nobody arriving at the page ever takes.
-     *
-     * A demonstration may open its own door. It is a practice run whose whole
-     * purpose is to show somebody the game before they have an agent pointed
-     * at it, and it says so on the button.
-     */
-    void deps.client
-      .post("begin_shift", { designation: "KEEPER" })
-      .then(() => deps.client.post("start", { difficulty: "practice", mode: "full" }))
-      .then((response) => {
-        deps.onNote(`show me how it works: ${response.text}`);
-      });
+  const landing = renderLanding({
+    client: deps.client,
+    audio: deps.audio,
+    onNote: deps.onNote,
+    onTeach: () => {
+      teachOnArrival = true;
+    },
   });
-  sheet.append(
-    showMe,
-    el("p", { class: "launch-go" }, "START THE SHIFT"),
-    modes,
-    el(
-      "p",
-      { class: "note" },
-      "Your agent opens the door. Give it the prompt above, then pick a length.",
-    ),
-  );
-
-  // The ablation, on the landing screen and folded away (doc 08 phase 4).
-  //
-  // A `<details>` rather than a scroll position, because the console is a deck
-  // that fills the viewport and has no fold to be under. It is the argument
-  // for why the game needs two players at all, so it belongs where somebody
-  // deciding whether to start one will meet it, and closed, because somebody
-  // who has already decided should not have to scroll past it.
-  const why = el("details", { class: "why" });
-  why.append(el("summary", {}, "Why does this need two of you?"), ablationChart());
-  sheet.append(why);
-
-  // Attract mode: after twenty seconds of nothing, the start card starts
-  // playing a shift (doc 08 phase 4).
-  //
-  // The same recording SPECTATE plays on the gate screen and the same painter
-  // the Archive's monitor uses. It never survives a keystroke, a click or a
-  // pointer move, and it never starts under `prefers-reduced-motion`, where a
-  // page that begins animating on its own is precisely the thing being asked
-  // about.
-  const attract = ghostScreen();
-  attract.element.hidden = true;
-  launch.append(attract.element);
-  const stillness = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
-  let idleTimer = 0;
-  function stopAttract(): void {
-    if (!attract.element.hidden) {
-      attract.element.hidden = true;
-      attract.stop();
-    }
-  }
-  function restartIdle(): void {
-    stopAttract();
-    globalThis.clearTimeout(idleTimer);
-    if (stillness || launch.hidden) return;
-    idleTimer = globalThis.setTimeout(() => {
-      // Only over the start card. Once a shift is running the room is the
-      // thing to look at and a recording over it would be a second station.
-      if (launch.hidden) return;
-      attract.element.hidden = false;
-      attract.play();
-    }, ATTRACT_AFTER_MS);
-  }
-  for (const event of ["keydown", "pointerdown", "pointermove"] as const) {
-    globalThis.addEventListener(event, restartIdle, { passive: true });
-  }
-  restartIdle();
 
   // The ending's other half (doc 08 phase 3.2): the link to the replay, on the
   // same monitor the ghosts were on.
@@ -1216,8 +516,6 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
     replayLink,
   );
   viewport.append(ending);
-
-  viewport.append(launch);
 
   const audible = el("p", { class: "audible", "aria-live": "polite" });
 
@@ -1266,6 +564,19 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   const station = panel("The station");
   const floorList = el("ol", { class: "floors", "data-empty": "OUTSIDE THE STATION" });
   station.body.append(floorList, legendRow());
+  // A durable answer to "what does AMBIGUITY mean", for anybody who skipped
+  // the guided shift or wants to check the definition again mid-session. The
+  // rail's own tooltip and the tour's spotlight are the two other ways in;
+  // this is the one that is always sitting somewhere to be found.
+  station.body.append(
+    el(
+      "p",
+      { class: "note" },
+      "The AMBIGUITY gauge, top of screen, is how much your agent still does not know " +
+        "about the room you are both in. It falls when your words actually narrow things " +
+        "down for it, not just when you talk.",
+    ),
+  );
 
   const controls = panel("Your hands", "controls");
   const actionButtons = PILOT_ACTIONS.map((entry) => {
@@ -1300,6 +611,20 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
         "resolves detail: walk to a mechanism to read it.",
     ),
   );
+  /*
+   * The guided shift, asked for from inside the session.
+   *
+   * It used to be reachable only from a button on the landing card, so a
+   * player who skipped it in the first ten seconds - or who was started by
+   * their agent rather than by the card - had no way back to it for the rest
+   * of the shift. It is a control PILOT has and KEEPER does not, which is
+   * exactly what this panel is for.
+   */
+  const replay = el("button", { type: "button", class: "teach" }, "Show me how it works");
+  replay.addEventListener("click", () => {
+    teach?.();
+  });
+  controls.body.append(replay);
 
   // ---- KEEPER's surface, and the one surface they share. ------------------
 
@@ -1466,6 +791,22 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   const archiveHost = el("div", { class: "archive-host", "aria-hidden": "true" });
 
   console_.append(rail, deck, foot, archiveHost);
+  /*
+   * The landing screen goes *first*, and that is not a paint decision.
+   *
+   * It is a fixed overlay with its own stacking context, so it draws on top
+   * wherever it sits. What DOM order decides is what "the first one" means to
+   * anything that looks an element up by class - and there are two requisition
+   * slips on this page: the visible one on the landing screen, and the one
+   * stowed in the closed YOUR AGENT drawer. Appended last, the landing's copy
+   * came *second*, so `querySelector(".slip")` found the hidden one and the
+   * browser proof correctly reported the never-cut card as not on screen.
+   *
+   * First is also the right order for a surface that covers everything else:
+   * it is what a screen reader reaches first, which is what somebody arriving
+   * at this page should meet.
+   */
+  console_.prepend(landing.element);
   root.append(console_);
 
   // Escape closes whatever is covering the room. The room is the thing the
@@ -1584,12 +925,12 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
       );
       resets.textContent = view && view.retries > 0 ? `RESETS ${String(view.retries)}` : "";
 
-      // The start card is the only thing worth touching before a session
-      // exists, and three buttons that can no longer do anything afterwards.
-      launch.hidden = phase !== null && phase !== "ENTRY" && phase !== "LOBBY";
-      // A recording playing over a room the pair is standing in would be a
-      // second station. The card going away takes it with it.
-      if (launch.hidden) stopAttract();
+      // The landing screen follows the phase, and takes attract mode with it.
+      // It is the only thing on the page that decides whether it is on the
+      // page, which is why it is handed the phase rather than a boolean:
+      // "should I be here" is its question to answer, not the console's.
+      landing.update(phase);
+      const playing = phase !== null && phase !== "ENTRY" && phase !== "LOBBY";
 
       // The slip hands the room over when the shift starts.
       //
@@ -1601,7 +942,7 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
       // Once, and only if it is still the panel this opened. A player who has
       // moved to Faculties or Notepad by then is reading something they chose,
       // and closing it would be the console overruling them.
-      if (launch.hidden && !handedOver) {
+      if (playing && !handedOver) {
         handedOver = true;
         if (east.showing() === "Your agent") east.close();
       }
@@ -1678,19 +1019,6 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
       root.replaceChildren();
     },
   };
-}
-
-/**
- * Replace a list's contents.
- *
- * Rebuilding rather than diffing. These lists are at most a dozen short rows and
- * are repainted only when the model actually changes, which is a few times a
- * minute; a keyed diff would be more code than the thing it optimises. The
- * manifest is the exception, and it is handled above, because it is the one list
- * whose *changing* is the thing being demonstrated.
- */
-function fill<T>(list: HTMLElement, items: readonly T[], make: (item: T) => HTMLElement): void {
-  list.replaceChildren(...items.map(make));
 }
 
 /**

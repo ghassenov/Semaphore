@@ -509,11 +509,25 @@ export function createStage(
 
   // ---- Camera state. -------------------------------------------------------
   let shot: Shot | null = null;
-  let fromEye = new Vector3();
-  let fromTarget = new Vector3();
+  // Copied into rather than reassigned, now that the source is `baseEye`
+  // rather than a fresh clone of the camera's own drifted position.
+  const fromEye = new Vector3();
+  const fromTarget = new Vector3();
   let shotAt = 0;
   let shotKey = "";
   const lookAt = new Vector3();
+  /**
+   * Where the camera would be with no idle drift on it.
+   *
+   * The drift is added straight into `camera.position` at the end of every
+   * frame, which is harmless while it is re-derived from this each time and
+   * catastrophic the moment anything reads `camera.position` back as a
+   * starting point. A transition that begins from an already-drifted position
+   * and then drifts again *accumulates*, and at 0.22m a frame the camera
+   * leaves the building in about a second. That is the whole of the bug a
+   * player reported as "the camera goes out of the map".
+   */
+  const baseEye = new Vector3();
   let wasOn: FloorId | null | undefined;
   let walkUntil = 0;
   /**
@@ -766,34 +780,49 @@ export function createStage(
     screenTexture.needsUpdate = true;
   }
 
-  /** Move the camera to a shot, easing rather than cutting. */
-  function frame(next: Shot, now: number): void {
-    const key = `${next.floor ?? "wide"}:${next.eye.x.toFixed(2)}:${next.eye.y.toFixed(2)}:${next.eye.z.toFixed(2)}`;
+  /**
+   * Move the camera to a shot, easing rather than cutting.
+   *
+   * `key` is the shot's **identity** - which room, which fixture, the wide shot
+   * - and never its coordinates. That distinction is the second half of the
+   * "out of the map" bug. A room shot leans toward PILOT, so its eye moves
+   * every frame somebody is walking; keyed on the eye, every one of those
+   * frames looked like a brand new shot, restarted the transition, and left the
+   * easing permanently at zero. The camera therefore never arrived anywhere -
+   * it only ever drifted, from a starting point that was itself the previous
+   * frame's drift.
+   *
+   * So the target updates every frame and the *transition* restarts only when
+   * the shot actually becomes a different shot. A follow now tracks smoothly,
+   * which is what it was written to do and has never once done.
+   */
+  function frame(next: Shot, key: string, now: number): void {
     if (key !== shotKey) {
       // The first shot of a session is a cut. There is nothing to move from,
       // and sliding in from wherever the camera happened to start reads as a
       // glitch rather than as a camera move.
       const first = shot === null;
-      fromEye = camera.position.clone();
-      fromTarget = lookAt.clone();
-      shot = next;
+      // From the undrifted position, never from `camera.position`, which has
+      // this frame's drift in it and would fold it into the next transition.
+      fromEye.copy(first ? new Vector3(next.eye.x, next.eye.y, next.eye.z) : baseEye);
+      fromTarget.copy(first ? new Vector3(next.target.x, next.target.y, next.target.z) : lookAt);
       shotKey = key;
       shotAt = first ? now - SHOT_MS : now;
-      if (first) {
-        fromEye.set(next.eye.x, next.eye.y, next.eye.z);
-        fromTarget.set(next.target.x, next.target.y, next.target.z);
-      }
     }
-    if (shot === null) return;
+    // Always, so a shot that follows PILOT keeps following without restarting.
+    shot = next;
 
     const t = Math.min(1, (now - shotAt) / SHOT_MS);
     // Smoothstep, so the move starts and stops without a visible kink.
     const eased = t * t * (3 - 2 * t);
-    camera.position.set(
+    // Into `baseEye` first. `camera.position` is this plus the drift, and the
+    // drift must never become an input to anything.
+    baseEye.set(
       fromEye.x + (shot.eye.x - fromEye.x) * eased,
       fromEye.y + (shot.eye.y - fromEye.y) * eased,
       fromEye.z + (shot.eye.z - fromEye.z) * eased,
     );
+    camera.position.copy(baseEye);
     lookAt.set(
       fromTarget.x + (shot.target.x - fromTarget.x) * eased,
       fromTarget.y + (shot.target.y - fromTarget.y) * eased,
@@ -1064,13 +1093,25 @@ export function createStage(
     }
 
     let shot: Shot;
+    /*
+     * What this shot *is*, as opposed to where it happens to be pointing.
+     *
+     * The camera transition restarts when this changes and not otherwise, so
+     * it must not contain a coordinate: a room shot leans toward PILOT and its
+     * eye therefore moves every frame somebody is walking. Keyed on the eye,
+     * walking restarted the transition sixty times a second and the camera
+     * never arrived anywhere at all.
+     */
+    let shotId: string;
     if (guidedAt !== null && standing !== null) {
       shot = inspectShot(guidedAt, aspect(), {
         centre: standing,
         size: plan?.size ?? footprintOf(floor ?? "airlock"),
       });
+      shotId = `guided:${guided === null ? "?" : guided.kind === "pilot" ? "pilot" : guided.kind === "wide" ? "wide" : guided.id}`;
     } else if (guidedWide) {
       shot = shotFor(mode, view?.phase ?? "ENTRY", floor, true, aspect(), pilotAt);
+      shotId = "guided:wide";
     } else if (leaning !== null && standing !== null) {
       shot = inspectShot(
         {
@@ -1081,8 +1122,14 @@ export function createStage(
         aspect(),
         { centre: standing, size: plan?.size ?? footprintOf(floor ?? "airlock") },
       );
+      // The fixture, so leaning from one mechanism to its neighbour is a move
+      // and holding E on the same one is not.
+      shotId = `lean:${leaning.id}`;
     } else {
       shot = shotFor(mode, view?.phase ?? "ENTRY", floor, asked, aspect(), pilotAt);
+      // Read off the shot itself rather than off `asked`, so the id cannot
+      // disagree with the shot it names.
+      shotId = shot.floor === null ? "wide" : `room:${shot.floor}`;
     }
     const wide = shot.floor === null && leaning === null && guidedAt === null;
 
@@ -1332,7 +1379,7 @@ export function createStage(
     // can still the room mid-session.
     dust.visible = !holdStill();
 
-    frame(shot, now);
+    frame(shot, shotId, now);
 
     // Whether the camera has stopped travelling, published on the canvas so
     // something outside the loop can wait for it.

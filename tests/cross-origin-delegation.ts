@@ -452,6 +452,23 @@ check(
 await post("begin_shift", { designation: "KEEPER" });
 await post("start", { difficulty: "practice", mode: "full" });
 await until((v) => v.chamber === "airlock", "the airlock");
+/*
+ * The landing screen hands the room over.
+ *
+ * It leaves on a transition and removes itself when that transition is done,
+ * so this waits for the element to be gone rather than sleeping for however
+ * long the animation currently runs. A hand-typed duration living in a
+ * different package from the animation is the same mistake the camera wait
+ * used to make: a number copied out of another module cannot hear it change.
+ *
+ * What is asserted is unchanged and just as strict - once the landing has
+ * gone, the only requisition slip left on the page is the one stowed in the
+ * closed YOUR AGENT drawer, and it must be measurably off screen.
+ */
+for (let i = 0; i < 60; i++) {
+  if (await evaluate<boolean>(`document.querySelector(".landing") === null`)) break;
+  await sleep(50);
+}
 check(
   "and it hands the room over once the shift starts",
   (await evaluate<number>(`document.querySelector(".slip")?.getBoundingClientRect().width ?? 0`)) <
@@ -460,6 +477,53 @@ check(
 
 await shot("airlock");
 await sleep(600);
+
+/*
+ * ---- Walking does not throw the camera out of the building (D-067).
+ *
+ * A room shot leans toward PILOT, so its eye moves every frame somebody is
+ * walking. The transition used to be keyed on that eye, so every one of those
+ * frames read as a brand new shot: the ease restarted sixty times a second,
+ * never completed, and each restart took its starting point from
+ * `camera.position` - which already had that frame's idle drift added to it.
+ * The drift compounded instead of oscillating and the camera left the station
+ * in about a second. Holding a movement key was enough to do it.
+ *
+ * `data-settled` is the assertion because it is the exact thing that was
+ * false: a camera whose transition restarts every frame never settles. It is
+ * checked *while the key is still down*, because continuous tracking is not a
+ * transition and must not read as one.
+ */
+{
+  await keyEvent("rawKeyDown", "d");
+  await sleep(1600);
+  const settledWhileWalking = await evaluate<string>(
+    `document.querySelector(".viewport-canvas")?.dataset.settled ?? "absent"`,
+  );
+  await keyEvent("keyUp", "d");
+  await sleep(400);
+  check(
+    "the camera settles while PILOT is still walking",
+    settledWhileWalking === "true",
+    settledWhileWalking,
+  );
+  /*
+   * And walking did not leave the room.
+   *
+   * Deliberately labelled for what it measures. It was written as "still
+   * framing the same room", which it cannot see: it reads the rail, and the
+   * rail passed happily through a run where the camera was four hundred metres
+   * outside the building. A check that does not separate the thing it names is
+   * not evidence for it. What it does prove is worth keeping - a held movement
+   * key must not trip the edge-triggered door transit.
+   */
+  check(
+    "and holding a movement key did not walk PILOT out of the room",
+    (await evaluate<string>(`document.querySelector(".room")?.textContent?.trim() ?? ""`)).includes(
+      "AIRLOCK",
+    ),
+  );
+}
 
 check(
   DELEGATED

@@ -30,7 +30,38 @@
  * **The viewport owns its own aspect.** It is the one element that must never
  * be squeezed to fit a panel that grew by a line, because the camera frames
  * against its shape and a reflow re-frames the shot.
+ *
+ * **One typeface is a deliberate exception to "no asset files"** (D-068).
+ * Fraunces, self-hosted in `public/fonts/`, OFL-licensed and noted in
+ * `LICENSE`. It carries the landing screen's display type only - every
+ * structural label, every identifier and every fallback stack is still a
+ * system font, and nothing puzzle-critical or gameplay-bearing depends on it.
  */
+
+/*
+ * Fraunces, for display type only.
+ *
+ * One variable file for the upright weights (300 through 900, and the optical
+ * size axis that keeps it elegant at both a caption's size and a headline's)
+ * and one for the italic cut this page actually uses. `font-display: swap`
+ * because the system stack beneath it is a real typeface, not a blank line -
+ * a swap costs a reflow, never an invisible headline.
+ */
+@font-face {
+  font-family: "Fraunces";
+  font-style: normal;
+  font-weight: 300 900;
+  font-display: swap;
+  src: url("/fonts/fraunces-variable.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Fraunces";
+  font-style: italic;
+  font-weight: 300 900;
+  font-display: swap;
+  src: url("/fonts/fraunces-italic-variable.woff2") format("woff2");
+}
 
 :root {
   /* The ground: cold, near-neutral, deliberately dull. */
@@ -102,6 +133,10 @@
 
   --ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  /* Display type: the landing screen's headline, pull quotes and figure
+     numerals. Nowhere structural - a control, a label or an identifier is
+     always --ui or --mono, never this. */
+  --display: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
 
   color-scheme: dark;
 }
@@ -271,27 +306,43 @@ body::after {
   transform: translateY(-50%);
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
-  padding: 0.2rem 0;
-}
-
-.tabs-left {
-  left: 0;
-}
-
-.tabs-right {
-  right: 0;
-}
-
-.tab {
-  padding: 1.05rem 0.36rem;
+  /*
+   * No gap, and one frame around the set.
+   *
+   * Each tab used to carry its own border and its own radius with three tenths
+   * of a rem between them, which drew four unrelated chips floating down the
+   * side of the room rather than one piece of equipment bolted to it. A rail
+   * is a rail: the group has the frame, the members have a hairline between
+   * them, and the two ends are the only rounded corners.
+   */
+  gap: 0;
+  overflow: hidden;
   border: var(--edge);
-  border-radius: var(--radius);
   background: linear-gradient(
     180deg,
     color-mix(in srgb, var(--slate) 92%, transparent),
     var(--ink)
   );
+  box-shadow: var(--lift-2);
+}
+
+.tabs-left {
+  left: 0;
+  border-left: none;
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.tabs-right {
+  right: 0;
+  border-right: none;
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+
+.tab {
+  padding: 1.05rem 0.4rem;
+  border: none;
+  border-radius: 0;
+  background: transparent;
   color: var(--mist);
   font-family: var(--mono);
   font-size: 0.67rem;
@@ -306,21 +357,25 @@ body::after {
     box-shadow 220ms ease;
 }
 
-.tabs-left .tab {
-  border-left: none;
-  border-radius: 0 var(--radius) var(--radius) 0;
+/* A hairline between members, and none above the first. */
+.tab + .tab {
+  border-top: 1px solid color-mix(in srgb, var(--iron) 30%, transparent);
 }
 
 .tabs-right .tab {
-  border-right: none;
-  border-radius: var(--radius) 0 0 var(--radius);
   rotate: 180deg;
+}
+
+/* The east rail is rotated, so its "first" member is visually its last. */
+.tabs-right .tab + .tab {
+  border-top: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--iron) 30%, transparent);
 }
 
 .tab:hover,
 .tab:focus-visible {
   color: var(--pearl);
-  border-color: color-mix(in srgb, var(--pearl) 40%, transparent);
+  background: color-mix(in srgb, var(--pearl) 7%, transparent);
 }
 
 /*
@@ -329,13 +384,14 @@ body::after {
  */
 .tabs-left .tab.on {
   color: var(--lamp);
-  border-color: color-mix(in srgb, var(--lamp) 55%, transparent);
+  background: color-mix(in srgb, var(--lamp-deep) 40%, transparent);
   box-shadow: inset 2px 0 0 var(--lamp);
 }
 
+/* Rotated, so the inset that lands on the room-facing edge is the other one. */
 .tabs-right .tab.on {
   color: var(--tide);
-  border-color: color-mix(in srgb, var(--tide) 55%, transparent);
+  background: color-mix(in srgb, var(--tide-deep) 40%, transparent);
   box-shadow: inset 2px 0 0 var(--tide);
 }
 
@@ -349,7 +405,17 @@ body::after {
    * the clock and the ambiguity meter and the two sets of words overlapped.
    */
   top: 3.2rem;
-  bottom: 3.4rem;
+  /*
+   * As tall as its contents, up to what is left of the deck.
+   *
+   * Pinning `bottom` as well as `top` made every drawer full height, so a
+   * five-line keyboard legend opened a panel with six hundred pixels of empty
+   * box under it - over the room, which is the thing the player is trying to
+   * look at. The room is the page (D-052): a drawer takes what it needs and
+   * gives the rest back.
+   */
+  bottom: auto;
+  max-height: calc(100% - 6.6rem);
   z-index: 2;
   display: flex;
   width: 20rem;
@@ -502,28 +568,123 @@ body::after {
  * A 20rem panel over a 24rem phone is a panel with no room behind it, so at
  * that size opening one is a full takeover and the tabs stay reachable.
  */
+/*
+ * The console on a phone.
+ *
+ * A vertical rail down each edge costs a quarter of a 380px screen and leaves
+ * the room a slot, so below this width the two rails become one horizontal bar
+ * along the foot - PILOT's controls on the left of it, KEEPER's on the right,
+ * which is the same arrangement laid on its side rather than a different one.
+ * The drawers become sheets that rise from the bottom over the room.
+ *
+ * This was measured as broken rather than merely unpolished: at 430px the east
+ * rail floated over the middle of the page, the rail overflowed past the
+ * console's own background, and the mixer was half off the screen.
+ */
 @media (max-width: 46rem) {
-  .drawer {
-    left: 0;
-    right: 0;
-    width: auto;
-    max-width: none;
-  }
-
-  .drawer-left,
-  .drawer-right {
-    left: 0;
-    right: 0;
-  }
-
-  .grip {
-    display: none;
+  :root {
+    --rail-width: auto;
   }
 
   .tabs {
     top: auto;
     bottom: 0;
     z-index: 4;
+    width: auto;
+    transform: none;
+    flex-direction: row;
+    border: none;
+    border-top: var(--edge);
+    border-radius: 0;
+    background: linear-gradient(180deg, var(--slate), var(--ink));
+  }
+
+  .tabs-left {
+    left: 0;
+    right: 50%;
+    border-right: 1px solid color-mix(in srgb, var(--iron) 30%, transparent);
+  }
+
+  .tabs-right {
+    left: 50%;
+    right: 0;
+  }
+
+  .tab {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0.6rem 0.25rem;
+    font-size: 0.55rem;
+    letter-spacing: 0.08em;
+    /* Upright and truncated, because a vertical label in a horizontal bar is
+       a bar three lines tall. */
+    writing-mode: horizontal-tb;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tabs-right .tab {
+    rotate: none;
+  }
+
+  .tab + .tab {
+    border-top: none;
+    border-left: 1px solid color-mix(in srgb, var(--iron) 30%, transparent);
+  }
+
+  .tabs-right .tab + .tab {
+    border-bottom: none;
+    border-left: 1px solid color-mix(in srgb, var(--iron) 30%, transparent);
+  }
+
+  /*
+   * A sheet from the bottom, over the room, clear of everything below it.
+   *
+   * `bottom` has to clear the tab bar *and* the foot, which carries the
+   * audible strip and the mix. The foot draws above the drawer, so a sheet
+   * that only cleared the tab bar had the mixer printed across its last
+   * two rows.
+   */
+  .drawer,
+  .drawer-left,
+  .drawer-right {
+    top: auto;
+    left: 0.5rem;
+    right: 0.5rem;
+    bottom: 7.6rem;
+    width: auto;
+    max-width: none;
+    max-height: 52vh;
+    flex-direction: column;
+  }
+
+  .grip {
+    display: none;
+  }
+
+  /* The mix goes under the audible strip and the strip keeps the width. */
+  .foot {
+    padding: 0 0.7rem 3.1rem;
+  }
+
+  .mixer {
+    width: 100%;
+  }
+
+  .rail {
+    padding: 0.5rem 0.7rem;
+    font-size: 0.9em;
+  }
+
+  /* The clock is set at display size for a desktop rail; at this width it
+     takes the room name's space and the name is the half that gets cut. */
+  .rail .clock {
+    font-size: 1.15rem;
+  }
+
+  .rail .gauge {
+    display: none;
   }
 }
 
@@ -715,12 +876,49 @@ body::after {
   font-size: 0.87rem;
 }
 
-/* The quiet aside under a panel's contents: what the thing is for. */
-.panel .note {
-  margin-top: 0.55rem;
-  color: color-mix(in srgb, var(--mist) 62%, transparent);
+/*
+ * The quiet aside: what a thing is for, under the thing.
+ *
+ * Global rather than scoped to `.panel`, which is where it used to live - so
+ * every aside on the landing screen and the gate, neither of which has panels
+ * in it, rendered at body size in body colour and competed with the copy it
+ * was meant to sit beneath.
+ */
+.note {
+  margin: 0;
+  color: color-mix(in srgb, var(--mist) 66%, transparent);
   font-size: 0.77rem;
   line-height: 1.45;
+}
+
+.panel .note {
+  margin-top: 0.55rem;
+}
+
+/*
+ * Two page-level type roles: the small label above a heading, and the
+ * paragraph directly under one.
+ *
+ * They used to be declared inside the gate screen's own section, so when that
+ * screen was rebuilt the replay viewer - which uses both - lost its type and
+ * rendered its heading label and its summary line at body size in body colour.
+ * A role that more than one surface uses is declared once.
+ */
+.eyebrow {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--iron);
+}
+
+.lede {
+  margin: 0;
+  max-width: 46ch;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--mist);
 }
 
 /* -------------------------------------------------------------- viewport -- */
@@ -905,13 +1103,33 @@ body::after {
  * DOM text node holding a gauge reading is a text node an agent with page
  * access can scrape.
  */
+/*
+ * The caption band owns the bottom edge of the viewport, and the foot is laid
+ * over the same edge.
+ *
+ * The audible strip and the mixer sit at the foot of the deck, so a caption
+ * padded to the viewport's own bottom is a caption with the mix printed across
+ * it. The tour caught this on the last frame of the game, where the band is
+ * carrying the longest copy it ever carries: "COLD AIR, AND THE SOUND OF THE
+ * SEA" ran under the fader housing and lost its second half.
+ */
 .viewport-caption {
   position: absolute;
   inset: auto 0 0 0;
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
-  padding: 2.5rem 1.4rem 1.3rem;
+  /*
+   * The sides clear the two tab rails.
+   *
+   * The band spans the viewport, and the rails are laid over the viewport's
+   * own edges - so a caption indented by its own padding alone starts
+   * underneath the west rail. The tour caught it on the last frame of the
+   * game, where THE DOOR IS OPEN was missing its first letter behind ACCESS.
+   * `--rail-width` is authoritative for exactly this: anything that has to
+   * stand clear of a rail measures against one number instead of guessing.
+   */
+  padding: 2.5rem calc(var(--rail-width) + 1rem) 4.6rem;
   background: linear-gradient(transparent, color-mix(in srgb, var(--abyss) 88%, transparent) 55%);
   opacity: 0;
   pointer-events: none;
@@ -938,492 +1156,1218 @@ body::after {
 }
 
 /*
- * The start card, over the room, until the shift begins.
+ * Where the foot stacks into two rows, the caption needs the second row's
+ * height as well.
  *
- * Progressive disclosure rather than a panel that is present and inert for the
- * rest of the session. Before a session exists this is the only thing on the
- * page worth touching, and afterwards it is three buttons that can no longer do
- * anything.
+ * Written here rather than beside the `.foot` rules it is about, because CSS
+ * resolves ties by source order and that block sits six hundred lines above
+ * `.viewport-caption`: an override up there loses to the base rule down here
+ * and simply never applies. It has already happened twice in this file.
  */
-/*
- * The start card, over the room.
- *
- * The first thing anybody sees, so it is the one place motion is worth
- * spending on: the room fades up behind the veil, the words arrive after it,
- * and a slow band of light crosses the whole thing like something turning
- * overhead. Nothing here loops fast, and nothing bounces. The station is
- * derelict and the interface should behave as though it has been running
- * unattended for a long time.
- */
-.launch {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.9rem;
-  align-items: center;
-  justify-content: center;
-  padding: 1.5rem;
-  overflow: hidden;
-  background: radial-gradient(
-    120% 90% at 50% 45%,
-    color-mix(in srgb, var(--abyss) 77%, transparent) 0%,
-    color-mix(in srgb, var(--abyss) 93%, transparent) 70%
-  );
-  backdrop-filter: blur(2px);
-  text-align: center;
-  animation: veil 900ms ease both;
+@media (max-width: 60rem) {
+  .viewport-caption {
+    padding-bottom: 8rem;
+  }
 }
 
-@keyframes veil {
+/* ------------------------------------------------------- landing and gate -- */
+
+/*
+ * The screens before the game: the landing screen, and the gate a browser
+ * without WebMCP gets.
+ *
+ * ## It is a surface, not a card in the deck
+ *
+ * This used to be a veil inside the console's viewport, which meant it
+ * inherited the console: a rail reading `CONNECTING`, an ambiguity gauge with
+ * no session behind it, seven tab stubs, three audio faders, and a deck with a
+ * definite height that clips rather than scrolls - so opening the ablation cut
+ * the bottom off the chart and the requisition slip together.
+ *
+ * It is laid over the whole console now and owns its own scroll. The console
+ * stays laid out underneath, because the camera frames against the viewport's
+ * measured shape and a viewport at zero by zero frames the first room against
+ * nothing.
+ *
+ * ## The composition: a reading column, and one band that breaks out of it
+ *
+ * A previous pass divided the entire page down the middle into a warm field
+ * and a cold one. The idea was right and the execution was not: every element
+ * on the page then had to live in one of two arbitrary columns, and the two
+ * halves of the graphic that carries the whole pitch ended up two hundred
+ * pixels out of alignment with each other.
+ *
+ * So the split is the *graphic*, at full bleed and full strength, and
+ * everything else is a well-set column on the station's own ground. One band
+ * makes the argument; the rest of the page gets out of its way.
+ */
+.landing {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  /*
+   * Its own ground, because it covers the console rather than sitting in it.
+   * Two sources falling off, the same arrangement `body` uses, so arriving at
+   * the real console later reads as the same building rather than a different
+   * site.
+   */
+  background:
+    radial-gradient(
+      120% 90% at 50% -20%,
+      color-mix(in srgb, var(--tide-deep) 42%, var(--abyss)) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      95% 75% at 15% 112%,
+      color-mix(in srgb, var(--lamp-deep) 26%, var(--abyss)) 0%,
+      transparent 55%
+    ),
+    var(--abyss);
+  animation: landing-in 620ms ease-out both;
+}
+
+/*
+ * Leaving.
+ *
+ * The shift has started and the room is behind this: it lifts rather than
+ * blinking out, and the element is removed by script once the transition is
+ * over so nothing on it can hold focus underneath the game.
+ */
+.landing.is-leaving {
+  animation: landing-out 400ms ease-in both;
+  pointer-events: none;
+}
+
+@keyframes landing-in {
   from {
     opacity: 0;
-    backdrop-filter: blur(10px);
   }
 }
 
-/*
- * The beam: one pass of the lamp, every eight seconds.
- *
- * It is the beacon the station is named for, and it is the only thing on the
- * page that moves on its own. Held very low in opacity because a bright sweep
- * over the start card would be a screensaver.
- */
-.launch::before {
-  content: "";
-  position: absolute;
-  inset: -40% -60%;
-  pointer-events: none;
-  background: linear-gradient(
-    72deg,
-    transparent 42%,
-    color-mix(in srgb, var(--lamp) 12%, transparent) 50%,
-    transparent 58%
-  );
-  animation: sweep 8s linear infinite;
-}
-
-@keyframes sweep {
-  from {
-    transform: translateX(-42%);
-  }
-
+@keyframes landing-out {
   to {
-    transform: translateX(42%);
+    opacity: 0;
+    transform: scale(1.015);
   }
 }
 
-/* Everything readable rides above the veil and the beam. */
-/*
- * The sheet: the landing screen's one column, and the only thing on the page
- * that is allowed to be a document rather than an instrument.
- *
- * It scrolls **inside itself** rather than growing the page. The console is a
- * deck sized to the viewport, and a landing card that pushed past it put a
- * scrollbar on a window that could already show everything.
- */
-/*
- * The landing screen **is** the split.
- *
- * Every version of this page until now was a centred column on black with a
- * panel in it that illustrated the asymmetry. This is the asymmetry: the page
- * is divided, the left half is lamplight and the right half is tidewater, and
- * the words that belong to both sit across the seam between them. The thing
- * the game is about is the first thing the layout does, before a sentence has
- * been read.
- */
-.launch-card {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
-  gap: 0;
-  align-content: stretch;
-  width: 100%;
+.landing-scroll {
   height: 100%;
-  padding: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* A scroll that reaches its end does not then scroll the console behind it. */
+  overscroll-behavior: contain;
 }
 
-/* The two fields, and the lit seam down the middle of them. */
-.launch-card::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    100deg,
-    color-mix(in srgb, var(--lamp-deep) 30%, transparent) 0%,
-    color-mix(in srgb, var(--lamp-deep) 8%, transparent) 44%,
-    transparent 50%,
-    color-mix(in srgb, var(--tide-deep) 12%, transparent) 56%,
-    color-mix(in srgb, var(--tide-deep) 42%, transparent) 100%
-  );
-  pointer-events: none;
+.landing-sheet {
+  max-width: 68rem;
+  margin: 0 auto;
+  padding: clamp(1.8rem, 5vh, 3.6rem) clamp(1.1rem, 4vw, 2rem) clamp(3rem, 8vh, 5rem);
+  display: grid;
+  gap: clamp(1.7rem, 4vh, 2.8rem);
+  /* A grid column defaults to `auto`, which floors at its content's min-content
+     width - and a `<pre>` of tool output has a very wide one. This is the same
+     fault that once put a horizontal scrollbar on the console (D-054). */
+  grid-template-columns: minmax(0, 1fr);
 }
 
-.launch-card::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  width: 1px;
-  background: linear-gradient(
-    180deg,
-    transparent,
-    color-mix(in srgb, var(--pearl) 34%, transparent) 30%,
-    color-mix(in srgb, var(--pearl) 34%, transparent) 70%,
-    transparent
-  );
-  pointer-events: none;
+/*
+ * The hero's own arrival, immediate rather than scroll-triggered.
+ *
+ * Everything below it uses `[data-reveal]` (`ui/reveal.ts`) and animates as
+ * the reader scrolls to it. The hero is the one thing guaranteed to be on
+ * screen the instant this page exists, so it gets a fixed, once-only entrance
+ * instead: the wordmark, then the kicker, then the headline and lede a beat
+ * behind, in the order a reader's eye actually lands on them.
+ */
+.landing-head > * {
+  animation: band-in 620ms cubic-bezier(0.22, 0.75, 0.3, 1) both;
 }
-
-.launch-card > * {
-  position: relative;
-  z-index: 1;
-  justify-self: center;
+.landing-head > .wordmark {
+  animation-delay: 40ms;
 }
-
-.launch-card > * {
-  flex: none;
-  animation: rise 700ms cubic-bezier(0.22, 0.8, 0.3, 1) both;
+.landing-head > .kicker {
+  animation-delay: 160ms;
 }
-
-.launch-card > :nth-child(1) {
-  animation-delay: 180ms;
+.landing-head > .landing-thesis {
+  animation-delay: 260ms;
 }
-
-.launch-card > :nth-child(2) {
-  animation-delay: 300ms;
-}
-
-.launch-card > :nth-child(3) {
+.landing-head > .landing-lede {
   animation-delay: 420ms;
 }
 
-.launch-card > :nth-child(4) {
-  animation-delay: 540ms;
+@keyframes band-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
 }
 
-.launch-card > :nth-child(5) {
-  animation-delay: 660ms;
+/* ---- scroll reveals ---- */
+
+/*
+ * The generic reveal: a rise and a fade, gated on `.is-revealed`
+ * (`ui/reveal.ts`). Excludes `.rule`, which draws in sideways rather than
+ * rising - a horizontal divider that rose eighteen pixels would look like it
+ * was falling into place from the wrong direction.
+ */
+[data-reveal]:not(.rule) {
+  opacity: 0;
+  transform: translateY(22px);
+  transition:
+    opacity 640ms cubic-bezier(0.22, 0.75, 0.3, 1),
+    transform 640ms cubic-bezier(0.22, 0.75, 0.3, 1);
 }
 
-/* The wordmark, at the size a name is allowed to be. */
-.launch-badge {
+[data-reveal].is-revealed {
+  opacity: 1;
+  transform: none;
+}
+
+/*
+ * The rule between sections: the line draws in from its centre and the mark
+ * fades up inside it, like a beacon finding the page rather than a divider
+ * that was simply always there.
+ */
+.rule {
   display: flex;
-  gap: 0.6rem;
   align-items: center;
+  gap: 0.9rem;
+  margin: 0.4rem 0;
 }
 
-.launch-name {
+.rule-line {
+  flex: 1 1 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--iron) 55%, transparent) 30%,
+    color-mix(in srgb, var(--iron) 55%, transparent) 70%,
+    transparent
+  );
+  transform: scaleX(0);
+  transition: transform 900ms cubic-bezier(0.16, 0.8, 0.24, 1);
+}
+
+.rule-line:first-child {
+  transform-origin: right center;
+}
+.rule-line:last-child {
+  transform-origin: left center;
+}
+
+.rule-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transform: scale(0.7);
+  transition:
+    opacity 500ms ease 260ms,
+    transform 500ms cubic-bezier(0.3, 1.4, 0.4, 1) 260ms;
+}
+
+.rule.is-revealed .rule-line {
+  transform: scaleX(1);
+}
+.rule.is-revealed .rule-mark {
+  opacity: 0.85;
+  transform: scale(1);
+}
+
+/* ---- kickers: the small running head above a section ---- */
+
+.kicker {
   margin: 0;
-  color: var(--pearl);
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
   font-family: var(--mono);
-  font-size: 1.05rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--iron);
+}
+
+.kicker-n {
+  flex: none;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--lamp) 40%, transparent);
+  border-radius: var(--radius-sm);
+  color: var(--lamp);
+  letter-spacing: 0.08em;
+}
+
+.start > .kicker,
+.watch > .kicker {
+  grid-column: 1 / -1;
+}
+
+/* ---- identity, thesis ---- */
+
+/*
+ * The hero, as two columns on a wide window.
+ *
+ * One column left three quarters of a 1600px screen empty beside a headline
+ * set four words wide, which is a poster rather than a page. The statement
+ * takes the left, the paragraph that qualifies it sits bottom-aligned on the
+ * right, and the two share a baseline. It collapses to one column the moment
+ * there is not room for both.
+ */
+.landing-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  align-items: end;
+  column-gap: clamp(1.5rem, 4vw, 3.5rem);
+  row-gap: 1.2rem;
+}
+
+.landing-head .wordmark {
+  grid-column: 1 / -1;
+  margin-bottom: 0.4rem;
+}
+
+.landing-head > .kicker {
+  grid-column: 1 / -1;
+  margin-bottom: -0.3rem;
+}
+
+@media (max-width: 60rem) {
+  .landing-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/*
+ * The pointer light (`wirePointerLight`), across the whole page.
+ *
+ * `--light-x` / `--light-y` are written by JavaScript as the pointer moves;
+ * everything about what the light actually *looks like* is decided here.
+ *
+ * **It used to be scoped to the hero only** - a warm patch roughly the height
+ * of the headline, nothing anywhere else on the page. Reported back exactly
+ * as what it was: "the cursor is stuck in a little box where the effects are
+ * only there." Nothing was trapping a click - a full sweep of the page found
+ * every point hit-testing to the right element underneath it - but a light
+ * that exists in one rectangle and nowhere else reads as broken even though
+ * nothing is, because the rest of the page then has no reason to have a
+ * cursor at all. It is wired on `.landing` itself now, the fixed,
+ * full-viewport surface everything else scrolls inside, so the light holds
+ * its position on screen while the reader scrolls past it, the way a ceiling
+ * lamp would, rather than travelling with the content or vanishing past the
+ * hero's own height.
+ */
+.landing {
+  --light-x: 50%;
+  --light-y: 30%;
+}
+
+.landing::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  /*
+   * Two rings rather than one: the inner one dense and small so the effect
+   * actually registers at a glance, the outer one wide and faint so it does
+   * not read as a spotlight with a hard edge. A single 10% ring at this size
+   * measured as functioning (the custom properties genuinely tracked the
+   * pointer) and reading as *nothing* - a light nobody can see is not
+   * atmosphere, it is a wasted listener.
+   */
+  background:
+    radial-gradient(
+      16rem circle at var(--light-x) var(--light-y),
+      color-mix(in srgb, var(--lamp) 16%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      40rem circle at var(--light-x) var(--light-y),
+      color-mix(in srgb, var(--lamp) 8%, transparent),
+      transparent 65%
+    );
+  opacity: 0;
+  transition: opacity 420ms ease;
+  pointer-events: none;
+}
+
+.landing.has-light::before {
+  opacity: 1;
+}
+
+/* The scrolling content paints above the light layer. */
+.landing-scroll {
+  position: relative;
+  z-index: 1;
+}
+
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.wordmark-words {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.wordmark-name {
+  margin: 0;
+  font-family: var(--mono);
   font-weight: 500;
-  letter-spacing: 0.46em;
+  letter-spacing: 0.42em;
+  /* The letterspacing is on the right of every glyph including the last, which
+     pushes the whole word left of where it looks like it should sit. */
   text-indent: 0.42em;
+  color: var(--pearl);
+}
+
+.wordmark-large .wordmark-name {
+  font-size: 1.05rem;
+}
+
+.wordmark-tag {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--mist);
 }
 
 /*
  * The thesis, in one sentence, at the largest type on the page.
  *
- * It is the sentence the whole submission is an argument for, so it is set
- * like a headline rather than like a label: this screen used to open with the
- * words "Start the shift" over three unnamed buttons, which tells somebody who
- * has just arrived nothing at all about what they have arrived at.
+ * It is the sentence the whole submission is built on, so it is set as a
+ * statement rather than as a heading: light weight, tight leading, and wide
+ * enough to break where the sense breaks rather than where the column ends.
  */
-.launch-thesis {
-  max-width: 34rem;
+.landing-thesis {
   margin: 0;
+  max-width: 21ch;
+  font-family: var(--display);
+  font-optical-sizing: auto;
+  font-size: clamp(2.35rem, 5.4vw, 4.4rem);
+  font-weight: 340;
+  line-height: 1.02;
+  letter-spacing: -0.01em;
   color: var(--pearl);
-  font-size: clamp(1.5rem, 3.4vw, 2.35rem);
-  font-weight: 300;
-  line-height: 1.2;
-  letter-spacing: 0.01em;
-  text-transform: none;
   text-wrap: balance;
 }
 
 /*
- * The split, which is the game in one picture.
- *
- * Two halves of the same lever, lit the two ways the two players receive it:
- * lamplight for the half only PILOT perceives, tidewater for the half only
- * KEEPER is given. The channel colours are doing exactly the job they do
- * everywhere else in the station, which is why the picture teaches the
- * legend at the same time as it makes the argument.
+ * The one italic clause: "the same room", which is the actual asymmetry the
+ * sentence turns on. A serif italic at a slightly heavier weight than the
+ * roman around it, so the emphasis is legible as emphasis rather than as a
+ * font that happened to change - the typographic equivalent of the stress a
+ * spoken reading of this sentence would put here.
  */
-.split {
+.thesis-em {
+  font-style: italic;
+  font-weight: 480;
+  color: var(--lamp-bright);
+}
+
+.landing-lede {
+  margin: 0;
+  max-width: 42ch;
+  padding-bottom: 0.4rem;
+  font-size: clamp(1rem, 1.5vw, 1.1rem);
+  line-height: 1.62;
+  color: var(--mist);
+}
+
+/* ---- the proof: one band, full bleed, split down the middle ---- */
+
+/*
+ * The thesis as a picture: one lever, rendered the two ways the two players
+ * receive it.
+ *
+ * **The two halves are one grid, and that is load-bearing.** The previous build
+ * laid them out as two independent columns, so the heading of one sat two
+ * hundred pixels above the heading of the other and the payloads were different
+ * sizes at different heights. A comparison whose two sides do not line up is
+ * not a comparison. They are `subgrid` rows of one grid now: the captions share
+ * a line, the payloads share a row, and the notes share a baseline, whatever
+ * either of them contains.
+ */
+.proof-wrap {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 0.7rem;
-  align-items: stretch;
-  width: 100%;
+  gap: 0.9rem;
+}
+
+.proof {
+  position: relative;
+  isolation: isolate;
+  /* Out of the reading column, to the edge of the glass. The band is the one
+     element on this page that is allowed to be the full width of the window. */
+  margin-inline: calc(50% - 50vw);
+  padding: clamp(1.6rem, 3.6vw, 2.6rem) max(clamp(1.1rem, 4vw, 2rem), calc(50vw - 32rem));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  column-gap: clamp(1rem, 3.5vw, 2.6rem);
+  row-gap: 1.1rem;
 }
 
 /*
- * On the landing screen the halves have no boxes: the page behind them is
- * already divided into the two fields, so drawing a panel around each is
- * drawing the same line twice.
+ * The two fields.
+ *
+ * Warm on PILOT's side, cold on KEEPER's, which is the colour law applied to a
+ * page rather than to a room. It is masked top and bottom because a band of
+ * light that stops at a straight horizontal line reads as a rendering fault -
+ * the gate screen shipped with exactly that edge across it.
  */
-.split-field {
-  align-items: center;
-  width: min(74rem, 100%);
-  /*
-   * The band the split lives in, and it may not spill out of it. The cold half
-   * is taller than the warm one now that it carries the requisition slip, and
-   * without this it painted over the line underneath it.
-   */
-  min-height: 0;
-  height: 100%;
-  padding: 0.5rem 0;
-  /*
-   * **Never scrolls.** A scrollbar down the middle of a landing page is a
-   * confession that the layout does not fit, and this one only ever overflowed
-   * by about forty pixels. The halves shrink instead: the tool text and the
-   * slip are both illustrations, and an illustration may be small.
-   */
-  overflow: hidden;
-  gap: 2.2rem;
-}
-
-/* Compact in the landing's band: this is an illustration, not a document. */
-.split-field .half-tool {
-  min-height: 0;
-  font-size: 0.68rem;
-  line-height: 1.5;
-}
-
-.split-field .slip {
-  padding: 0.7rem 0.85rem;
-  font-size: 0.8rem;
-}
-
-.split-field .half {
-  gap: 0.4rem;
-  padding: 0.4rem;
-}
-
-.split-field .half-note {
-  font-size: 0.78rem;
-}
-
-/* The stamp is flourish; it is the first thing to go when the band is tight. */
-@media (max-height: 60rem) {
-  .split-field .stamp {
-    display: none;
-  }
-}
-
-.split-field .slip .prompt {
-  font-size: 0.78rem;
-  line-height: 1.38;
-}
-
-.split-field .half-plate {
-  min-height: 4.4rem;
-}
-
-.split-field .half {
-  justify-content: center;
-  border: none;
-  background: none;
-  box-shadow: none;
-}
-
-.split-field .half-plate {
-  background: none;
-}
-
-.split-field .half-tool {
-  border: 1px solid color-mix(in srgb, var(--tide) 26%, transparent);
-  background: color-mix(in srgb, var(--abyss) 55%, transparent);
-}
-
-.split-field .split-seam {
-  color: transparent;
-}
-
-.half {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  align-items: center;
-  margin: 0;
-  padding: 0.85rem 0.8rem;
-  border: var(--edge);
-  border-radius: var(--radius);
+.proof::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
   background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--slate) 82%, transparent),
-    var(--ink)
+    90deg,
+    color-mix(in srgb, var(--lamp-deep) 30%, transparent) 0%,
+    color-mix(in srgb, var(--lamp-deep) 10%, transparent) 34%,
+    transparent 49%,
+    transparent 51%,
+    color-mix(in srgb, var(--tide-deep) 14%, transparent) 66%,
+    color-mix(in srgb, var(--tide-deep) 38%, transparent) 100%
   );
+  mask-image: linear-gradient(180deg, transparent 0%, black 14%, black 86%, transparent 100%);
+}
+
+.proof-half {
+  margin: 0;
+  padding: 0;
+  /* Three rows of the parent, so the two halves cannot drift out of line. */
+  grid-row: span 3;
+  display: grid;
+  grid-template-rows: subgrid;
+  row-gap: inherit;
+  justify-items: center;
   text-align: center;
 }
 
-.half-pilot {
-  border-color: color-mix(in srgb, var(--lamp) 34%, transparent);
-  box-shadow: inset 0 0 34px -18px var(--lamp);
+.proof-pilot {
+  grid-column: 1;
 }
 
-.half-keeper {
-  border-color: color-mix(in srgb, var(--tide) 34%, transparent);
-  box-shadow: inset 0 0 34px -18px var(--tide);
+.proof-keeper {
+  grid-column: 3;
 }
 
-.half-who {
-  order: -1;
+.proof-who {
+  margin: 0;
+  align-self: end;
   font-family: var(--mono);
-  font-size: 0.65rem;
+  font-size: 0.68rem;
   letter-spacing: 0.24em;
+  text-transform: uppercase;
 }
 
-.half-pilot .half-who {
+.proof-pilot .proof-who {
   color: var(--lamp);
 }
 
-.half-keeper .half-who {
+.proof-keeper .proof-who {
   color: var(--tide);
 }
 
-/* The plate a mark is drawn on, in the chamber and here. */
-.half-plate {
+/* The row both payloads share. Equal height is the whole point of it. */
+.proof-body {
+  width: 100%;
+  min-height: clamp(8rem, 17vh, 11.5rem);
   display: grid;
   place-items: center;
-  width: 100%;
-  min-height: 6.4rem;
+  padding: 1.2rem;
   border-radius: var(--radius);
-  background: radial-gradient(
-    70% 70% at 50% 45%,
-    color-mix(in srgb, var(--lamp) 12%, transparent),
-    transparent 70%
+}
+
+/*
+ * PILOT's half: the plate, lit.
+ *
+ * The same object the chamber lights - a dark plate with a warm source behind
+ * it - rather than a picture of one on a card. The mark itself is a canvas and
+ * is never named, which is the design law and also the argument: this shape
+ * only becomes words if a person makes them.
+ */
+.proof-pilot .proof-body {
+  background:
+    radial-gradient(
+      70% 70% at 50% 52%,
+      color-mix(in srgb, var(--lamp-deep) 55%, transparent) 0%,
+      transparent 72%
+    ),
+    linear-gradient(180deg, var(--stone), var(--slate));
+  border: 1px solid color-mix(in srgb, var(--lamp) 30%, transparent);
+  box-shadow:
+    var(--sheen),
+    var(--lift-2),
+    inset 0 0 40px -6px color-mix(in srgb, var(--lamp) 22%, transparent);
+}
+
+.proof-glyph {
+  width: clamp(74px, 11vw, 104px);
+  height: auto;
+  /* Nearest-neighbour, like every other place this client draws a glyph: they
+     are pixel maps and a smoothed one is a different shape. */
+  image-rendering: pixelated;
+  filter: drop-shadow(0 0 14px color-mix(in srgb, var(--lamp) 55%, transparent));
+}
+
+/*
+ * KEEPER's half: the tool response, set as one.
+ *
+ * Monospace, cold, and wrapped the way a tool result wraps. It is not styled to
+ * look nice; it is styled to look like what it is, because the argument is that
+ * this is genuinely all the agent gets.
+ */
+.proof-keeper .proof-body {
+  background: linear-gradient(180deg, var(--glass), color-mix(in srgb, var(--ink) 80%, black));
+  border: 1px solid color-mix(in srgb, var(--tide) 26%, transparent);
+  box-shadow: var(--sheen), var(--lift-2);
+  place-items: center start;
+}
+
+.proof-tool {
+  margin: 0;
+  width: 100%;
+  font-family: var(--mono);
+  font-size: clamp(0.7rem, 1.15vw, 0.82rem);
+  line-height: 1.75;
+  color: var(--tide-bright);
+  text-align: left;
+  white-space: pre-wrap;
+  /* `lever_a` is one token and a narrow column must break it rather than push
+     the grid wider than the window. */
+  overflow-wrap: anywhere;
+}
+
+.proof-note {
+  margin: 0;
+  align-self: start;
+  max-width: 40ch;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  color: var(--mist);
+}
+
+/*
+ * The seam.
+ *
+ * A lit rule with the mark on it. The first build set the word "AND" here and
+ * then hid it with `color: transparent`, which left the two halves of the
+ * argument separated by nothing at all.
+ */
+.proof-seam {
+  grid-column: 2;
+  grid-row: 1 / 4;
+  position: relative;
+  width: 1px;
+  justify-self: center;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    color-mix(in srgb, var(--pearl) 30%, transparent) 22%,
+    color-mix(in srgb, var(--pearl) 30%, transparent) 78%,
+    transparent
   );
 }
 
-.half-glyph {
-  image-rendering: pixelated;
-  filter: drop-shadow(0 0 12px color-mix(in srgb, var(--lamp) 40%, transparent));
+.proof-seam-mark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  display: grid;
+  place-items: center;
+  padding: 0.5rem;
+  border-radius: 50%;
+  background: var(--abyss);
+  /* The one thing on the page that moves on its own: the beacon the station is
+     named for, breathing between its two channels. */
+  animation: seam-breathe 8s ease-in-out infinite;
 }
 
-/* What the agent is handed: a tool response, set as one. */
-.half-tool {
-  width: 100%;
-  min-height: 6.4rem;
-  padding: 0.6rem;
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--abyss) 70%, transparent);
-  color: var(--tide);
-  font-family: var(--mono);
-  font-size: 0.71rem;
-  line-height: 1.6;
-  text-align: left;
-}
-
-.half-note {
-  margin: 0;
-  color: var(--mist);
-  font-size: 0.81rem;
-  line-height: 1.4;
-}
-
-/* The word between them, which is the whole of the design law. */
-.split-seam {
-  align-self: center;
-  color: var(--iron);
-  font-family: var(--mono);
-  font-size: 0.65rem;
-  letter-spacing: 0.2em;
-}
-
-/*
- * The gate's own notice, which is an aside rather than a headline.
- *
- * It sits under the pitch and is marked as a problem with a solution: a warm
- * left edge, the same one every "you need to do something" surface in this
- * client uses, rather than the alarm colour, because nothing has gone wrong.
- */
-.blocked {
-  padding: 0.9rem 1.1rem;
-  border: var(--edge);
-  border-left: 2px solid color-mix(in srgb, var(--lamp) 70%, transparent);
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--slate) 55%, transparent);
-}
-
-.blocked h2 {
-  margin: 0 0 0.3rem;
-  color: var(--pearl);
-  font-size: 0.95rem;
-  font-weight: 600;
-}
-
-.blocked p {
-  margin: 0;
-  color: var(--mist);
-  font-size: 0.94rem;
-  line-height: 1.5;
-}
-
-/* On the gate the split is a figure in a document, not a panel in a deck. */
-.gate .split {
-  margin-top: 0.4rem;
-}
-
-.launch-claim {
-  margin: 0 0 0.6rem;
-  color: var(--mist);
-  font-size: 0.94rem;
-}
-
-.launch-go {
-  margin: 0.7rem 0 0.5rem;
-  color: var(--pearl);
-  font-family: var(--mono);
-  font-size: 0.69rem;
-  letter-spacing: 0.3em;
-}
-
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
+@keyframes seam-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 18px -2px color-mix(in srgb, var(--lamp) 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 18px -2px color-mix(in srgb, var(--tide) 45%, transparent);
   }
 }
 
-.launch[hidden] {
-  display: none;
+.proof-caption {
+  grid-column: 1 / -1;
+  grid-row: 4;
+  margin: 0;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--iron);
 }
 
-.launch-modes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  justify-content: center;
+/* ---- how to start ---- */
+
+.start {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 21rem), 1fr));
+  gap: clamp(1.2rem, 3vw, 2.2rem);
+  align-items: start;
+}
+
+.start-title {
+  grid-column: 1 / -1;
+  margin: 0 0 0.3rem;
+  font-family: var(--display);
+  font-optical-sizing: auto;
+  font-style: italic;
+  font-size: clamp(1.5rem, 2.8vw, 2.1rem);
+  font-weight: 380;
+  letter-spacing: -0.005em;
+  color: var(--pearl);
 }
 
 /*
- * The three ways in, and the only invitation on the page.
+ * One step of the start procedure.
  *
- * They lift and warm on hover rather than changing colour outright, because
- * lamplight means "only PILOT perceives this" and a button is not a fact. What
- * they are allowed is the *material* warmth of brass, which is what every
- * mechanism in the station is made of.
+ * Numbered, because it *is* a procedure and the previous build did not say so:
+ * the prompt was on one side of the page, three unlabelled buttons were at the
+ * bottom of the other, and a sentence in between explained that the two were
+ * related.
  */
-.launch-modes button {
-  transition:
-    transform 200ms cubic-bezier(0.22, 0.8, 0.3, 1),
-    border-color 200ms ease,
-    box-shadow 240ms ease;
+.step {
+  display: grid;
+  gap: 0.9rem;
+  align-content: start;
 }
 
-.launch-modes button:hover,
-.launch-modes button:focus-visible {
-  transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--brass) 85%, transparent);
-  box-shadow: 0 6px 22px -8px color-mix(in srgb, var(--brass) 70%, transparent);
+.step-head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.step-n {
+  flex: none;
+  width: 2.1rem;
+  height: 2.1rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--lamp) 32%, transparent);
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--lamp-deep) 30%, var(--stone)),
+    var(--stone)
+  );
+  box-shadow: var(--sheen), var(--lift-1);
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 520;
+  font-size: 1.02rem;
+  color: var(--lamp-bright);
+}
+
+.step-head h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--pearl);
+}
+
+.step-body {
+  display: grid;
+  gap: 0.8rem;
+  min-width: 0;
+}
+
+.blocked-why {
+  margin: 0;
+  padding-left: 0.9rem;
+  /* A problem with a solution, which is what the warm edge means everywhere
+     else in this client. Not the alarm colour: nothing has gone wrong. */
+  border-left: 2px solid var(--lamp);
+  color: var(--mist);
+  font-size: 0.92rem;
+}
+
+.routes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 0.8rem;
+}
+
+/* ---- picking a length ---- */
+
+.chooser {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.chooser[hidden] {
+  display: none;
+}
+
+.modes {
+  display: grid;
+  gap: 0.55rem;
+}
+
+/*
+ * The three ways in.
+ *
+ * Each one carries what it costs you, on the button. The previous build printed
+ * `full`, `brief` and `practice` as bare lowercase words with the explanation
+ * in a `title` attribute, which is a tooltip on a desktop and nothing at all on
+ * a phone - and the first thing anybody wants to know before starting is how
+ * long this is going to take them.
+ */
+/*
+ * A CTA, not a card.
+ *
+ * Reported back plainly: the buttons were hard to see. They read as
+ * information cards - a name the same size as its own caption, no icon, no
+ * sense of "click here" beyond a cursor change - because the label competed
+ * with everything around it instead of being the loudest thing in its own
+ * row. The name is a full size step up and carries the display face; a
+ * chevron says "goes somewhere" the way a hyperlink used to before browsers
+ * stopped colouring them blue; and the whole card gets a floor - a lit
+ * bottom edge - which is what makes something read as raised and pressable
+ * rather than as a labelled rectangle.
+ */
+.mode {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  column-gap: 0.9rem;
+  padding: 1.1rem 1.3rem 1.15rem;
+  text-align: left;
+  border: 1px solid color-mix(in srgb, var(--lamp) 30%, transparent);
+  border-radius: var(--radius);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--lamp-deep) 24%, var(--stone)),
+    color-mix(in srgb, var(--lamp-deep) 9%, var(--slate))
+  );
+  box-shadow:
+    var(--sheen),
+    var(--lift-1),
+    inset 0 -2px 0 color-mix(in srgb, var(--lamp) 22%, transparent);
+  color: var(--pearl);
+  font: inherit;
+  cursor: pointer;
+  /*
+   * The bounded tilt (`wireTilt`, `ui/motion.ts`): `--tilt-x` / `--tilt-y` are
+   * written on `pointermove` and reset to `0deg` on leave, so this is a no-op
+   * at rest and a small lean toward the pointer while it is over the card.
+   * `perspective` lives on the card rather than its parent so the tilt reads
+   * as the card itself lifting off the page, not the whole row skewing.
+   */
+  transform: perspective(900px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.mode:hover,
+.mode:focus-visible {
+  transform: translateY(-3px) perspective(900px) rotateX(var(--tilt-x, 0deg))
+    rotateY(var(--tilt-y, 0deg));
+  border-color: var(--lamp);
+  box-shadow:
+    var(--sheen),
+    var(--lift-2),
+    inset 0 -2px 0 var(--lamp);
+}
+
+/* The chevron: the one piece of iconography on the page, and it means
+   exactly one thing everywhere it appears - this is a door, go through it. */
+.mode::after {
+  content: "";
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  justify-self: end;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-top: 2px solid var(--lamp);
+  border-right: 2px solid var(--lamp);
+  rotate: 45deg;
+  opacity: 0.7;
+  transition:
+    translate 140ms ease,
+    opacity 140ms ease;
+}
+
+.mode:hover::after,
+.mode:focus-visible::after {
+  translate: 3px 0;
+  opacity: 1;
+}
+
+.mode-top {
+  grid-column: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.mode-name {
+  font-family: var(--display);
+  font-optical-sizing: auto;
+  font-size: 1.32rem;
+  font-weight: 460;
+  color: var(--lamp-bright);
+}
+
+.mode-badge {
+  padding: 0.1rem 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--lamp) 55%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--lamp) 16%, transparent);
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--lamp-bright);
+}
+
+.mode-cost {
+  grid-column: 1;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mist);
+  white-space: nowrap;
+}
+
+.mode-blurb {
+  grid-column: 1 / -1;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--mist);
+}
+
+.chooser-or {
+  margin: 0.1rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--iron);
+}
+
+.chooser-or::before,
+.chooser-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: color-mix(in srgb, var(--iron) 40%, transparent);
+}
+
+/*
+ * The other way in.
+ *
+ * Quieter than the three lengths and deliberately so: it opens its own door,
+ * which is normally the agent's move, and it is here for a judge under review
+ * load rather than for the game's actual audience.
+ */
+.solo {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.7rem 0.9rem;
+  text-align: left;
+  border: 1px dashed color-mix(in srgb, var(--iron) 65%, transparent);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--pearl);
+  font: inherit;
+  cursor: pointer;
+  transform: perspective(900px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    transform 140ms ease;
+}
+
+.solo:hover,
+.solo:focus-visible {
+  border-color: var(--mist);
+  background: color-mix(in srgb, var(--stone) 55%, transparent);
+}
+
+.solo-name {
+  font-size: 0.92rem;
+  font-weight: 500;
+}
+
+.solo-blurb {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--mist);
+}
+
+/*
+ * Waiting for the agent.
+ *
+ * The state that did not exist, and whose absence was the worst defect on this
+ * screen: `start` refuses until the agent has called `begin_shift`, and the
+ * refusal went to an activity log inside a closed drawer. So a visitor clicked
+ * one of the three buttons, nothing whatsoever moved, and the only conclusion
+ * available to them was that the page was broken.
+ */
+.waiting {
+  display: grid;
+  gap: 0.7rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid color-mix(in srgb, var(--lamp) 40%, transparent);
+  border-radius: var(--radius);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--lamp-deep) 26%, var(--stone)),
+    var(--slate)
+  );
+  box-shadow: var(--sheen), var(--lift-2);
+}
+
+.waiting[hidden] {
+  display: none;
+}
+
+.waiting-what {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--lamp-bright);
+}
+
+/* A lamp that has not caught yet. It goes steady when the agent arrives. */
+.waiting-what::before {
+  content: "";
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--lamp);
+  animation: waiting-pulse 1.8s ease-in-out infinite;
+}
+
+.waiting.is-live .waiting-what::before {
+  animation: none;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--lamp) 80%, transparent);
+}
+
+@keyframes waiting-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.waiting-why {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  color: var(--mist);
+}
+
+.waiting-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.waiting-change {
+  padding: 0.4rem 0.7rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--mist);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.waiting-change:hover,
+.waiting-change:focus-visible {
+  color: var(--pearl);
+  border-color: color-mix(in srgb, var(--iron) 60%, transparent);
+}
+
+/* ---- watch a shift, and the key ---- */
+
+.watch {
+  display: grid;
+  gap: 0.9rem;
+  justify-items: start;
+}
+
+.landing-key {
+  display: grid;
+  gap: 0.6rem;
+  padding-top: 1.4rem;
+  border-top: 1px solid color-mix(in srgb, var(--iron) 34%, transparent);
+}
+
+.landing-key-title {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.24em;
+  color: var(--iron);
+}
+
+/* ---- attract mode ---- */
+
+/*
+ * A landing screen nobody has touched for twenty seconds starts playing a
+ * shift by itself (doc 08 phase 4).
+ *
+ * Over the whole surface rather than in a box in a corner: a recording the size
+ * of a thumbnail is a decoration, and a recording the size of the screen is the
+ * game. Any key, click or pointer move ends it, and it never starts at all
+ * under `prefers-reduced-motion`.
+ */
+.attract {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-content: center;
+  gap: 1.2rem;
+  justify-items: center;
+  background: color-mix(in srgb, var(--abyss) 94%, transparent);
+  animation: landing-in 700ms ease-out both;
+}
+
+.attract[hidden] {
+  display: none;
+}
+
+.attract .ghost-screen {
+  width: min(86vw, 60rem);
+  height: auto;
+  border-radius: var(--radius);
+  box-shadow: var(--lift-3);
+}
+
+.attract-note {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--iron);
+}
+
+/* ---- narrow windows ---- */
+
+/*
+ * The proof, stacked.
+ *
+ * Two payloads side by side stop being a comparison somewhere around forty
+ * rems: each half gets narrower than the tool response it has to hold, and the
+ * `<pre>` starts breaking `lever_a` across lines. Stacked, the seam turns
+ * ninety degrees and goes on doing the same job - the two halves are still one
+ * grid, so they still line up, one under the other.
+ */
+@media (max-width: 52rem) {
+  .proof {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto auto auto auto;
+    row-gap: 0.9rem;
+  }
+
+  .proof-half {
+    grid-column: 1;
+    grid-row: span 3;
+    grid-template-rows: subgrid;
+  }
+
+  .proof-seam {
+    grid-column: 1;
+    grid-row: 4;
+    width: auto;
+    height: 1px;
+    margin: 0.6rem 0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in srgb, var(--pearl) 30%, transparent) 22%,
+      color-mix(in srgb, var(--pearl) 30%, transparent) 78%,
+      transparent
+    );
+  }
+
+  .proof-keeper {
+    grid-row: 5 / span 3;
+  }
+
+  .proof-caption {
+    grid-row: 8;
+  }
+
+  .proof-body {
+    min-height: 0;
+  }
+
+  .proof-note {
+    max-width: none;
+  }
+}
+
+/* The chart's four columns do not fit a phone; the escape rate wraps under. */
+@media (max-width: 40rem) {
+  .ablation-row {
+    grid-template-columns: minmax(0, 1fr) 3rem;
+  }
+
+  .ablation-row .who {
+    grid-column: 1 / -1;
+  }
+
+  .ablation-row .track {
+    grid-column: 1;
+  }
+
+  .ablation-row .escaped {
+    grid-column: 1 / -1;
+    text-align: right;
+  }
+
+  .ablation-axis {
+    display: none;
+  }
+
+  .mode {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mode-cost {
+    justify-self: start;
+  }
 }
 
 /*
@@ -1466,11 +2410,29 @@ body::after {
  * AUDIBLE channel: a thing both parties perceive. It takes no channel colour
  * of its own, since a volume control is not a fact about the station.
  */
+/*
+ * The mix, as one cluster.
+ *
+ * A mute and three faders laid straight on to the foot of the room read as
+ * four unrelated controls drifting along the bottom of the screen. Grouping
+ * them in a housing says what they are - the station's mixer - and gives the
+ * three sliders, which are otherwise identical, an edge to be measured
+ * against.
+ */
 .mixer {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.55rem;
   margin-top: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  border: var(--edge);
+  border-radius: var(--radius);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--slate) 82%, transparent),
+    color-mix(in srgb, var(--ink) 88%, transparent)
+  );
+  box-shadow: var(--sheen), var(--lift-1);
 }
 
 .mixer .mute {
@@ -1877,189 +2839,131 @@ button[hidden] {
   flex: none;
 }
 
-/* ------------------------------------------------------------------ gate -- */
-
-/*
- * The screen a browser without WebMCP gets.
- *
- * For some judges this is the entire submission, so it is laid out as a page
- * that can be read rather than as a console that cannot be operated. It gets
- * the same materials, so arriving at the real thing later feels like the same
- * building.
- */
-.gate {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap);
-  max-width: 54rem;
-  margin: 0 auto;
-  padding: 2.5rem 0 4rem;
-}
-
-/*
- * The gate's hero.
- *
- * For a judge without the browser flag this screen *is* the submission (doc 07
- * section 6), so it gets the same beam the start card has and a staggered
- * arrival, and it gets them without a single request: the whole page is type,
- * one inline SVG mark and two gradients.
- */
-.hero {
-  position: relative;
-  overflow: hidden;
-  padding: 2.6rem 1.8rem 2.2rem;
-  border: var(--edge);
-  border-radius: var(--radius);
-  background:
-    radial-gradient(
-      90% 140% at 12% 0%,
-      color-mix(in srgb, var(--tide-deep) 34%, var(--abyss)) 0%,
-      transparent 60%
-    ),
-    linear-gradient(180deg, var(--stone), var(--ink));
-}
-
-.hero::before {
-  content: "";
-  position: absolute;
-  inset: -60% -40%;
-  pointer-events: none;
-  background: linear-gradient(
-    72deg,
-    transparent 44%,
-    color-mix(in srgb, var(--lamp) 9%, transparent) 50%,
-    transparent 56%
-  );
-  animation: sweep 11s linear infinite;
-}
-
-.hero > * {
-  position: relative;
-}
-
-/* The whole gate arrives in order, top down, once. */
-.gate > * {
-  animation: rise 760ms cubic-bezier(0.22, 0.8, 0.3, 1) both;
-}
-
-.gate > :nth-child(1) {
-  animation-delay: 60ms;
-}
-
-.gate > :nth-child(2) {
-  animation-delay: 200ms;
-}
-
-.gate > :nth-child(3) {
-  animation-delay: 320ms;
-}
-
-.gate > :nth-child(4) {
-  animation-delay: 420ms;
-}
-
-.gate > :nth-child(n + 5) {
-  animation-delay: 520ms;
-}
-
-.hero-mark {
-  display: flex;
-  align-items: center;
-  gap: 0.85rem;
-  margin-bottom: 1.5rem;
-}
-
-.eyebrow {
-  margin: 0;
-  color: var(--pearl);
-  font-size: 0.81rem;
-  font-weight: 600;
-  letter-spacing: 0.34em;
-}
-
-.tagline {
-  margin: 0;
-  color: var(--mist);
-  font-size: 0.75rem;
-  letter-spacing: 0.16em;
-}
-
-.gate h1 {
-  margin: 0 0 1rem;
-  font-size: clamp(1.4rem, 3.6vw, 2rem);
-  font-weight: 500;
-  letter-spacing: -0.01em;
-  line-height: 1.25;
-}
-
-.gate .lede {
-  color: var(--pearl);
-  font-size: 1rem;
-}
-
-.gate p {
-  margin: 0 0 1rem;
-  color: var(--pearl-dim);
-  font-size: 0.9rem;
-  line-height: 1.65;
-}
-
-.routes {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
-  gap: var(--gap);
-}
-
 /*
  * The ablation, as three bars.
  *
  * Two of them are on the floor, and that is the entire thesis understood in one
- * second (doc 07 section 1). It belongs on this screen more than on any other,
- * because this is the screen a judge who never gets the game running will
- * score from.
+ * second (doc 07 section 1). It is on the never-cut list, so it is drawn to be
+ * read rather than to be got past: a scale under it, the escape rate beside
+ * every bar, and the row that carries the argument lit.
  */
 .ablation {
-  display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
+  display: grid;
+  gap: 0.55rem;
 }
 
 .ablation-row {
   display: grid;
-  grid-template-columns: 9.5rem minmax(0, 1fr) 4.5rem;
-  gap: 0.7rem;
+  grid-template-columns: 8.5rem minmax(0, 1fr) 3rem 6rem;
+  gap: 0.5rem 0.8rem;
   align-items: center;
   font-size: 0.85rem;
 }
 
 .ablation-row .who {
   color: var(--pearl-dim);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
+}
+
+.ablation-row.together .who {
+  color: var(--pearl);
 }
 
 .ablation-row .track {
-  height: 12px;
+  position: relative;
+  height: 16px;
   border: 1px solid color-mix(in srgb, var(--iron) 40%, transparent);
-  border-radius: 2px;
-  background: var(--ink);
+  border-radius: 3px;
+  background: linear-gradient(180deg, var(--abyss), var(--ink));
+  /* The scale, drawn into the track rather than under it, so a bar can be read
+     against it without the eye travelling. */
+  background-image: repeating-linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--iron) 30%, transparent) 0 1px,
+    transparent 1px 25%
+  );
 }
 
 .ablation-row .track i {
   display: block;
   height: 100%;
+  border-radius: 2px;
   background: linear-gradient(90deg, var(--lamp-deep), var(--lamp));
+  transition: width 700ms cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+/*
+ * A row that measured zero is marked as measured.
+ *
+ * Without this the chart's most important row - a human alone clears nothing -
+ * is an empty rectangle, which is also what a chart with no data in it looks
+ * like. A capped stub at the origin says the run happened and returned zero.
+ */
+.ablation-row .track i.zero {
+  width: 3px !important;
+  background: var(--iron);
 }
 
 .ablation-row.together .track i {
   background: linear-gradient(90deg, var(--brass), var(--lamp-bright));
+  box-shadow: 0 0 14px -2px color-mix(in srgb, var(--lamp) 65%, transparent);
 }
 
 .ablation-row .value {
   color: var(--pearl);
   font-family: var(--mono);
-  font-size: 0.83rem;
+  font-size: 0.86rem;
   font-variant-numeric: tabular-nums;
   text-align: right;
+}
+
+.ablation-row .escaped {
+  color: var(--iron);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.ablation-row.together .escaped {
+  color: var(--lamp);
+}
+
+/* The axis, aligned to the track column and to nothing else. */
+.ablation-axis {
+  display: grid;
+  grid-template-columns: 8.5rem minmax(0, 1fr) 3rem 6rem;
+  gap: 0.8rem;
+  margin-top: -0.15rem;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  color: var(--iron);
+}
+
+.ablation-axis > * {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: start;
+}
+
+.ablation-axis > *:nth-child(2) {
+  justify-self: center;
+  margin-left: -50%;
+}
+.ablation-axis > *:nth-child(3) {
+  justify-self: center;
+}
+.ablation-axis > *:nth-child(4) {
+  justify-self: center;
+  margin-left: 50%;
+}
+.ablation-axis > *:nth-child(5) {
+  justify-self: end;
+}
+
+.ablation-bare {
+  display: grid;
+  gap: 0.9rem;
 }
 
 /**
@@ -2108,35 +3012,61 @@ button[hidden] {
 }
 
 /**
- * The ablation on the landing screen, closed.
+ * The ablation, folded.
  *
- * The console is a deck that fills the viewport, so there is no fold for this
- * to sit under; a disclosure is the same idea in a layout that does not
- * scroll. Closed by default: it is the argument for playing, and somebody who
- * has already decided to play should not have to get past it.
+ * Closed by default: it is the argument for playing, and somebody who has
+ * already decided to play should not have to get past it. But it carries a
+ * never-cut chart, so it is drawn as something that visibly opens rather than
+ * as a line of grey small caps somebody scrolls over.
  */
 .why {
-  margin-top: var(--gap);
-  border-top: var(--edge);
-  padding-top: var(--gap);
+  border: var(--edge);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--stone) 40%, transparent);
+  overflow: hidden;
 }
 
 .why > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.85rem 1.1rem;
   font-family: var(--mono);
-  font-size: 0.79rem;
+  font-size: 0.76rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--pearl-dim);
   cursor: pointer;
+  /* The default triangle is replaced by one that points where it is going. */
+  list-style: none;
+}
+
+.why > summary::-webkit-details-marker {
+  display: none;
+}
+
+.why > summary::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 5px solid currentcolor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: rotate 180ms ease;
+}
+
+.why[open] > summary::before {
+  rotate: 90deg;
 }
 
 .why > summary:hover,
 .why > summary:focus-visible {
   color: var(--lamp);
+  background: color-mix(in srgb, var(--lamp-deep) 20%, transparent);
 }
 
-.why .ablation {
-  margin-top: var(--gap);
+.why .ablation-bare {
+  padding: 0 1.1rem 1.1rem;
 }
 
 /**
@@ -2194,10 +3124,26 @@ button[hidden] {
   align-self: end;
 }
 
-.replay > .replay-log {
+/*
+ * The key and the transcript, one flex column filling the "log" cell. A
+ * second grid item sharing that cell (the key, sized to its own content,
+ * `align-self: start`) has the identical collision the tracks' own cell has
+ * three of already: nothing forces it clear of `.replay-log`, which stretches
+ * to fill the whole cell by default. Flex settles it by construction instead
+ * of by a coordinate: the key takes what it needs and the list gets the rest.
+ */
+.replay > .replay-column {
   grid-area: log;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.replay-column > .replay-log {
+  flex: 1 1 auto;
+  min-height: 0;
   max-height: none;
-  margin: 0;
+  margin: 0.6rem 0 0;
 }
 
 .replay > .replay-share {
@@ -2217,6 +3163,54 @@ button[hidden] {
     grid-template-columns: minmax(0, 1fr);
     height: auto;
   }
+}
+
+/*
+ * The dead end: a replay URL with nothing behind it.
+ *
+ * Centred, because there is nothing else on the page to align to, and it ends
+ * on the thing the visitor actually came for rather than on an apology.
+ */
+.replay-dead {
+  grid-area: head;
+  place-self: center;
+  display: grid;
+  gap: 1rem;
+  justify-items: center;
+  text-align: center;
+  max-width: 34rem;
+  padding: 2rem 0;
+}
+
+.replay-dead h1 {
+  margin: 0;
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
+  font-weight: 300;
+  letter-spacing: -0.01em;
+  color: var(--pearl);
+}
+
+.replay-dead .spectate {
+  margin-top: 0.6rem;
+  text-decoration: none;
+}
+
+/* With nothing to show, the grid has one cell and it is the middle of it. */
+.replay:has(.replay-dead) {
+  grid-template-areas: "head";
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  place-content: center;
+}
+
+.replay-head {
+  display: grid;
+  gap: 0.35rem;
+  justify-items: start;
+}
+
+.replay-head .wordmark {
+  margin-bottom: 0.5rem;
 }
 
 .replay-head h1 {
@@ -2353,7 +3347,18 @@ button[hidden] {
   justify-content: center;
   flex-wrap: wrap;
   gap: var(--gap);
-  padding: 0.9rem 1.5rem 1.6rem;
+  /*
+   * The top padding is the rail's height, and it is why this reads at all.
+   *
+   * The rail is laid *over* the deck rather than given a row of its own
+   * (D-052), so a band told to own the top edge of the viewport owns the same
+   * pixels the clock and the room name are printed on. The tour photographed
+   * exactly that: "the whole shift is on the station's log" written straight
+   * through SEMAPHORE - ESCAPED - AMBIGUITY. The scrim still starts at the
+   * top, so the rail gains a darker ground and gets easier to read; only the
+   * words start below it.
+   */
+  padding: 3.6rem 1.5rem 1.6rem;
   text-align: center;
   background: linear-gradient(
     to bottom,
@@ -2554,6 +3559,17 @@ button[hidden] {
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--lamp) 8%, transparent),
     0 10px 34px color-mix(in srgb, var(--abyss) 80%, transparent);
+  /*
+   * The bounded tilt (`wireTilt`), only on the copy that opted in.
+   *
+   * `--tilt-x` / `--tilt-y` are unset - and therefore `0deg` via the `var()`
+   * fallback - on every copy of this card `wireTilt` was never pointed at,
+   * which is the one in the console's drawer. One rule serves both: the
+   * landing screen's slip tilts because its custom properties actually move,
+   * and the drawer's slip does not because nothing is writing to them.
+   */
+  transform: perspective(1000px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+  transition: transform 160ms ease;
   /* Torn along the top and bottom, which is what makes it a slip rather than a
      box. A repeating cone gradient bites notches out of both edges; the border
      above stops at the same inset so the two do not disagree about the shape. */
@@ -2663,16 +3679,6 @@ button[hidden] {
   margin: 0;
   padding-top: 0.5rem;
   border-top: 1px solid var(--slip-rule);
-}
-
-/* On the gate screen the slip is the page's centrepiece rather than a panel in
-   a drawer, so it gets room to be one. */
-.gate .slip {
-  padding: 1.3rem 1.4rem 1.1rem;
-}
-
-.gate .slip .prompt {
-  font-size: 0.94rem;
 }
 
 /* The copy button's confirmed state. A shape change as well as a colour one:
@@ -2834,13 +3840,13 @@ button[hidden] {
   color: var(--pearl);
 }
 
-.launch-teach {
+.teach {
   border-color: color-mix(in srgb, var(--iron) 70%, transparent);
   background: none;
   color: var(--mist);
 }
 
-.launch-teach:hover {
+.teach:hover {
   border-color: var(--lamp);
   color: var(--lamp);
 }
@@ -2865,7 +3871,20 @@ button[hidden] {
    * the camera is pointed at - in the opening that is PILOT's body, which is
    * the one thing the words are about.
    */
+  /*
+   * The line and its skip hint as one block, ending in the lower third.
+   *
+   * The hint used to be pinned to the bottom of the deck, which is the edge
+   * the audible strip, the mixer and the caption band already share - so
+   * "press any key to skip" was printed straight through "COLD AIR, AND THE
+   * SOUND OF THE SEA" on the last frame of the game. Under the line it is
+   * skipping, it moves with the thing it belongs to and cannot collide with
+   * anything that owns an edge.
+   */
   place-items: end center;
+  align-content: end;
+  justify-items: center;
+  row-gap: 1.1rem;
   padding-bottom: clamp(4rem, 22%, 11rem);
   background: radial-gradient(
     82% 72% at 50% 50%,
@@ -2915,8 +3934,6 @@ button[hidden] {
 }
 
 .story-hint {
-  position: absolute;
-  bottom: 1.4rem;
   margin: 0;
   color: var(--iron);
   font-family: var(--mono);
@@ -3026,16 +4043,39 @@ button[hidden] {
   text-align: right;
 }
 
-/* The one action in the cold half: the prompt the agent needs before it can play. */
-.half-hand {
+/*
+ * The chart's own key. Sits between the tracks and the transcript: close
+ * enough to the marks it explains that a viewer connects the two without
+ * hunting for it, but out of the transcript's own flow so it reads once
+ * rather than being repeated down the list.
+ */
+.replay-legend {
   display: flex;
-  justify-content: center;
-  margin-top: 0.2rem;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.4rem;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+  color: var(--mist);
 }
 
-/* The slip, standing in the cold half of the landing rather than in a drawer. */
-.split-field .slip {
-  width: 100%;
-  max-width: 26rem;
-  margin-top: 0.3rem;
+.replay-legend li {
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+}
+
+.replay-legend .pilot .marker {
+  color: var(--lamp);
+}
+
+.replay-legend .keeper .marker {
+  color: var(--tide);
+}
+
+.replay-legend .concord .marker {
+  color: var(--pearl-dim);
 }

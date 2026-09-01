@@ -20,6 +20,8 @@ import type { PilotView } from "@semaphore/protocol";
 import {
   ARCHIVE_PLAN,
   CHAMBER_ACCENT,
+  DOOR_HEIGHT,
+  DOOR_WIDTH,
   GAUGE_MAX,
   GRATE_WIDTH,
   ROOM_SIZES,
@@ -885,9 +887,11 @@ describe("the caption band", () => {
 describe("the bolt ring", () => {
   it("sits on the door rather than on the wall above it", () => {
     // The door is 2.9m tall. A ring centred at 3.4 is centred above its lintel,
-    // and it read as a row of lamps on blank masonry.
-    const DOOR_HEIGHT = 2.9;
-    const DOOR_WIDTH = 3.2;
+    // and it read as a row of lamps on blank masonry. DOOR_HEIGHT and
+    // DOOR_WIDTH are chamber.ts's own constants, not a copy: this was the
+    // third local redeclaration of the same two numbers, and the second one
+    // - fixtures.ts's buildDoor - drifting from a beam's own assumptions is
+    // exactly what put a ceiling beam through a door's lintel (D-072).
     for (const at of boltRing(ROOM_SIZES.concord_lock)) {
       expect(at.y, "a bolt is underground").toBeGreaterThan(0);
       expect(at.y, "a bolt floats over the lintel").toBeLessThan(DOOR_HEIGHT + 1);
