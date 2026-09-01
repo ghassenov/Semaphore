@@ -2741,3 +2741,31 @@ dev` or the user's own browser tab.
 
 748 tests, typecheck and lint clean across every workspace, palette lock holds
 at 20 colours, worker and both Pages projects live and smoke-tested.
+
+---
+
+### D-075 The DNS records landed, and the OOPIF hypothesis held
+
+**2026-09-01.** The two CNAME records D-074 was waiting on were added to the
+`ahmedxsaad.me` zone. Both custom domains show `status: active` on their Pages
+projects, and both serve the deployed apps directly.
+
+**The cross-origin delegation proof was re-run against `semaphore.ahmedxsaad.me`
+and `semaphore-archive.ahmedxsaad.me` rather than their `.pages.dev` fallbacks,
+and all 27 checks pass, including the two that failed under `.pages.dev`.**
+Confirms D-074's diagnosis exactly: `pages.dev` is a public suffix, so the two
+`.pages.dev` origins were different *sites* under Chrome's site isolation and
+the archive frame became an out-of-process frame a plain
+`Page.getFrameTree()` could not see; `semaphore.ahmedxsaad.me` and
+`semaphore-archive.ahmedxsaad.me` share one registrable domain and behave
+exactly like `localhost:5173`/`localhost:5175` always did. Nothing in the
+product needed changing - only the origins the test was pointed at - which is
+the outcome the hypothesis predicted rather than a fix arrived at by trial.
+
+The full loop is now proved against the live worker and both live Pages
+projects on their real domains: the registry, the Airlock, a door walk-back,
+the Signal Room, `read_manual` and `read_station_log` both crossing origins
+and returning real content, the Archive beat, the Concord Lock, the finale,
+the registry draining to empty on both origins, and the ending's replay link
+pointing at `https://semaphore.ahmedxsaad.me/replay?id=...` - the real
+domain, not a fallback. Deployment is complete and nothing remains open on it.

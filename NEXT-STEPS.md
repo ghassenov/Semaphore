@@ -13,7 +13,7 @@ It answers three questions and only three: where the repo is right now, what to 
 | **Last updated** | 2026-09-01, Ahmed Saad |
 | **Branch** | `feat/web-layer-redesign`, off `main` at `bc84552` |
 | **Pipeline** | Green: **748 tests**, typecheck, lint, format, both builds plus the bundle budget and the palette check |
-| **Deployed** | **Live on Cloudflare** (D-074). Worker: `https://semaphore.ahmedxsaad.workers.dev`. Game: `https://semaphore-q3p.pages.dev`, custom domain `semaphore.ahmedxsaad.me` requested and **waiting on a DNS record only the account owner can add** (wrangler's OAuth token has no `dns_records` scope). Archive: `https://semaphore-archive.pages.dev`, same DNS wait for `semaphore-archive.ahmedxsaad.me`. See "Waiting on" for the exact CNAME records. Production D1 migrated to `0002_deep_linked.sql`. |
+| **Deployed** | **Live on Cloudflare and fully verified (D-074, D-075).** Game: `https://semaphore.ahmedxsaad.me`. Archive: `https://semaphore-archive.ahmedxsaad.me`. Worker: `https://semaphore.ahmedxsaad.workers.dev`. Both custom domains active; the DNS records landed and the full cross-origin delegation proof passes 27/27 against the real domains, ending replay link included. Production D1 migrated to `0002_deep_linked.sql`. Nothing left open on this. |
 | **Sound** | **Built and heard** (D-050, D-051). Listened to on a real machine on 2026-08-30 and signed off. Plan phase 5.2 in full: eight mechanism cues, the ambience bed, four timer-keyed tension layers, a behind-the-wall thump per KEEPER tool call, and a mix with a mute. Plus **a warm unresolved theme** on top, always on, which is a deliberate departure from doc 06's chiptune direction (D-051). All synthesised in `apps/game/src/audio/`; still no asset file of any kind. `PilotView` gained `seq`, without which the detents cannot repeat. |
 | **Doors and the way back** | **Every door stands in an opening you can actually walk through, and PILOT can go back through one** (D-053 to D-055). `doorways.ts` holds each room's openings room-local and its test derives the real ones from `stationCells`; two openings could not carry a door (a south face, and eleven metres of gauge bank) so the **corridors were rerouted**, not the doors. `Q` at an open door walks PILOT back into a room the pair has already cleared, drawn from the last frame the server sent for it with its doors opened by `asCleared`. Nothing crosses the wire: the clock keeps running, KEEPER's 14 tools are untouched, and KEEPER's body is not drawn in a room the session has left. Every room also got a decoration and ambient-motion pass, including the two that had never had a composition pass. |
 | **Web layer** | **Redesigned from scratch, its bugs fixed, and then made to be looked at** (D-066, D-068, D-069). `ui.ts` is now `src/ui/` - `parts.ts`, `landing.ts`, `console.ts`, plus `reveal.ts` and `motion.ts` - with its own CLAUDE.md. The landing screen is a **surface laid over the console** rather than a card inside its deck, with its own scroll: identity, thesis, the split as one full-bleed editorial band, a rule with the split lamp between sections, then a numbered two-step start. **Picking a session length no longer fails silently.** A self-hosted display typeface (Fraunces, OFL, the one deliberate exception to no-asset-files, `LICENSE` carries the carve-out), scroll-driven reveals, a cursor-reactive light on the hero and a bounded tilt on the three cards a reader actually chooses between - all verified with a simulated pointer over CDP, not only read as code, because the light's first version measured as working and was genuinely invisible on screen. The gate is built from the same parts in the same order; `heroBlock` and `whyAndKey` are now shared functions rather than duplicated a third time. Reduced motion was checked with the emulated media feature set *before navigation*: every section is visible at `opacity: 1` with zero scrolling. The tab rails are rails, a drawer is as tall as its contents, the mixer is a housing, the replay's dead end is a page, and everything works down to 390px. **The camera stopped compounding its own idle drift** (D-067), found by playing it: holding a movement key, or leaning with `E` then moving, put the camera outside the station. The station's own room and its assets were otherwise not touched. |
@@ -72,14 +72,15 @@ It answers three questions and only three: where the repo is right now, what to 
 
 ## What landed on 2026-09-01
 
-**Deployed to Cloudflare for the first time (D-074).** The worker, both Pages
-projects and the production D1 migration are live; only the two custom-domain
-DNS records are outstanding (see "Waiting on"). Along the way, found and fixed
-a real production bug `vite preview` could never have shown: `_redirects`'s
-`/replay -> /index.html 200` rewrite 308-redirected to `/` on real Cloudflare
-Pages, silently dropping every `?id=` and breaking the replay link the ending
-hands out. Fixed by rewriting to `/` instead of `/index.html` - see "Things
-that will bite you".
+**Deployed to Cloudflare for the first time and fully verified (D-074, D-075).**
+The worker, both Pages projects, both custom domains and the production D1
+migration are all live. Along the way, found and fixed a real production bug
+`vite preview` could never have shown: `_redirects`'s `/replay -> /index.html
+200` rewrite 308-redirected to `/` on real Cloudflare Pages, silently dropping
+every `?id=` and breaking the replay link the ending hands out. Fixed by
+rewriting to `/` instead of `/index.html` - see "Things that will bite you".
+The full cross-origin delegation proof passes 27/27 against the real deployed
+domains, ending replay link included - nothing left open on this.
 
 **Also fixed two things the user reported directly.** A ceiling beam ran
 through a doorway's lintel in four of five rooms, because `beams()` placed
@@ -352,23 +353,10 @@ rhythm** (4.00 of four at 4s, 3.80 at 6s, 2.00 at 9s), and **the Signal Room's
 until doc 11 sections 6 and 7 carry measured round trips; then re-run both the
 ablation and the benchmark.
 
-### 7. Add the two DNS records, then re-run the cross-origin proof against the real domains
+### 7. Deployment - done (D-074, D-075)
 
-**Deployed (D-074); this is the one step left that needs the account owner.**
-The worker, the game's Pages project and the archive's Pages project are all
-live, `ALLOWED_ORIGINS` and `VITE_ARCHIVE_ORIGIN` are set for the custom
-domains, and both custom domains are registered on their Pages projects and
-waiting on a DNS record wrangler's OAuth token cannot create itself (no
-`dns_records` scope). Add both records in the Cloudflare dashboard for the
-`ahmedxsaad.me` zone:
-
-| Type | Name | Target | Proxy |
-|---|---|---|---|
-| CNAME | `semaphore` | `semaphore-q3p.pages.dev` | Proxied |
-| CNAME | `semaphore-archive` | `semaphore-archive.pages.dev` | Proxied |
-
-Once both resolve, re-run the cross-origin delegation proof against the real
-domains rather than the `*.pages.dev` fallback:
+Both custom domains are active and the full cross-origin delegation proof
+passes 27/27 against them:
 
 ```bash
 WORKER=https://semaphore.ahmedxsaad.workers.dev \
@@ -378,20 +366,14 @@ CDP=http://127.0.0.1:9222 \
 node --experimental-strip-types tests/cross-origin-delegation.ts
 ```
 
-**Why this matters beyond tidiness.** Tested against the two `*.pages.dev`
-origins, this proof's own cross-origin invoke checks failed - not because
-delegation is broken, but because `pages.dev` is a public suffix, so Chrome's
-site isolation puts the archive frame in its own process (an OOPIF) that a
-plain `Page.getFrameTree()` on the top page's own CDP session cannot see
-without `Target.setAutoAttach`. The rest of the flow (registry lifecycle,
-`fromOrigins` visibility, the Archive beat, chamber transitions) verified
-clean against production regardless. `semaphore.ahmedxsaad.me` and
-`semaphore-archive.ahmedxsaad.me` share one registrable domain
-(`ahmedxsaad.me`), which local dev's `localhost:5173`/`localhost:5175` also
-effectively did (site isolation ignores port), so the real custom domains
-should behave like local dev always has. Confirm that once DNS is live, and if
-the two invoke checks still fail there, the test script itself needs proper
-OOPIF handling, not just a different origin.
+The two cross-origin invoke checks that failed against the `*.pages.dev`
+fallback origins (D-074) pass here, confirming the diagnosis: `pages.dev` is a
+public suffix, so those were two different *sites* under Chrome's site
+isolation and the archive frame was an out-of-process frame a plain
+`Page.getFrameTree()` could not see. `semaphore.ahmedxsaad.me` and
+`semaphore-archive.ahmedxsaad.me` share one registrable domain and behave like
+local dev's `localhost:5173`/`localhost:5175` always did. Nothing in the
+product needed to change.
 
 ### 8. Point a model at the benchmark [blocked on step 4]
 
@@ -490,8 +472,6 @@ seconds with zero tokens. Budget the tokens before running, not after.
 | Spike in ChatGPT's in-app browser | Human | Still the only thing keeping `ARCHIVE_ORIGIN` at `same`. Now also the only way to know whether the 3D renderer performs there. |
 | A real agent session | Human | Doc 11 sections 6 and 7 stay empty until a model meets the page. |
 | Doc 06 section 11 rewritten | Whoever holds the design | It still describes a chiptune score. The client plays a warm instrumental with chiptune tension over it (D-051), heard and signed off. The doc is the half that has to move. |
-| Two DNS records for the custom domains | Human, account owner only | `semaphore` and `semaphore-archive` CNAMEs on the `ahmedxsaad.me` zone. Wrangler's OAuth token has no `dns_records` scope, so this is the one deployment step that could not be done from here. Exact records in item 7. |
-| A full session played to the ending, against the deployed worker | Human | The cross-origin proof run against production (D-074) drove a real session through `begin_shift`, `start`, the Airlock, a door walk-back and into the Signal Room and the Blind Panel/Archive phase over the live worker's actual WebSocket and Durable Object - that path works. It did not reach the Concord Lock or the ending, because it stopped at the archive-tool OOPIF issue in item 7. Re-running item 7's proof to completion is the same action that closes this. |
 | Chamber II's drift rate | Whoever holds the design | Blocked on doc 11 sections 6 and 7. Re-run `ablation` and `benchmark` after any change. |
 | Per-model benchmark numbers | Human | Harness done and free to run. Needs a backend behind the tool surface. |
 | A real screen reader | Human | The accessibility mirror is built and checked against the accessibility tree, never against NVDA or VoiceOver. Doc 08 phase 6's last line. |
