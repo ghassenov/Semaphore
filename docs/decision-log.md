@@ -2923,3 +2923,198 @@ whose failure is deliberately silent stays broken until something reads it.
 
 Tour is at 34 checks. Three of them are new and one exists only because the
 first run of it reported "0 intercom".
+
+---
+
+### D-080 The proof is a package now
+
+**2026-09-01.** The channel model, the projector and the possible-worlds proof
+were never about levers and dials. They are `packages/asymmetry`: zero
+dependencies, a CLI that prints the bits table and sets an exit code, and one
+worked example that is a support console rather than a game.
+
+**Options.** Leave it in place and describe it in the README; extract it as a
+package; write a separate library from scratch.
+
+**Why extract.** Doc 01 section 4's tier-1 Impact claim - *an agent's tool
+surface and a human's UI surface do not have to be the same surface* - is the
+one tier a judge cannot reject, and it cost nothing because it was only a
+sentence. A judge asking "does this solve a real problem for a real audience"
+got a game and a principle. They now get a CI-able check for *can my agent's
+tool surface reconstruct something I only meant to show on screen*, which is a
+problem real teams have now and nobody is measuring. It was also the smallest
+of the three code items, because the hard part was written and tested.
+
+**Result.** `packages/protocol` and `apps/worker` are the game's *binding* of
+the kit: our five channels, our two parties, our chambers. One implementation
+still, one directory further down. `packages/CLAUDE.md`'s rule that
+`consistentWorlds` has one implementation and three consumers is unchanged and
+now has a fourth: somebody else's application.
+
+The example ships correct and turns red under `LEAK=1`, which adds the
+convenience field a refactor always adds - a summary line carrying the address
+inside a sentence. That is the regression a hundred green unit tests do not
+see, and watching the exit code flip is the whole pitch.
+
+`allowImportingTsExtensions` moved to `tsconfig.base.json`. A package consumed
+from source is compiled under its *consumer's* configuration, so a flag in the
+package's own tsconfig does not reach it.
+
+---
+
+### D-081 The Blackout, and where the proof said it could live
+
+**2026-09-01.** For one window in the Blind Panel the lamps fail and the two
+roles trade places. KEEPER can see the gauges and cannot find the dials; PILOT
+is standing at the panel in the dark with their hands on them.
+
+**Doc 01 section 6 scoped role inversion out as "compelling, expensive".** It
+is neither, once the asymmetry is a perception model rather than a convention.
+`INVERTED_PERCEPTION` is the design law with its two lists exchanged
+(`invert()` in the kit), and every projection in the worker takes the model it
+projects under. The beat is a window, a flag, and one honest question.
+
+**Where it lives was measured, not chosen.** Running the possible-worlds
+measurement under both maps, at chamber entry, over the proof's own seeds:
+
+| Chamber | Under the law | Inverted |
+|---|---|---|
+| 0 Airlock | 6 worlds, 3 actions | **1 world, 1 action** |
+| I Signal Room | 1956 / 1956 | **0 worlds** (not even spanned) |
+| II Blind Panel | 384 / 384 | **384 / 384** |
+| III Concord Lock | 26 / 26 | **1 world, 1 action** |
+
+Three of the four collapse: their secrets live on `VISUAL`, so handing
+`VISUAL` to KEEPER hands KEEPER the answer. The Blind Panel does not, because
+its secret is on **neither** channel - inverting a two-party model exchanges
+two lists and cannot invent a channel neither list names. The room is exactly
+as hard from the other side, which is a stronger claim than "it still works".
+
+The proof now runs a third pass under the inverted map, and it asserts the
+other three *collapse* as well as that the Blind Panel holds. That second half
+is a guard on the placement: if a later change made the Airlock survive
+inversion, a `VISUAL` fact has stopped being decisive there and somebody should
+find out on purpose rather than by discovering the beat had become portable.
+
+**Swapping perception alone would have handed the agent the game, and a
+per-state proof cannot see it.** The proof measures one instant; this chamber
+is solved by system identification over a trajectory. An agent that could see
+the gauges and still had the dials would rotate and watch, alone, and need
+nobody - with every clause of the proof green. So the Blackout inverts
+**agency** as well: `rotate_dial` leaves KEEPER's registry for the duration and
+PILOT gets the panel through a plain route, never a tool, exactly as `grip_bar`
+is. That is a `toolchange` firing *inside* a room rather than at its boundary,
+which nothing else in the game does.
+
+**Off in the benchmark**, for the reason doc 07 section 2.3 turns the CONCORD
+meter off there: the Standard suite measures what an agent infers from its own
+projection, and a beat that moves the hands to the other party mid-chamber is
+not a partner quality it has an axis for. Ablation and benchmark re-run
+byte-identical.
+
+**One bug worth recording.** The first build shipped with
+`INVERTED_PERCEPTION` missing from the protocol's barrel export, so every
+inverted projection fell back to the design law through a default parameter and
+every measurement came back identical. Nothing failed. A default that swallows
+a missing argument needs a check that reads the result back - the same lesson
+D-079 records about a silent write - and `blackout.test.ts` now asserts the two
+models actually differ.
+
+---
+
+### D-082 The station became a place you can hear
+
+**2026-09-01.** The audio layer was well built and it was not a room: every
+voice arrived at the centre of the head at the same distance, in a game whose
+whole subject is perceiving a room well enough to describe it out loud.
+
+**Spatialised.** Cues come from the room's mechanism, KEEPER's thump from the
+east wall where the body is drawn, and the listener follows PILOT every frame.
+Coordinates are normalised room units rather than metres, so the audio layer
+never imports `render/chamber.ts` - eighteen hundred lines of geometry landing
+in the entry chunk to place four sounds. Placing a voice is handing it a
+different `sfx`, built with `Object.create` rather than a spread so the live
+`mix` getter survives.
+
+**Why it is not decoration.** `AUDIBLE` is the one channel both parties
+perceive and doc 02 section 6 already says it is *rendered differently to each*:
+as sound to PILOT, as text to KEEPER. Direction is a property sound has and
+text does not, so spatialising it widens what PILOT can contribute without
+moving a byte across the projection boundary.
+
+**Per-room acoustics.** One fixed impulse response made the station one room.
+The convolver is built from the room now. The Blind Panel is the driest place
+in the station, which matters mechanically: it is where a count has to be
+picked out of the reverb.
+
+**The tool notes are authored.** The pitch came from `hash % 11 * 7` Hz, which
+is uniform over the *name* and not over the ear: two tools alive in one room
+could land indistinguishably close, and none of it was in the theme's key. The
+table is written now and `plan.test.ts` holds tools registered together at
+least a minor third apart - compared in whole semitones off the table, because
+the round trip through hertz lands a written 3 on 2.9999999999999996 and a test
+that fails by rounding gets a constant nudged rather than believed.
+
+**The score is scored in bits.** The theme resolves on the CONCORD reading and
+nothing else. `THEME_GROUND` is an open fifth on the tonic because it
+introduces no new pitch class and so cannot smuggle back the leading note or
+the second the theme is deliberately written without. Null bits resolve
+nothing, which is what the benchmark sees.
+
+The panner is `equalpower` throughout, and that is a decision: HRTF colours what
+it pans, and Chamber II's detent is a transient that is a puzzle mechanism. It
+is also markedly cheaper per source, which matters where the open question is
+the in-app browser on a phone.
+
+---
+
+### D-083 The gate shows the asymmetry, not just the game
+
+**2026-09-01.** The gate and the landing screen played a recording of the room.
+Doc 07 section 6 says that screen is the entire submission for a judge who
+never types anything, and it showed the game working without once showing what
+the game is about.
+
+It draws the same recording twice on one clock now: the room as PILOT saw it
+beside the same second as KEEPER perceived it - the calls it was making, and a
+dashed hole reading NO VISUAL CHANNEL where the room would be.
+
+**`/ghost` carries both halves and is the one place in the repository that
+hands out both projections at once.** Safe because nobody is playing: no
+session behind the route, no pair for either half to reach, and the fixture's
+seed was spent when it was authored. In a live session it would be the worst
+change anybody could make, so `archive.test.ts` asserts in both directions that
+`pilotTrack` and `keeperEntries` themselves are untouched.
+
+Still a 2D context, so the gate never fetches the 143KB engine.
+
+**Found by looking at it.** The two scrub bars measured against different
+denominators and sat visibly apart on screen - the picture quietly saying these
+were not the same moment, which is the one thing it exists to say they are.
+
+---
+
+### D-084 The tour plays the Blackout, and found the beat had no voice
+
+**2026-09-01.** The browser tour's Chamber II script posted `rotate_dial` and
+stopped working at rotation five. That is the honest signal that the Blackout
+is real rather than cosmetic: a KEEPER-only script cannot finish that room any
+more.
+
+It plays it now, as a pair does - asks KEEPER what it reads out of
+`describe_chamber`'s prose, and posts `pilot_rotate_dial` itself. Six new
+checks, and the frame.
+
+**And it found the last defect.** The lamps failing was announced only inside a
+console drawer that is closed by default. A player would have watched the room
+go dark, watched the gauge bank stop being drawn, watched their agent start
+describing needles it had never been able to see, and had to guess whether that
+was a beat or a bug. It is in the caption band now - the one thing that band
+says from inside a room rather than between two.
+
+One check had to be rewritten after it fired: "the lamps came back" asserted
+the state at the end of the room, and a pair can perfectly well finish the
+Blind Panel during the window or on the rotation right after it. A beat that
+only sometimes has an "after" has to be observed while it is running.
+
+Tour is at 42 checks, fifteen frames.

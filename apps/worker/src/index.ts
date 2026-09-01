@@ -1,6 +1,6 @@
 import { Session, type Env } from "./Session.js";
 import { allowedOrigins, corsHeaders, preflight, withCors } from "./cors.js";
-import { GHOST_LOG, pilotTrack } from "./archive/index.js";
+import { ghostForGate } from "./archive/index.js";
 import { gunzipJsonl } from "./log.js";
 import { projectReplay } from "./replay.js";
 
@@ -40,13 +40,24 @@ export default {
     // SPECTATE on demand, and attract mode when nobody has touched the page
     // (doc 08 phase 4). Neither has a session and the gate cannot start one -
     // it is the screen a browser without WebMCP gets - so this cannot address
-    // a Durable Object. It does not need to: the ghost is a constant, and the
-    // track is a pure projection of it that already drops KEEPER's half.
+    // a Durable Object. It does not need to: the ghost is a constant, and both
+    // halves of it are pure projections of that one log.
+    //
+    // **This route carries both halves and the in-game Archive still does
+    // not.** The gate draws them side by side, which is the whole thesis in
+    // one picture: a room with a person in it, and a list of calls with a hole
+    // where the room would be. In a live session that would be a catastrophe -
+    // `pilotTrack` and `keeperEntries` are a matched pair and widening either
+    // hands one party the other's half - so the Archive's CRT keeps getting
+    // its track on the `PilotView` and nothing else changes. What makes this
+    // safe is that nobody is playing: there is no session behind this route, no
+    // pair to hand anything to, and the ghost's own seed was spent when the
+    // fixture was authored. `index.test.ts` asserts both directions.
     //
     // Read-only, so it takes no semaphore and is not logged (D-019).
     if (url.pathname === "/ghost") {
       return withCors(
-        Response.json(pilotTrack(GHOST_LOG), {
+        Response.json(ghostForGate(), {
           // Immutable in the sense that matters: the fixture changes only when
           // somebody regenerates it and redeploys.
           headers: { "cache-control": "public, max-age=3600" },

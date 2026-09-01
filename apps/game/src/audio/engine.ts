@@ -29,9 +29,6 @@ export const DEFAULT_MIX: Mix = { master: 0.7, music: 0.55, sfx: 0.9, muted: fal
 /** How far the music drops under a cue, in linear gain. Doc 06 asks for 6dB. */
 const DUCK = 0.5;
 
-/** How long the concrete tower rings for, in seconds. */
-const REVERB_SECONDS = 2.4;
-
 /**
  * The graph, and the handful of things the rest of the audio layer does to it.
  *
@@ -52,6 +49,20 @@ export interface Engine {
   readonly noise: AudioBuffer;
   /** Drop the music for `seconds`, then bring it back. */
   duck(seconds: number): void;
+  /**
+   * A bus that arrives from a place in the room, for a voice to connect to
+   * instead of `sfx`.
+   *
+   * One method rather than a change to every voice: `tone` and `noise` already
+   * take an optional `bus`, so the whole of spatialisation is "hand them a
+   * different node". Coordinates are normalised room coordinates (`plan.ts`):
+   * `x` west to east, `z` from the open south face to the far wall.
+   */
+  placed(x: number, z: number): GainNode;
+  /** Move PILOT's ears. Called every frame by the stage, in the same units. */
+  listen(x: number, z: number): void;
+  /** Rebuild the reverb for the room the pair is standing in. Idempotent. */
+  setRoom(seconds: number, decay: number): void;
   /** How loud the bed sits under the tension layers, 0 to 1. */
   setBed(level: number): void;
   /** The bed's gain node, which the ambience connects to rather than `music`. */
@@ -64,22 +75,31 @@ export interface Engine {
 }
 
 /**
- * An impulse response for a large concrete room, generated rather than loaded.
+ * An impulse response for a concrete room, generated rather than loaded, and
+ * **built from the room it is for**.
  *
  * Exponentially decaying noise is the standard cheap convolution reverb and it
  * is exactly right for what doc 06 asks for: square waves inside a tower. The
  * two channels are decorrelated so the tail is wide rather than a point.
+ *
+ * The two parameters are the two things a listener actually hears the
+ * difference between, and `plan.ts` decides them per room (`ACOUSTICS`). One
+ * fixed response for all five rooms made the station one room: the Concord Lock
+ * is the tall one and should ring like the inside of a tower, and the Blind
+ * Panel is low and half-full of machinery and should be the driest place in the
+ * station - which matters mechanically as well as atmospherically, because it
+ * is the one room where a count has to be picked out of the reverb.
  */
-function concreteTower(ctx: AudioContext): AudioBuffer {
-  const length = Math.floor(ctx.sampleRate * REVERB_SECONDS);
+function roomResponse(ctx: AudioContext, seconds: number, decay: number): AudioBuffer {
+  const length = Math.floor(ctx.sampleRate * seconds);
   const buffer = ctx.createBuffer(2, length, ctx.sampleRate);
   for (let channel = 0; channel < 2; channel += 1) {
     const samples = buffer.getChannelData(channel);
     for (let i = 0; i < length; i += 1) {
       // A slow front and a long tail: the early part of the curve is what
       // makes a room sound large rather than merely reverberant.
-      const decay = (1 - i / length) ** 2.6;
-      samples[i] = (Math.random() * 2 - 1) * decay;
+      const envelope = (1 - i / length) ** decay;
+      samples[i] = (Math.random() * 2 - 1) * envelope;
     }
   }
   return buffer;
@@ -118,13 +138,30 @@ export function createEngine(mix: Mix = DEFAULT_MIX): Engine {
   bed.connect(music);
 
   const reverb = ctx.createConvolver();
-  reverb.buffer = concreteTower(ctx);
+  /** The room the convolver is currently built for, so a repeat is free. */
+  let roomSeconds = 2.4;
+  let roomDecay = 2.6;
+  reverb.buffer = roomResponse(ctx, roomSeconds, roomDecay);
   reverb.connect(master);
   const send = ctx.createGain();
   send.gain.value = 0.9;
   send.connect(reverb);
 
   const noise = noiseBuffer(ctx);
+
+  /*
+   * How far apart the ears are, in the units `placed` and `listen` use.
+   *
+   * A room is two units across by construction, so a listener at the centre is
+   * one unit from each wall. The panner's reference distance is set to a
+   * comfortable fraction of that: large enough that walking a metre is audible,
+   * small enough that a sound at the far wall does not vanish. These are the
+   * numbers to reach for if the station ever sounds too wide or too flat, and
+   * they are here rather than in `plan.ts` because they are properties of the
+   * node graph rather than decisions about the game.
+   */
+  const REFERENCE_DISTANCE = 0.7;
+  const ROLLOFF = 0.9;
 
   let current: Mix = mix;
   /** What the music bus sits at when nothing is ducking it. */
@@ -150,6 +187,57 @@ export function createEngine(mix: Mix = DEFAULT_MIX): Engine {
     send,
     bed,
     noise,
+    placed(x, z) {
+      const panner = ctx.createPanner();
+      /*
+       * Equal-power rather than HRTF, and that is a decision rather than a
+       * default.
+       *
+       * HRTF colours what it pans - it is a pair of measured filters, which is
+       * the point of it - and this game has a sound whose *transient* is a
+       * puzzle mechanism. Chamber II has PILOT counting detents through a
+       * grate, 180ms apart, and doc 02 section 3.3 makes that count the answer.
+       * A panning model that softens the front of a click to place it better is
+       * trading the thing the sound is for against the thing it is decoration
+       * for. Equal power is also markedly cheaper per source, which matters
+       * where the renderer's own budget is already the open question: the
+       * ChatGPT in-app browser on a phone.
+       */
+      panner.panningModel = "equalpower";
+      panner.distanceModel = "inverse";
+      panner.refDistance = REFERENCE_DISTANCE;
+      panner.rolloffFactor = ROLLOFF;
+      panner.positionX.value = x;
+      panner.positionY.value = 0;
+      panner.positionZ.value = z;
+      const gain = ctx.createGain();
+      gain.connect(panner);
+      panner.connect(sfx);
+      return gain;
+    },
+    listen(x, z) {
+      const { listener } = ctx;
+      // `setPosition` is deprecated and still the only path on some engines, so
+      // the AudioParam form is used where it exists and the old call is the
+      // fallback rather than the other way round.
+      if (listener.positionX) {
+        listener.positionX.value = x;
+        listener.positionY.value = 0;
+        listener.positionZ.value = z;
+      } else {
+        listener.setPosition(x, 0, z);
+      }
+    },
+    setRoom(seconds, decay) {
+      if (seconds === roomSeconds && decay === roomDecay) return;
+      roomSeconds = seconds;
+      roomDecay = decay;
+      // Swapping the buffer on a live convolver truncates whatever tail is
+      // still ringing. That is correct here and it is also the *point*: the
+      // rooms are separated by a walk and a camera move, so the cut lands under
+      // the transition rather than under anything anybody is listening to.
+      reverb.buffer = roomResponse(ctx, seconds, decay);
+    },
     get mix() {
       return current;
     },

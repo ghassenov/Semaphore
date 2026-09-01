@@ -41,6 +41,7 @@ import {
   type Note,
   type NoteAuthor,
   type SessionEvent,
+  type Party,
   type SessionMode,
 } from "@semaphore/protocol";
 import { Rng } from "@semaphore/seed";
@@ -50,6 +51,7 @@ import * as blindPanel from "./chambers/blind_panel.js";
 import * as concordLock from "./chambers/concord_lock.js";
 import * as archive from "./archive/index.js";
 import { assistFor } from "./chambers/hints.js";
+import { blackoutOpen, rotationsUntilLampsReturn } from "./blackout.js";
 import { projectedHash, viewHash } from "./projection.js";
 import { describeChamber } from "./views.js";
 import { concordBits, measure, type Ambiguity, type ChamberWorlds } from "./worlds.js";
@@ -107,6 +109,18 @@ export interface PersistedSession {
    */
   readonly deepLinked: boolean;
   /**
+   * Whether this session runs the Blackout (`blackout.ts`), the window in the
+   * Blind Panel where the two roles trade places.
+   *
+   * On for every played session and off for the benchmark, for the same reason
+   * doc 07 section 2.3 turns the CONCORD meter off there: the Standard suite
+   * measures what an agent infers from its own projection, and a beat that
+   * moves the hands to the other party mid-chamber is not a thing to average
+   * over. It is a session-level switch rather than a difficulty or a mode
+   * because it changes no puzzle and no timer - only who is holding the dials.
+   */
+  readonly blackout: boolean;
+  /**
    * The shared notepad, oldest first, capped at `NOTE_CAPACITY`.
    *
    * Server-side rather than in the browser, for three reasons that are all the
@@ -145,6 +159,7 @@ export function newSession(sessionId: string, seed: string, nowMs: number): Pers
     difficulty: "standard",
     machine: { phase: "ENTRY", chamber: null, mode: "full", retries: 0 },
     deepLinked: false,
+    blackout: true,
     chamberDeadlineMs: null,
     airlock: null,
     signalRoom: null,
@@ -180,6 +195,16 @@ export type Action =
   | { readonly type: "reset_sequence" }
   | {
       readonly type: "rotate_dial";
+      readonly dialId: blindPanel.DialId;
+      readonly direction: blindPanel.Direction;
+      readonly clicks: number;
+    }
+  // The Blackout (`blackout.ts`). In the dark PILOT has the panel, so the same
+  // rotation arrives from the other party. One action rather than a parameter
+  // on `rotate_dial`, because the two are refused in opposite conditions and a
+  // caller should be told which mechanism it is holding.
+  | {
+      readonly type: "pilot_rotate_dial";
       readonly dialId: blindPanel.DialId;
       readonly direction: blindPanel.Direction;
       readonly clicks: number;
@@ -426,7 +451,9 @@ function apply(session: PersistedSession, action: Action, nowMs: number): Reduce
     case "press_key":
       return pressKey(session, action.keyId, nowMs);
     case "rotate_dial":
-      return rotateDial(session, action.dialId, action.direction, action.clicks, nowMs);
+      return rotateDial(session, action.dialId, action.direction, action.clicks, "KEEPER", nowMs);
+    case "pilot_rotate_dial":
+      return rotateDial(session, action.dialId, action.direction, action.clicks, "PILOT", nowMs);
     case "reset_sequence":
       return resetSequence(session, nowMs);
     case "grip_bar":
@@ -987,6 +1014,7 @@ function rotateDial(
   dialId: blindPanel.DialId,
   direction: blindPanel.Direction,
   clicks: number,
+  by: Party,
   nowMs: number,
 ): ReduceResult {
   const latencyMs = nowMs - session.lastRespondedAtMs;
@@ -1002,6 +1030,26 @@ function rotateDial(
   }
   if (!Number.isInteger(clicks) || clicks < 1 || clicks > 8) {
     throw errors.invalidInput("clicks", "an integer from 1 to 8", clicks);
+  }
+
+  // Whose hands are on the panel. In the dark they are PILOT's, and the refusal
+  // each party gets says what the other one is doing rather than merely that
+  // this call failed: an agent told "not now" learns nothing, and an agent told
+  // "PILOT has the dials, read the gauges to them" has its next move.
+  const dark = blackoutOpen(session);
+  if (dark && by === "KEEPER") {
+    throw errors.unreachable(
+      `dial ${dialId}`,
+      `the lamps are out and KEEPER cannot find the panel in the dark. PILOT is standing at it. ` +
+        `Read the gauges out - you can see them now - and tell PILOT which dial to turn. ` +
+        `The lamps come back after ${rotationsUntilLampsReturn(session)} more rotation(s)`,
+    );
+  }
+  if (!dark && by === "PILOT") {
+    throw errors.unreachable(
+      `dial ${dialId}`,
+      "the lamps are on and the panel is behind the grate, where only KEEPER can reach it",
+    );
   }
 
   // Settle the chamber's own clock first, so every gauge read below (the
@@ -1034,7 +1082,10 @@ function rotateDial(
       t: elapsed(session, nowMs),
       seq: session.seq,
       type: "tool_call",
-      tool: "rotate_dial",
+      // Logged under the tool the caller actually held, so a replay of a
+      // blacked-out session shows the rotations moving to the amber track and
+      // back rather than pretending KEEPER made them.
+      tool: by === "PILOT" ? "pilot_rotate_dial" : "rotate_dial",
       input: { dial_id: dialId, direction, clicks },
       result: "ok",
       latencyMs,

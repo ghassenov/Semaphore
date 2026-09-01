@@ -730,6 +730,65 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
    * of the shift. It is a control PILOT has and KEEPER does not, which is
    * exactly what this panel is for.
    */
+  /*
+   * PILOT's hands on the Blind Panel, and only while the lamps are out.
+   *
+   * The Blackout (`apps/worker/src/blackout.ts`) is the one window where the
+   * two roles trade places: KEEPER can see the gauges and cannot find the
+   * dials, and PILOT is standing at the panel in the dark. So for those three
+   * rotations the human holds the mechanism, and this is it.
+   *
+   * A form rather than four buttons, because a rotation is a dial, a direction
+   * and a distance, and those are the three things KEEPER has to say out loud.
+   * The whole beat is that sentence arriving in the other direction.
+   *
+   * It is deliberately **not** a WebMCP tool and never will be, for the same
+   * reason `grip_bar` is not: an agent has no hands. `write_note` is the only
+   * control the two of them share.
+   */
+  const dark = el("div", { class: "dark-panel", hidden: "" });
+  const darkDial = el("select", { "aria-label": "Which dial" }) as HTMLSelectElement;
+  for (const dial of [1, 2, 3, 4]) {
+    darkDial.append(el("option", { value: String(dial) }, `dial ${String(dial)}`));
+  }
+  const darkDirection = el("select", { "aria-label": "Which way" }) as HTMLSelectElement;
+  darkDirection.append(
+    el("option", { value: "clockwise" }, "clockwise"),
+    el("option", { value: "counterclockwise" }, "counter"),
+  );
+  const darkClicks = el("input", {
+    type: "number",
+    min: "1",
+    max: "8",
+    value: "1",
+    "aria-label": "How many clicks",
+  }) as HTMLInputElement;
+  const darkTurn = el("button", { type: "button" }, "turn it");
+  darkTurn.addEventListener("click", () => {
+    void deps.client
+      .post("pilot_rotate_dial", {
+        dial_id: Number(darkDial.value),
+        direction: darkDirection.value,
+        clicks: Number(darkClicks.value),
+      })
+      .then((response) => {
+        deps.onNote(`you turn dial ${darkDial.value}: ${response.text}`);
+      });
+  });
+  dark.append(
+    el(
+      "p",
+      { class: "note" },
+      "The lamps are out. KEEPER can see the gauges now and cannot reach the dials - " +
+        "you can. Ask what it reads, and turn what it tells you to.",
+    ),
+    darkDial,
+    darkDirection,
+    darkClicks,
+    darkTurn,
+  );
+  controls.body.append(dark);
+
   const replay = el("button", { type: "button", class: "teach" }, "Show me how it works");
   replay.addEventListener("click", () => {
     teach?.();
@@ -1114,9 +1173,16 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
       // section 11 requires every cue to have a text equivalent; keeping them
       // adjacent is what stops that being a promise somebody has to remember.
       audible.textContent = view ? (roomPlan(view)?.sound ?? "") : "";
-      deps.audio.update(view, model.chamberTimerMs);
+      // The CONCORD reading goes to the audio layer as well as to the gauge
+      // beside it, from the one model both of them read. The score resolves as
+      // the pair converges (`audio/plan.ts`, `resolutionFor`), and a second
+      // path to the same number would be a second definition of how close they
+      // are.
+      deps.audio.update(view, model.chamberTimerMs, model.concord?.bits ?? null);
 
       for (const { entry, button } of actionButtons) button.hidden = !entry.when(view ?? null);
+      // The one control that appears mid-chamber rather than at a boundary.
+      dark.hidden = !(view?.blackout ?? false);
 
       manifestCount.textContent = String(model.tools.length);
       paintManifest(model.tools);

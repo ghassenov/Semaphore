@@ -2331,8 +2331,13 @@ body::after {
   display: none;
 }
 
+.attract .ghost-split {
+  width: min(92vw, 72rem);
+}
+
 .attract .ghost-screen {
-  width: min(86vw, 60rem);
+  width: 100%;
+  max-width: none;
   height: auto;
   border-radius: var(--radius);
   box-shadow: var(--lift-3);
@@ -3040,6 +3045,31 @@ button[hidden] {
  * backing-store resolution, so the picture is the same on every screen and the
  * browser does the scaling.
  */
+/*
+ * One recording, drawn twice: the room as PILOT saw it, and the same second as
+ * KEEPER perceived it. Side by side on a desktop and stacked on a phone, and
+ * the two have to stay the *same size* in both - the whole argument of the
+ * picture is that these are two views of one moment, and a bigger panel would
+ * quietly say one of them is the real one.
+ */
+.ghost-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--gap);
+  align-items: start;
+  width: 100%;
+}
+
+@media (max-width: 46rem) {
+  .ghost-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ghost-split[hidden] {
+  display: none;
+}
+
 .ghost-screen {
   display: block;
   width: 100%;
@@ -3956,6 +3986,50 @@ button[hidden] {
 .teach:hover {
   border-color: var(--lamp);
   color: var(--lamp);
+}
+
+/* ------------------------------------------ PILOT's hands, in the dark -- */
+
+/*
+ * The Blackout's one control (`apps/worker/src/blackout.ts`).
+ *
+ * Cyan rather than amber, and that is information rather than decoration: for
+ * these three rotations the mechanism is KEEPER's half of the room being
+ * operated by PILOT's hands, and the panel says which half it belongs to. It is
+ * the only place in the console where the two hues meet on one control, because
+ * it is the only moment in the game where the two roles do.
+ */
+.dark-panel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+  margin: var(--gap) 0;
+  padding: var(--gap);
+  border: 1px solid color-mix(in srgb, var(--tide) 45%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--tide-deep) 22%, var(--abyss));
+}
+
+/* `display: grid` beats the user agent's `[hidden]`, every time. */
+.dark-panel[hidden] {
+  display: none;
+}
+
+.dark-panel .note {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--tide-bright);
+}
+
+.dark-panel button {
+  grid-column: 1 / -1;
+  border-color: color-mix(in srgb, var(--tide) 70%, transparent);
+  color: var(--tide-bright);
+}
+
+.dark-panel button:hover {
+  border-color: var(--tide);
+  background: color-mix(in srgb, var(--tide) 12%, transparent);
 }
 
 /* ------------------------------------------------------------- the story -- */

@@ -220,7 +220,26 @@ export function runSession(options: RunOptions): Run {
       : `${seed}:${condition}`,
   );
   const startedAtMs = 0;
-  let session = newSession(`bench_${condition}_${seed}`, seed, startedAtMs);
+  /*
+   * The Blackout is off for every measured run, for the same reason doc 07
+   * section 2.3 turns the CONCORD meter off here.
+   *
+   * The Standard suite measures what an agent can infer from its own
+   * projection, holding the partner's information content fixed and varying its
+   * quality. The Blackout does neither of those things: for three rotations in
+   * the Blind Panel it moves the *hands* to the other party
+   * (`apps/worker/src/blackout.ts`), which is not a partner quality this suite
+   * has an axis for and would show up as a completion figure rather than as
+   * what it is.
+   *
+   * It is switched off on the session rather than avoided by the policy, so
+   * that this file's comment is the only place anyone has to look to know why
+   * the published numbers do not include it.
+   */
+  let session: PersistedSession = {
+    ...newSession(`bench_${condition}_${seed}`, seed, startedAtMs),
+    blackout: false,
+  };
   let now = startedAtMs;
   let calls = 0;
   let vandalised: boolean | null = null;

@@ -150,6 +150,15 @@ export function createStage(
   parent: HTMLElement,
   model: StationModel,
   onStanding: () => void = () => {},
+  /**
+   * Where PILOT's ears are, in normalised room coordinates, every frame.
+   *
+   * The audio layer's listener. A callback rather than a handle on the audio
+   * object because this file already owns a renderer and a scene graph and has
+   * no business owning a second subsystem: it reports a position, and whoever
+   * asked decides what to do with it.
+   */
+  onEar: (x: number, z: number) => void = () => {},
 ): StageHandle {
   /**
    * Whether the station holds still: the camera's drift, and PILOT's stride.
@@ -1162,6 +1171,21 @@ export function createStage(
     if (standing !== null) {
       const localX = pilotAt.x - standing.x;
       const localZ = pilotAt.z - standing.z;
+      /*
+       * PILOT's ears, normalised to the room they are standing in.
+       *
+       * The audio layer works in -1 to 1 on each axis so that it never has to
+       * import this file's geometry (`audio/plan.ts` says why), and this is
+       * the one place that holds both the position and the room's size, so the
+       * division belongs here. Per frame rather than per view: the frame
+       * arrives a few times a minute and a person walks continuously, so an
+       * ear updated on the socket would lag the body it belongs to.
+       */
+      if (plan) {
+        const unit = (value: number, half: number) =>
+          Math.max(-1, Math.min(1, value / Math.max(0.001, half)));
+        onEar(unit(localX, plan.size.width / 2), unit(localZ, plan.size.depth / 2));
+      }
       for (const fixtureView of fixtures.values()) {
         const at = fixtureView.at;
         fixtureView.reveal(lampReveal(localX, localZ, { x: at.x, y: 0, z: at.z }));
@@ -1354,6 +1378,27 @@ export function createStage(
       dust.rotation.y = now / 42000;
       const flicker = 1 + Math.sin(now / 260) * 0.03 + Math.sin(now / 91) * 0.015;
       practical.intensity *= flicker;
+    }
+
+    /*
+     * The Blackout (`apps/worker/src/blackout.ts`): the lamps fail and the two
+     * roles trade places.
+     *
+     * The room's own practical goes out and the hemisphere drops to the floor -
+     * but **low is not zero**, the same rule the rest of this file is built on
+     * (D-048). A room at true black reads as a rendering fault rather than as a
+     * dark room, and PILOT still has to find the panel to work it. So what is
+     * left is PILOT's own lamp and the emissive facts, which is exactly the set
+     * of things a person carrying a light would still be able to see.
+     *
+     * Applied here, at the end of the frame, rather than inside the shot
+     * branches above, for the reason `holdStill()` is read here too: this is a
+     * per-frame condition off the server's own flag, and a value captured when
+     * the shot was chosen cannot hear the lamps fail in between.
+     */
+    if (view?.blackout ?? false) {
+      practical.intensity *= 0.06;
+      sky.intensity = Math.min(sky.intensity, 0.1);
     }
 
     // The caption band. Public copy only.
