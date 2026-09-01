@@ -64,6 +64,10 @@ function statusTool(client: SessionClient): GameTool {
         return "The station did not answer. Try again in a moment.";
       }
       const lines = [
+        // First, because it is the thing an agent that has lost the thread
+        // has actually lost. A phase name and a clock say where you are and
+        // never what you are for.
+        ...(report.objective ? [`objective: ${report.objective}`] : []),
         `phase: ${report.phase}`,
         `chamber: ${report.chamber ?? "none"}`,
         `designation: ${report.designation ?? "not yet given"}`,

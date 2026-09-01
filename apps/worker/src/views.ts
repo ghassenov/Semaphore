@@ -27,6 +27,8 @@ import * as airlock from "./chambers/airlock.js";
 import * as signalRoom from "./chambers/signal_room.js";
 import * as blindPanel from "./chambers/blind_panel.js";
 import * as concordLock from "./chambers/concord_lock.js";
+import { objectiveLine, progressIn } from "./objective.js";
+import { inTheRoom } from "./pilot.js";
 import { projectForKeeper } from "./projection.js";
 import type { PersistedSession } from "./reducer.js";
 
@@ -40,6 +42,50 @@ import type { PersistedSession } from "./reducer.js";
  * split for every chamber puts all of that on `VISUAL`, which is to say on
  * PILOT, which is to say on the conversation.
  */
+/**
+ * What the room is asking for, and how far in KEEPER can tell the pair to be.
+ *
+ * On `get_status` rather than on `describe_chamber`, because `get_status` is
+ * already the documented cheap re-orientation call: "call it whenever you have
+ * lost the thread". An agent that has lost the thread has lost the goal, and
+ * until now the answer to that was a phase name and a clock.
+ */
+export function keeperObjective(session: PersistedSession, nowMs: number): string | null {
+  const { chamber, phase } = session.machine;
+  if (!chamber || !inTheRoom(phase)) return null;
+  // The same per-chamber shape `describeChamber` uses below, and for the same
+  // reason: every string KEEPER reads is built from `projectForKeeper` in this
+  // file, so the claim that no tool response reaches around the projection is
+  // checkable by reading one module. `progressIn` then reads only what that
+  // projection contains, so the Blind Panel honestly reports rotations here
+  // and needles on PILOT's side from the same function.
+  if (chamber === "airlock" && session.airlock) {
+    return objectiveLine(
+      chamber,
+      progressIn(chamber, projectForKeeper(airlock.facts(session.airlock))),
+    );
+  }
+  if (chamber === "signal_room" && session.signalRoom) {
+    return objectiveLine(
+      chamber,
+      progressIn(chamber, projectForKeeper(signalRoom.facts(session.signalRoom))),
+    );
+  }
+  if (chamber === "blind_panel" && session.blindPanel) {
+    return objectiveLine(
+      chamber,
+      progressIn(chamber, projectForKeeper(blindPanel.facts(session.blindPanel))),
+    );
+  }
+  if (chamber === "concord_lock" && session.concordLock) {
+    return objectiveLine(
+      chamber,
+      progressIn(chamber, projectForKeeper(concordLock.facts(session.concordLock, nowMs))),
+    );
+  }
+  return objectiveLine(chamber, null);
+}
+
 export function describeChamber(session: PersistedSession): string {
   // The phases with no chamber behind them answer first. Each returns text
   // naming the next thing the agent can actually do, because an agent that

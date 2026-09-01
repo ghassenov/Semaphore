@@ -53,6 +53,7 @@ export type {
   NoteAuthor,
   Phase,
   PilotView,
+  Progress,
   SessionMode,
 } from "./game.js";
 

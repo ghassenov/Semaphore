@@ -299,6 +299,8 @@ describe("instrumentation", () => {
       remainingMs: 0,
       retries: 0,
       ghost: null,
+      objective: null,
+      progress: null,
       seq: 0,
       facts: {},
       notes: [],

@@ -696,9 +696,18 @@ body::after {
   right: 0;
   left: 0;
   z-index: 5;
+  /*
+   * A column of at most two rows: the readouts, and the objective under them.
+   *
+   * The readouts stay one flex row of their own (`.rail-top`) rather than
+   * becoming a wrapping row here, because the objective must never end up
+   * beside the room name - that row is already tight enough that a room name
+   * eight characters longer took the whole page with it (D-054).
+   */
   display: flex;
-  align-items: center;
-  gap: 1.1rem;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.3rem;
   padding: 0.9rem 1.5rem;
   /*
    * No box, and no border.
@@ -716,8 +725,42 @@ body::after {
   pointer-events: none;
 }
 
-.rail > * {
+.rail-top {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+}
+
+.rail-top > *,
+.rail-objective {
   pointer-events: auto;
+}
+
+/*
+ * What the room is asking for.
+ *
+ * Set in mono like every other readout, and dimmer than the room name above
+ * it: it is standing instruction rather than news, and it is on screen for
+ * the whole of a chamber. One line, clipped rather than wrapped, because a
+ * rail that changes height as the sentence rewraps is a rail that moves the
+ * top of the frame.
+ */
+.rail-objective {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  color: var(--pearl-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* `display: flex` beats the user agent's `[hidden]`, and this element's
+   ancestor sets one. Stated rather than relied upon: the drawers came up open
+   and empty once for exactly this reason. */
+.rail-objective[hidden] {
+  display: none;
 }
 
 .rail .mark {
