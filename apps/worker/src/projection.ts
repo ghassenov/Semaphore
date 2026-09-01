@@ -12,43 +12,47 @@
  * than hand-written field lists. That is deliberate: a hand-written projection
  * is one forgotten field away from a leak, and the wrapper means the perception
  * rule has exactly one implementation shared with the proof and the smoke test.
- */
-
-import { projectFacts, type Party, type TaggedRecord, type Unwrapped } from "@semaphore/protocol";
-
-/** What PILOT may perceive: sight, sound, and shared state. */
-export function projectForPilot<T extends TaggedRecord>(facts: T): Partial<Unwrapped<T>> {
-  return projectFacts(facts, "PILOT");
-}
-
-/** What KEEPER may perceive: touch, document, sound, and shared state. */
-export function projectForKeeper<T extends TaggedRecord>(facts: T): Partial<Unwrapped<T>> {
-  return projectFacts(facts, "KEEPER");
-}
-
-/**
- * A canonical string for a projected view.
  *
- * Two views are the same epistemic state if and only if their canonical forms
- * are equal, so this is what "consistent with what the agent can perceive"
- * means in practice. Object keys are sorted, because JavaScript's insertion
- * order would otherwise make two identical views compare unequal and silently
- * inflate the consistent-worlds count, which would make the proof pass for the
- * wrong reason.
+ * **Both take a perception model.** It defaults to the design law and the
+ * Blackout passes `INVERTED_PERCEPTION` (doc 02, the Archive beat), which is
+ * how the roles trade halves for one window without any function here learning
+ * to invert itself and without either surface reaching around the other. The
+ * names stay `ForPilot` and `ForKeeper` because they name **whose surface is
+ * being fed**, which does not change; what changes is what that party
+ * perceives.
+ *
+ * `canonicalise` and `viewHash` come from `@semaphore/asymmetry`, the
+ * extracted kit, and are re-exported here so every call site in the worker
+ * keeps one import for "the projection machinery".
  */
-export function canonicalise(view: unknown): string {
-  return JSON.stringify(sortKeys(view));
+
+import {
+  projectFacts,
+  PERCEIVED_BY,
+  type Channel,
+  type Party,
+  type TaggedRecord,
+  type Unwrapped,
+} from "@semaphore/protocol";
+import type { PerceptionModel } from "@semaphore/asymmetry";
+
+export { canonicalise, viewHash } from "@semaphore/asymmetry";
+import { viewHash } from "@semaphore/asymmetry";
+
+/** What PILOT may perceive: sight, sound, and shared state, unless inverted. */
+export function projectForPilot<T extends TaggedRecord>(
+  facts: T,
+  model: PerceptionModel<Party, Channel> = PERCEIVED_BY,
+): Partial<Unwrapped<T>> {
+  return projectFacts(facts, "PILOT", model);
 }
 
-function sortKeys(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sortKeys);
-  if (value && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
-      a < b ? -1 : a > b ? 1 : 0,
-    );
-    return Object.fromEntries(entries.map(([k, v]) => [k, sortKeys(v)]));
-  }
-  return value;
+/** What KEEPER may perceive: touch, document, sound, and shared state, unless inverted. */
+export function projectForKeeper<T extends TaggedRecord>(
+  facts: T,
+  model: PerceptionModel<Party, Channel> = PERCEIVED_BY,
+): Partial<Unwrapped<T>> {
+  return projectFacts(facts, "KEEPER", model);
 }
 
 /**
@@ -60,22 +64,11 @@ function sortKeys(value: unknown): unknown {
  * A model that presses keys until one works and a model that reasons to the
  * answer produce identical completion rates and very different wasted-call
  * counts, and that distinction is the whole point.
- *
- * FNV-1a, because this identifies a state rather than protecting one. It is
- * short, deterministic across runtimes, and needs no crypto import in a
- * hot path.
  */
-export function viewHash(view: unknown): string {
-  const text = canonicalise(view);
-  let h = 0x811c9dc5;
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  return h.toString(16).padStart(8, "0");
-}
-
-/** Convenience for the log and the benchmark: hash a party's view of some facts. */
-export function projectedHash<T extends TaggedRecord>(facts: T, party: Party): string {
-  return viewHash(projectFacts(facts, party));
+export function projectedHash<T extends TaggedRecord>(
+  facts: T,
+  party: Party,
+  model: PerceptionModel<Party, Channel> = PERCEIVED_BY,
+): string {
+  return viewHash(projectFacts(facts, party, model));
 }

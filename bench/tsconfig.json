@@ -7,13 +7,7 @@
     // and `node:fs` are declared where they are used, following the pattern
     // `tests/` established, rather than pulling `@types/node` in for four
     // symbols.
-    "lib": ["ES2022", "DOM"],
-
-    // `ablation.ts` is run directly by `node --experimental-strip-types`,
-    // which resolves import specifiers literally and does not rewrite a `.js`
-    // extension back to the `.ts` file that exists. So sibling imports carry
-    // their real extension, which needs this flag and is safe under `noEmit`.
-    "allowImportingTsExtensions": true
+    "lib": ["ES2022", "DOM"]
   },
   "include": ["."]
 }

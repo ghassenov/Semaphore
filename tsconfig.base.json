@@ -6,6 +6,16 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
+
+    // Sibling imports may carry their real `.ts` extension.
+    // `bench/`, `packages/asymmetry/` and `tests/` hold programs run directly by
+    // `node --experimental-strip-types`, which resolves specifiers literally and
+    // will not rewrite a `.js` extension back to the `.ts` file that exists. This
+    // has to sit in the base rather than in those projects, because a package
+    // consumed from source is compiled under its *consumer's* configuration.
+    // Safe everywhere: every project here is `noEmit`, and nothing in the repo
+    // ships TypeScript output.
+    "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
     "skipLibCheck": true,
