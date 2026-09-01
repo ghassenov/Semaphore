@@ -34,6 +34,19 @@ export interface StateSummary {
   readonly designation: string | null;
   /** Milliseconds left on this chamber's deadline, or null when untimed. */
   readonly remainingMs: number | null;
+  /**
+   * Whether the station's lamps are out and the roles have traded places.
+   *
+   * The tool director keys the chamber tier on it, so `rotate_dial` leaves
+   * KEEPER's registry for the duration and comes back. That is a `toolchange`
+   * firing *inside* a room rather than at its boundary, which nothing else in
+   * the game does.
+   *
+   * Optional because a pre-Blackout worker, and every hand-written fixture,
+   * omits it. Absent means the lamps are on, which is the safe reading: it
+   * leaves the registry exactly as it was before this existed.
+   */
+  readonly blackout?: boolean;
 }
 
 /** What every call returns: the text to hand back, and the state to act on. */

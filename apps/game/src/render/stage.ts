@@ -1356,6 +1356,27 @@ export function createStage(
       practical.intensity *= flicker;
     }
 
+    /*
+     * The Blackout (`apps/worker/src/blackout.ts`): the lamps fail and the two
+     * roles trade places.
+     *
+     * The room's own practical goes out and the hemisphere drops to the floor -
+     * but **low is not zero**, the same rule the rest of this file is built on
+     * (D-048). A room at true black reads as a rendering fault rather than as a
+     * dark room, and PILOT still has to find the panel to work it. So what is
+     * left is PILOT's own lamp and the emissive facts, which is exactly the set
+     * of things a person carrying a light would still be able to see.
+     *
+     * Applied here, at the end of the frame, rather than inside the shot
+     * branches above, for the reason `holdStill()` is read here too: this is a
+     * per-frame condition off the server's own flag, and a value captured when
+     * the shot was chosen cannot hear the lamps fail in between.
+     */
+    if (view?.blackout ?? false) {
+      practical.intensity *= 0.06;
+      sky.intensity = Math.min(sky.intensity, 0.1);
+    }
+
     // The caption band. Public copy only.
     if (view !== null && hasInterlude(view)) {
       const [headline, instruction] = interlude(view);

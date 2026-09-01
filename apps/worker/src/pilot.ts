@@ -23,6 +23,7 @@ import * as signalRoom from "./chambers/signal_room.js";
 import * as blindPanel from "./chambers/blind_panel.js";
 import * as concordLock from "./chambers/concord_lock.js";
 import { objectiveFor, progressIn } from "./objective.js";
+import { blackoutOpen, perceptionFor } from "./blackout.js";
 import { projectForPilot } from "./projection.js";
 import type { PersistedSession } from "./reducer.js";
 
@@ -37,12 +38,18 @@ import type { PersistedSession } from "./reducer.js";
 export function stateSummary(
   session: PersistedSession,
   nowMs: number,
-): Pick<PilotView, "phase" | "chamber" | "mode" | "designation" | "remainingMs"> {
+): Pick<PilotView, "phase" | "chamber" | "mode" | "designation" | "remainingMs" | "blackout"> {
   return {
     phase: session.machine.phase,
     chamber: session.machine.chamber,
     mode: session.machine.mode,
     designation: session.designation,
+    // On the summary as well as on the frame, because the summary is what
+    // every *tool response* carries and the tool director reads its registry
+    // from it (D-021). Without it here the agent would keep a `rotate_dial` the
+    // server has already started refusing, which is precisely the drift
+    // between the registry and the server the rule exists to prevent.
+    blackout: blackoutOpen(session),
     remainingMs:
       session.chamberDeadlineMs === null ? null : Math.max(0, session.chamberDeadlineMs - nowMs),
   };
@@ -83,16 +90,16 @@ function chamberFacts(session: PersistedSession, nowMs: number): Record<string, 
   const { chamber, phase } = session.machine;
   if (!inTheRoom(phase)) return {};
   if (chamber === "airlock" && session.airlock) {
-    return projectForPilot(airlock.facts(session.airlock));
+    return projectForPilot(airlock.facts(session.airlock), perceptionFor(session));
   }
   if (chamber === "signal_room" && session.signalRoom) {
-    return projectForPilot(signalRoom.facts(session.signalRoom));
+    return projectForPilot(signalRoom.facts(session.signalRoom), perceptionFor(session));
   }
   if (chamber === "blind_panel" && session.blindPanel) {
-    return projectForPilot(blindPanel.facts(session.blindPanel));
+    return projectForPilot(blindPanel.facts(session.blindPanel), perceptionFor(session));
   }
   if (chamber === "concord_lock" && session.concordLock) {
-    return projectForPilot(concordLock.facts(session.concordLock, nowMs));
+    return projectForPilot(concordLock.facts(session.concordLock, nowMs), perceptionFor(session));
   }
   return {};
 }
@@ -133,6 +140,10 @@ export function pilotView(session: PersistedSession, nowMs: number): PilotView {
     // assist that reached only the agent would hand one party the other's
     // half of the room.
     assist: session.assist,
+    // The lamps. On the frame rather than derived by the client, because three
+    // separate things key on it and a client that worked it out for itself
+    // would be a fourth definition of when the roles have traded.
+    blackout: blackoutOpen(session),
     ghost: ghostFor(session.machine.phase),
     // The event counter, so the client can tell one rotation from the next
     // when both produce the same facts. See `PilotView.seq`.
