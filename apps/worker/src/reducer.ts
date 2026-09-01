@@ -1142,6 +1142,34 @@ function gripBar(session: PersistedSession, nowMs: number): ReduceResult {
  * resets it.
  */
 /**
+ * What KEEPER could perceive of the live chamber, hashed.
+ *
+ * Every other tool call computes this inline from the chamber module it is
+ * already holding. The intercom is not any one room's mechanism, so it needs
+ * the dispatch the four of them each skip - and having it in one place is
+ * what stops a fifth caller writing a fifth version of the same switch.
+ */
+function keeperHashFor(session: PersistedSession): string {
+  const { chamber } = session.machine;
+  if (chamber === "airlock" && session.airlock) {
+    return projectedHash(airlock.facts(session.airlock), "KEEPER");
+  }
+  if (chamber === "signal_room" && session.signalRoom) {
+    return projectedHash(signalRoom.facts(session.signalRoom), "KEEPER");
+  }
+  if (chamber === "blind_panel" && session.blindPanel) {
+    return projectedHash(blindPanel.facts(session.blindPanel), "KEEPER");
+  }
+  if (chamber === "concord_lock" && session.concordLock) {
+    return projectedHash(
+      concordLock.facts(session.concordLock, session.lastRespondedAtMs),
+      "KEEPER",
+    );
+  }
+  return viewHash(null);
+}
+
+/**
  * The station intercom (`chambers/hints.ts`).
  *
  * A stalled pair used to have one exit, which was to watch the clock run out.
@@ -1203,15 +1231,51 @@ function requestAssistance(session: PersistedSession, nowMs: number): ReduceResu
     index: index + 1,
     remaining: ASSISTS_PER_CHAMBER - (index + 1),
   };
+  // What KEEPER knew when it asked. The same field every other tool call
+  // records, and the one that makes "could this call have succeeded" answerable
+  // after the fact.
+  const keeperViewHash = keeperHashFor(session);
   const at = elapsed(session, nowMs);
   const events: SessionEvent[] = [
+    /*
+     * A call KEEPER made, in the log like every other one.
+     *
+     * It has to be here or nothing downstream can see that a run leaned on
+     * the intercom: the shift report grades it, the replay draws it on the
+     * cyan track, and the benchmark corpus would otherwise record a pair that
+     * asked three times per room as identical to one that never asked. The
+     * browser tour found exactly that, reporting "0 intercom" on a run that
+     * had just used it.
+     *
+     * `wasted` is false by construction: a call that reaches this line played
+     * a note, and the two calls that buy nothing (an empty shelf, a clock
+     * that cannot pay) both return before any event is written.
+     *
+     * It does **not** join `observedLatencyMs`, for the reason the notepad
+     * does not: that sample derives Chamber III's grip window, and a gap
+     * measured across somebody reading three sentences off the intercom is
+     * not a measurement of how fast the agent acts. Letting it in would mean
+     * a pair could widen the stamina window by asking for hints.
+     */
+    {
+      t: at,
+      seq: session.seq,
+      type: "tool_call",
+      tool: "request_assistance",
+      input: {},
+      result: "ok",
+      latencyMs: nowMs - session.lastRespondedAtMs,
+      keeperViewHash,
+      concordBits: ambiguityFor(session)?.bits ?? 0,
+      wasted: false,
+    },
     // Heard, by both, and rendered differently to each: the console prints
     // the words and the client plays the cue. `chime` rather than a new cue,
     // because a fifth acknowledgement sound is a fifth thing to learn and
     // this one already means "the station accepted that".
-    { t: at, seq: session.seq, type: "audible", cue: "chime" },
+    { t: at, seq: session.seq + 1, type: "audible", cue: "chime" },
   ];
-  let next: PersistedSession = { ...session, assist, seq: session.seq + 1 };
+  let next: PersistedSession = { ...session, assist, seq: session.seq + 2 };
   if (deadline !== null && cost > 0) {
     const to = deadline - cost;
     events.push({

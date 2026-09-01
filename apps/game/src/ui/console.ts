@@ -415,6 +415,20 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
    */
   const objective = el("p", { class: "rail-objective" });
   objective.hidden = true;
+  /*
+   * Two spans, and the split is load-bearing on a narrow window.
+   *
+   * The line does not wrap - a rail that changes height as a sentence rewraps
+   * moves the top of the frame - so on a phone something has to be cut. The
+   * sentence is standing text somebody reads once; the reading is the live
+   * half and changes every time the pair does something. So the sentence
+   * shrinks and ellipsises and the reading never shrinks at all. Written the
+   * other way round, "BOLTS ALIGNED 0/3" was the part that disappeared, which
+   * is precisely the fault already on record against the room name above it.
+   */
+  const objectiveText = el("span", { class: "rail-goal" });
+  const objectiveCount = el("span", { class: "rail-reading" });
+  objective.append(objectiveText, objectiveCount);
 
   const railTop = el("div", { class: "rail-top" });
   railTop.append(mark, room, resets, gauge, clock);
@@ -1060,11 +1074,12 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
       objective.hidden = goal === null;
       if (goal !== null) {
         const reading = view?.progress ?? null;
-        objective.textContent = reading
-          ? `${goal}  ${reading.label.toUpperCase()} ${String(reading.done)}${
+        objectiveText.textContent = goal;
+        objectiveCount.textContent = reading
+          ? `${reading.label.toUpperCase()} ${String(reading.done)}${
               reading.total === null ? "" : `/${String(reading.total)}`
             }`
-          : goal;
+          : "";
       }
 
       // The landing screen follows the phase, and takes attract mode with it.

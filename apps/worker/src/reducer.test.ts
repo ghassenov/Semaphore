@@ -1553,6 +1553,28 @@ describe("request_assistance", () => {
     expect(events.some((e) => e.type === "audible" && e.cue === "chime")).toBe(true);
   });
 
+  it("is a tool call in the log, so a run that leaned on it can be told apart", () => {
+    // Found by the browser tour, not by a unit test: the shift report read
+    // "0 intercom" on a run that had just used it, because the action wrote
+    // its audible event and no `tool_call`. The report grades it, the replay
+    // draws it, and the benchmark corpus would otherwise record a pair that
+    // asked three times a room as identical to one that never asked.
+    const { events } = reduce(begunSession(), { type: "request_assistance" }, NOW);
+    const call = events.find((e) => e.type === "tool_call");
+    expect(call).toBeDefined();
+    expect(call).toMatchObject({ tool: "request_assistance", result: "ok", wasted: false });
+  });
+
+  it("stays out of the latency sample, which sizes Chamber III's grip", () => {
+    // The same rule the notepad follows. A gap measured across somebody
+    // reading three sentences off the intercom is not a measurement of how
+    // fast the agent acts, and letting it in would let a pair widen the
+    // stamina window by asking for hints.
+    const session = begunSession();
+    const { session: after } = reduce(session, { type: "request_assistance" }, NOW + 30_000);
+    expect(after.observedLatencyMs).toEqual(session.observedLatencyMs);
+  });
+
   it("escalates, then empties the shelf without charging for silence", () => {
     let session = begunSession();
     for (let i = 0; i < ASSISTS_PER_CHAMBER; i++) {

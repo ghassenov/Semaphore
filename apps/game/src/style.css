@@ -746,14 +746,36 @@ body::after {
  * top of the frame.
  */
 .rail-objective {
+  display: flex;
+  align-items: baseline;
+  gap: 0.8rem;
+  min-width: 0;
   margin: 0;
   font-family: var(--mono);
   font-size: 0.72rem;
   letter-spacing: 0.06em;
   color: var(--pearl-dim);
   white-space: nowrap;
+}
+
+/*
+ * The sentence gives up its width first, and the reading never does.
+ *
+ * On a narrow window something in this row has to be cut, and it must not be
+ * the live half: "BOLTS ALIGNED 0/3" changes every time the pair does
+ * something, while the sentence beside it is standing text read once on
+ * arrival. The room name one row up has this exact fault on record, where the
+ * REVISITED marker was the half that got cut.
+ */
+.rail-goal {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.rail-reading {
+  flex: 0 0 auto;
+  color: var(--mist);
 }
 
 /* `display: flex` beats the user agent's `[hidden]`, and this element's
@@ -3146,6 +3168,32 @@ button[hidden] {
 
 .replay-head {
   grid-area: head;
+  /*
+   * Identity on the left, the shift report on the right, wrapping to a column
+   * when there is not room for both.
+   *
+   * The head spans both grid columns and the identity block uses about a
+   * third of it, so the card costs almost no height here. Stacked, it cost
+   * two hundred pixels and pushed the two tracks off a `100dvh` page.
+   */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem 2rem;
+}
+
+.replay-identity {
+  min-width: 0;
+}
+
+/* Left-aligned with the block beside it, rather than centred in whatever
+   space is left over: `margin: 0 auto` is right in the ending strip, which
+   spans a viewport, and wrong against a column of left-set type. */
+.replay-head .report {
+  flex: 1 1 26rem;
+  max-width: 44rem;
+  margin-inline: 0;
 }
 
 .replay > .replay-screen {
@@ -3189,10 +3237,16 @@ button[hidden] {
   margin: 0.6rem 0 0;
 }
 
-.replay > .replay-share {
-  grid-area: head;
-  justify-self: end;
-  align-self: start;
+/* The share row lives inside the identity block now (see `replay.ts`), so it
+   is no longer a grid child of `.replay` and needs no area. What it does need
+   is permission to be narrower than the URL it is holding. */
+.replay-identity .replay-share {
+  max-width: 100%;
+}
+
+.replay-identity .replay-share code {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 62rem) {
@@ -3246,7 +3300,17 @@ button[hidden] {
   place-content: center;
 }
 
-.replay-head {
+/*
+ * The identity block's own stack, which used to be this rule on `.replay-head`
+ * itself.
+ *
+ * It had to move when the report card joined the head: `display: grid` here,
+ * six hundred lines below the layout rule up there, silently won the
+ * specificity tie on source order and the head was a grid rather than the
+ * flex row it had just been told to be. Every check stayed green and the card
+ * dropped onto its own line. That is the third time this file has done it.
+ */
+.replay-identity {
   display: grid;
   gap: 0.35rem;
   justify-items: start;
@@ -4257,6 +4321,16 @@ button[hidden] {
   white-space: nowrap;
 }
 
+/* The two numbers never break across lines. The room name is the only part of
+   a split row that may give up width, and it already does it by ellipsis;
+   without this, "par 3:00" wrapped onto a second line of its own on a phone
+   and each row read as two. */
+.report-split,
+.report-par {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .report-par {
   color: var(--pearl-dim);
 }
@@ -4288,51 +4362,46 @@ button[hidden] {
 }
 
 /*
- * In the ending strip the card is a band, not a page.
+ * On a window with room, the card is a band rather than a page.
  *
- * The frame underneath it is the last shot of the game and doc 08 phase 3.2
- * asks for it to be held rather than covered, so the splits run across
- * instead of down and the whole thing keeps to the top edge it already owns.
+ * Keyed on the width available rather than on which surface it is sitting in.
+ * Both of its homes are full-width - the ending strip owns the viewport, and
+ * the replay's header spans both grid columns - so one rule serves them, and
+ * a third home would get the same behaviour without a third selector. It was
+ * first written as `.ending .report`, which is the same declarations twice
+ * the moment anything else draws the card.
+ *
+ * Compact matters most in the strip: the frame underneath it is the last shot
+ * of the game and doc 08 phase 3.2 asks for that to be held rather than
+ * covered, so the splits run across instead of down.
  */
+@media (min-width: 46rem) {
+  .report {
+    max-width: 54rem;
+    gap: 0.5rem;
+  }
+
+  .report-marks {
+    grid-template-columns: repeat(3, auto 1fr);
+  }
+
+  .report-splits {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.2rem 1.1rem;
+  }
+
+  .report-splits li,
+  .report-room {
+    flex: 0 1 auto;
+  }
+}
+
+/* And in the strip it is a pane over a lit room rather than a card on a page,
+   so it takes the darker ground the rail and the foot already use. */
 .ending .report {
-  max-width: 54rem;
-  gap: 0.5rem;
   background: color-mix(in srgb, var(--abyss) 78%, transparent);
   backdrop-filter: blur(3px);
-}
-
-.ending .report-marks {
-  grid-template-columns: repeat(3, auto 1fr);
-}
-
-.ending .report-splits {
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 0.2rem 1.1rem;
-}
-
-.ending .report-splits li {
-  flex: 0 1 auto;
-}
-
-.ending .report-room {
-  flex: 0 1 auto;
-}
-
-/* Below this the three mark columns and the horizontal splits both run out of
-   width, so the band gives up being a band and stacks like the replay's. */
-@media (max-width: 720px) {
-  .ending .report-marks {
-    grid-template-columns: auto 1fr;
-  }
-
-  .ending .report-splits {
-    flex-direction: column;
-  }
-
-  .ending .report-grade {
-    font-size: 2rem;
-  }
 }
 
 /**
@@ -4399,4 +4468,26 @@ button[hidden] {
 .intercom-close:focus-visible {
   color: var(--pearl);
   border-color: var(--mist);
+}
+
+/*
+ * Below the width where the two tab rails become one bar along the foot.
+ *
+ * `--rail-width` is `auto` there, and `calc(auto + 1rem)` is not a length: the
+ * whole declaration is dropped, `left` and `right` fall back to `auto`, and
+ * the card sizes to its content against both edges of a phone with its
+ * rounded corners clipped off. Measured at 390px, not guessed - the box came
+ * back `x: 0, width: 390`. There is no rail to clear at this size, so the
+ * inset is a plain one.
+ *
+ * Below what it overrides, per this file's own standing rule: an override
+ * written next to the rule it is about rather than under the rule it changes
+ * loses the specificity tie on source order and silently does nothing.
+ */
+@media (max-width: 46rem) {
+  .intercom {
+    top: 4.6rem;
+    right: 0.75rem;
+    left: 0.75rem;
+  }
 }
