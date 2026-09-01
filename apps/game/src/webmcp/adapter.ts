@@ -174,8 +174,15 @@ export async function listToolNames(
     return tools.map((tool) => tool.name);
   } catch {
     // A host that rejects the option is a host with no cross-origin tools to
-    // report, and the panel should still show this page's own.
-    return (await mc.getTools()).map((tool) => tool.name);
+    // report, and the panel should still show this page's own. The retry can
+    // reject too (a `fromOrigins`-less call that itself fails, or a host that
+    // rejects consistently), and this module's whole contract is that no
+    // function here throws, so that second failure is swallowed as well.
+    try {
+      return (await mc.getTools()).map((tool) => tool.name);
+    } catch {
+      return [];
+    }
   }
 }
 
@@ -190,11 +197,31 @@ export function onToolChange(listener: () => void): () => void {
   const mc = getModelContext();
   // A host can implement the registry without being an EventTarget, and one
   // in production does. It still plays; it just cannot announce a change, so
-  // the callers that need a live manifest refresh on state instead.
-  if (typeof mc?.addEventListener !== "function") return () => {};
-  mc.addEventListener("toolchange", listener);
+  // the caller (the tool director) refreshes on a genuine tier change
+  // instead. Both methods are required, not just `addEventListener`: a host
+  // that can subscribe but not unsubscribe would otherwise leak a listener
+  // for the life of the page, because the returned teardown would have
+  // nothing to call.
+  const addListener = mc?.addEventListener;
+  const removeListener = mc?.removeEventListener;
+  if (typeof addListener !== "function" || typeof removeListener !== "function") {
+    return () => {};
+  }
+  try {
+    addListener.call(mc, "toolchange", listener);
+  } catch {
+    // A host that exposes the pair but throws on an event name it does not
+    // recognise is the same failure D-085 fixed, one layer down. This
+    // function's whole contract is that it never throws.
+    return () => {};
+  }
   return () => {
-    mc.removeEventListener?.("toolchange", listener);
+    try {
+      removeListener.call(mc, "toolchange", listener);
+    } catch {
+      // Best effort. A host that throws on removal has already shown it does
+      // not implement the pair reliably, and teardown must not throw either.
+    }
   };
 }
 
