@@ -18,10 +18,20 @@ export type { Mix } from "./engine.js";
 
 /** The three faders, which is every field of the mix that is not the mute. */
 export type Fader = "master" | "music" | "sfx";
-import { DETENT_MS, scoreFor, soundingFor, type Layer } from "./plan.js";
+import {
+  acousticFor,
+  DETENT_MS,
+  KEEPER_AT,
+  placeFor,
+  resolutionFor,
+  scoreFor,
+  soundingFor,
+  type Layer,
+  type Place,
+} from "./plan.js";
 import {
   playArpeggio,
-  playCue,
+  playCueAt,
   playDrip,
   playHeartbeat,
   playPulse,
@@ -50,10 +60,24 @@ const DRIP_STEPS = [10, 30] as const;
 export interface StationAudio {
   /** Open the graph. Must be called from a user gesture. Idempotent. */
   start(): void;
-  /** A new frame. Sounds whatever it brought, and sets the tension layers. */
-  update(view: PilotView | null, chamberTimerMs: number): void;
-  /** KEEPER called a tool. The muffled thump PILOT always hears. */
+  /**
+   * A new frame. Sounds whatever it brought, and sets the tension layers.
+   *
+   * `concordBits` is the CONCORD reading - the decision-relevant ambiguity
+   * left in the room, in bits - or null when the meter is not running, which
+   * is every phase outside a chamber and every benchmark session. It is what
+   * lets the theme resolve as the pair converges (`resolutionFor`).
+   */
+  update(view: PilotView | null, chamberTimerMs: number, concordBits?: number | null): void;
+  /** KEEPER called a tool. The muffled thump PILOT always hears, from the alcove. */
   toolCall(tool: string): void;
+  /**
+   * Move PILOT's ears, in normalised room coordinates (`plan.ts`).
+   *
+   * Called every frame by the stage, which is the only place that holds both
+   * PILOT's position and the room's size. Silent and free before `start()`.
+   */
+  listen(x: number, z: number): void;
   readonly mix: Mix;
   setMix(next: Partial<Mix>): void;
   stop(): void;
@@ -70,6 +94,16 @@ export function createStationAudio(): StationAudio {
 
   /** The last frame sounded, so a repeated frame is not sounded twice. */
   let previous: PilotView | null = null;
+  /**
+   * Where PILOT is standing, so the tool-call thump knows how far away KEEPER
+   * is and the drips know where the corner is.
+   *
+   * Held here rather than read off the view, because the view arrives a few
+   * times a minute and PILOT walks continuously. The stage pushes it.
+   */
+  let ear: Place = { x: 0, z: 0 };
+  /** How far the theme has resolved, 0 to 1. Eased, like every other level. */
+  let resolution = 0;
   let mix: Mix = DEFAULT_MIX;
 
   /** Where each scheduled layer currently sits, 0 to 1, eased toward `wanted`. */
@@ -107,7 +141,7 @@ export function createStationAudio(): StationAudio {
 
       // The theme first, because it is the bed the rest sits on and it is the
       // only scheduled layer that is on from the first bar to the last.
-      playTheme(engine, nextAt, step, level["theme"] ?? 0);
+      playTheme(engine, nextAt, step, level["theme"] ?? 0, resolution);
 
       const beat = step % 2 === 0;
       if (beat && (level["pulse"] ?? 0) > 0.01) playPulse(engine, nextAt, level["pulse"] ?? 0);
@@ -149,7 +183,7 @@ export function createStationAudio(): StationAudio {
       }
     },
 
-    update(view, chamberTimerMs) {
+    update(view, chamberTimerMs, concordBits = null) {
       if (!engine || !view) return;
       void engine.resume();
 
@@ -157,6 +191,19 @@ export function createStationAudio(): StationAudio {
       wanted = new Set(score.layers);
       engine.setBed(score.bed);
       drone?.set(score.layers.includes("drone") ? 0.6 : 0, 3);
+
+      // The room the pair is standing in, as a room rather than as a reverb
+      // setting somebody picked. Idempotent, so this is free on the frames -
+      // almost all of them - where the room has not changed.
+      const room = acousticFor(view.chamber);
+      engine.setRoom(room.seconds, room.decay);
+
+      // **The score, scored in bits.** The theme is written unresolved on
+      // purpose, and the CONCORD reading is the one thing that lets it settle:
+      // not the clock, not the difficulty, but the pair converging on what to
+      // do. Null outside a chamber and in every benchmark session, which
+      // resolves nothing - unresolved is the resting state.
+      resolution = resolutionFor(concordBits);
 
       // Sound whatever this frame brought, once. `soundingFor` keys on the
       // event counter rather than on the facts, which is what makes two
@@ -166,20 +213,36 @@ export function createStationAudio(): StationAudio {
       if (!sounding) return;
 
       const now = engine.ctx.currentTime + 0.02;
+      const from = placeFor(view.chamber);
       if (sounding.cue === "detent") {
-        // Evenly spaced and never overlapped, because the count is the answer.
+        // Evenly spaced, never overlapped, and every one of them from the same
+        // point in the room, because the count is the answer. A detent that
+        // wandered between clicks would be a puzzle mechanism made harder by
+        // decoration, which is the one trade this layer never makes.
         for (let i = 0; i < sounding.count; i += 1) {
-          playCue(engine, "detent", now + (i * DETENT_MS) / 1000);
+          playCueAt(engine, "detent", now + (i * DETENT_MS) / 1000, from.x, from.z);
         }
         engine.duck((sounding.count * DETENT_MS) / 1000 + 0.2);
         return;
       }
-      engine.duck(playCue(engine, sounding.cue, now));
+      engine.duck(playCueAt(engine, sounding.cue, now, from.x, from.z));
     },
 
     toolCall(tool) {
       if (!engine) return;
-      engine.duck(playToolCall(engine, tool, engine.ctx.currentTime + 0.02));
+      // How far PILOT is standing from the alcove, which is what decides how
+      // open the thump sounds. Walking toward your partner brings its hands
+      // into focus; there is nothing else in the game that rewards standing
+      // near them.
+      const dx = ear.x - KEEPER_AT.x;
+      const dz = ear.z - KEEPER_AT.z;
+      const distance = Math.sqrt(dx * dx + dz * dz);
+      engine.duck(playToolCall(engine, tool, engine.ctx.currentTime + 0.02, distance));
+    },
+
+    listen(x, z) {
+      ear = { x, z };
+      engine?.listen(x, z);
     },
 
     get mix() {

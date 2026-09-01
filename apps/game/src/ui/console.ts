@@ -1173,7 +1173,12 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
       // section 11 requires every cue to have a text equivalent; keeping them
       // adjacent is what stops that being a promise somebody has to remember.
       audible.textContent = view ? (roomPlan(view)?.sound ?? "") : "";
-      deps.audio.update(view, model.chamberTimerMs);
+      // The CONCORD reading goes to the audio layer as well as to the gauge
+      // beside it, from the one model both of them read. The score resolves as
+      // the pair converges (`audio/plan.ts`, `resolutionFor`), and a second
+      // path to the same number would be a second definition of how close they
+      // are.
+      deps.audio.update(view, model.chamberTimerMs, model.concord?.bits ?? null);
 
       for (const { entry, button } of actionButtons) button.hidden = !entry.when(view ?? null);
       // The one control that appears mid-chamber rather than at a boundary.
