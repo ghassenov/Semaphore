@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@semaphore/asymmetry": "workspace:*",
     "@semaphore/protocol": "workspace:*",
     "@semaphore/seed": "workspace:*"
   },

@@ -57,10 +57,13 @@ importers:
         version: 0.185.0
       vite:
         specifier: ^8.2.2
-        version: 8.2.2
+        version: 8.2.2(@types/node@26.4.0)(esbuild@0.28.1)
 
   apps/worker:
     dependencies:
+      '@semaphore/asymmetry':
+        specifier: workspace:*
+        version: link:../../packages/asymmetry
       '@semaphore/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -77,6 +80,9 @@ importers:
 
   bench:
     devDependencies:
+      '@semaphore/asymmetry':
+        specifier: workspace:*
+        version: link:../packages/asymmetry
       '@semaphore/protocol':
         specifier: workspace:*
         version: link:../packages/protocol
@@ -87,12 +93,21 @@ importers:
         specifier: workspace:*
         version: link:../apps/worker
 
-  packages/protocol: {}
+  packages/asymmetry: {}
+
+  packages/protocol:
+    dependencies:
+      '@semaphore/asymmetry':
+        specifier: workspace:*
+        version: link:../asymmetry
 
   packages/seed: {}
 
   tests:
     devDependencies:
+      '@semaphore/asymmetry':
+        specifier: workspace:*
+        version: link:../packages/asymmetry
       '@semaphore/protocol':
         specifier: workspace:*
         version: link:../packages/protocol
@@ -2411,16 +2426,6 @@ snapshots:
   uri-js@4.4.1:
     dependencies:
       punycode: 2.3.1
-
-  vite@8.2.2:
-    dependencies:
-      lightningcss: 1.33.0
-      picomatch: 4.0.7
-      postcss: 8.5.26
-      rolldown: 1.2.5
-      tinyglobby: 0.2.17
-    optionalDependencies:
-      fsevents: 2.3.3
 
   vite@8.2.2(@types/node@26.4.0)(esbuild@0.28.1):
     dependencies:

@@ -1,11 +1,20 @@
 /**
- * The possible-worlds machinery (doc 03 section 6).
+ * The possible-worlds machinery (doc 03 section 6), bound to this game.
  *
  * This is the centrepiece engineering claim of the project, and it has exactly
  * one implementation with three consumers: the proof in `tests/`, the CONCORD
  * meter in the HUD, and the benchmark's bits-per-question metric. Forking it
  * would let the proof pass while the game leaks, which is why the rule against
  * doing so is written into `packages/CLAUDE.md`.
+ *
+ * **The implementation now lives in `@semaphore/asymmetry`.** It was extracted
+ * because nothing in it was ever about levers or dials: tag your state by
+ * channel, say who perceives what, enumerate what else the world could have
+ * been, and it answers in bits how much the other party still has to supply.
+ * That is a check any application dividing a UI surface from a tool surface
+ * needs, and shipping it as something a team can run is what turns doc 01
+ * section 4's tier-1 claim from a sentence into an instrument. This file is
+ * the game's binding of it, and it is still the only one.
  *
  * The claim we want to make is not "nothing leaked". It is **"the agent's view
  * does not determine the answer"**, which is an information-theoretic
@@ -18,19 +27,42 @@
  * disagree about what KEEPER should do next. The second clause carries the
  * weight: worlds that agree on the action would be ambiguity that does not
  * matter.
+ *
+ * Every function here takes a perception model, defaulting to the design law.
+ * The Blackout passes `INVERTED_PERCEPTION`, and the proof runs a whole pass
+ * under it: if the asymmetry only held in one direction, that pass is what
+ * would say so.
  */
 
-import type { ChamberId, Party, TaggedRecord } from "@semaphore/protocol";
-import { canonicalise, projectForKeeper, projectForPilot } from "./projection.js";
-import { projectFacts } from "@semaphore/protocol";
+import {
+  PERCEIVED_BY,
+  type Channel,
+  type ChamberId,
+  type Party,
+  type TaggedRecord,
+} from "@semaphore/protocol";
+import {
+  consistentWorlds as consistentIn,
+  distinctActions as distinctIn,
+  isUnderdetermined as underdeterminedIn,
+  measure as measureIn,
+  type Ambiguity,
+  type PerceptionModel,
+  type Space,
+} from "@semaphore/asymmetry";
+import { projectForKeeper, projectForPilot } from "./projection.js";
+
+export type { Ambiguity } from "@semaphore/asymmetry";
 
 /**
  * What a chamber must provide to be reasoned about.
  *
  * Every chamber module implements this, which is what lets the proof run over
- * all four without knowing anything about levers, dials or cipher wheels.
+ * all four without knowing anything about levers, dials or cipher wheels. It
+ * is the kit's `Space` with the id narrowed to a chamber, so a caller cannot
+ * hand the proof a surface this game does not have.
  */
-export interface ChamberWorlds<TState> {
+export interface ChamberWorlds<TState> extends Space<TState, Channel> {
   readonly id: ChamberId;
   /** Channel-tagged facts for a state. The only source of any view. */
   facts(state: TState): TaggedRecord;
@@ -59,6 +91,9 @@ export interface ChamberWorlds<TState> {
   correctAction(state: TState): string | null;
 }
 
+/** The design law, as the kit wants it. */
+type Model = PerceptionModel<Party, Channel>;
+
 /**
  * Every world consistent with what `party` can perceive in `state`.
  *
@@ -71,11 +106,9 @@ export function consistentWorlds<TState>(
   chamber: ChamberWorlds<TState>,
   state: TState,
   party: Party = "KEEPER",
+  model: Model = PERCEIVED_BY,
 ): TState[] {
-  const observed = canonicalise(projectFacts(chamber.facts(state), party));
-  return chamber
-    .candidates(state)
-    .filter((world) => canonicalise(projectFacts(chamber.facts(world), party)) === observed);
+  return consistentIn(chamber, state, model, party);
 }
 
 /**
@@ -89,24 +122,7 @@ export function distinctActions<TState>(
   chamber: ChamberWorlds<TState>,
   worlds: readonly TState[],
 ): Set<string | null> {
-  return new Set(worlds.map((world) => chamber.correctAction(world)));
-}
-
-/** What the proof measures for one state, and what the CONCORD meter renders. */
-export interface Ambiguity {
-  /** Worlds consistent with the party's entire perceptual surface. */
-  readonly worlds: number;
-  /** How many distinct next actions those worlds disagree over. */
-  readonly actions: number;
-  /**
-   * Decision-relevant ambiguity, `log2(actions)`.
-   *
-   * Reported in preference to `log2(worlds)` because it is the quantity PILOT
-   * actually has to supply. Worlds that differ only in ways that do not change
-   * the correct action are real ambiguity that costs the pair nothing, and
-   * counting them would flatter the number.
-   */
-  readonly bits: number;
+  return distinctIn(chamber, worlds);
 }
 
 /** Measure the ambiguity remaining in `state` from one party's point of view. */
@@ -114,14 +130,9 @@ export function measure<TState>(
   chamber: ChamberWorlds<TState>,
   state: TState,
   party: Party = "KEEPER",
+  model: Model = PERCEIVED_BY,
 ): Ambiguity {
-  const worlds = consistentWorlds(chamber, state, party);
-  const actions = distinctActions(chamber, worlds);
-  return {
-    worlds: worlds.length,
-    actions: actions.size,
-    bits: actions.size > 0 ? Math.log2(actions.size) : 0,
-  };
+  return measureIn(chamber, state, model, party);
 }
 
 /**
@@ -134,8 +145,12 @@ export function measure<TState>(
  * requires that limitation to be stated rather than papered over, and the
  * text-mode label is REMAINING AMBIGUITY for the same reason.
  */
-export function concordBits<TState>(chamber: ChamberWorlds<TState>, state: TState): number {
-  return Number(measure(chamber, state, "KEEPER").bits.toFixed(2));
+export function concordBits<TState>(
+  chamber: ChamberWorlds<TState>,
+  state: TState,
+  model: Model = PERCEIVED_BY,
+): number {
+  return Number(measure(chamber, state, "KEEPER", model).bits.toFixed(2));
 }
 
 /**
@@ -148,12 +163,12 @@ export function isUnderdetermined<TState>(
   chamber: ChamberWorlds<TState>,
   state: TState,
   party: Party = "KEEPER",
+  model: Model = PERCEIVED_BY,
 ): boolean {
-  const { worlds, actions } = measure(chamber, state, party);
-  return worlds > 1 && actions > 1;
+  return underdeterminedIn(chamber, state, model, party);
 }
 
 /** Both projections of one state, for tests that assert on them together. */
-export function bothViews<T extends TaggedRecord>(facts: T) {
-  return { pilot: projectForPilot(facts), keeper: projectForKeeper(facts) };
+export function bothViews<T extends TaggedRecord>(facts: T, model: Model = PERCEIVED_BY) {
+  return { pilot: projectForPilot(facts, model), keeper: projectForKeeper(facts, model) };
 }
