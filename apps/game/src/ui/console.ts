@@ -56,7 +56,17 @@ import { CHANNEL_MARKER } from "../render/palette.js";
 import { describeRoom } from "../render/mirror.js";
 import { createTour, type TourHandle } from "../tutorial/tour.js";
 import { ENDING, OPENING, playStory, type StoryHandle } from "../story.js";
-import { el, fill, legendRow, panel, promptCard, lampMark } from "./parts.js";
+import { gradeShift, type Replay } from "../report.js";
+import {
+  copyResultButton,
+  el,
+  fill,
+  legendRow,
+  panel,
+  promptCard,
+  lampMark,
+  reportCard,
+} from "./parts.js";
 import { renderLanding } from "./landing.js";
 
 /** How many segments the ambiguity gauge in the rail is divided into. */
@@ -506,16 +516,52 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
   ending.hidden = true;
   const replayHref = replayUrl(deps.client.sessionId);
   const replayLink = el("a", { class: "spectate", href: replayHref }, "WATCH THE REPLAY");
-  ending.append(
-    el(
-      "p",
-      { class: "note" },
-      "The whole shift is on the station's log: what you did, what your agent " +
-        "called, and the ambiguity between you.",
-    ),
-    replayLink,
+  const endingNote = el(
+    "p",
+    { class: "note" },
+    "The whole shift is on the station's log: what you did, what your agent " +
+      "called, and the ambiguity between you.",
   );
+  ending.append(endingNote, replayLink);
   viewport.append(ending);
+
+  /**
+   * Fetch this session's own replay and put the shift report in the strip.
+   *
+   * The row is written to D1 inside the Durable Object on the way into
+   * ESCAPED and awaited before the acting agent gets its answer, so by the
+   * time the socket has pushed the phase it is almost always there. Almost:
+   * the write swallows its own failure on purpose (doc 07 section 3.1 - the
+   * game keeps working when the instrument recording it does not), so it can
+   * legitimately never arrive.
+   *
+   * Which is why this is additive and never destructive. On success the card
+   * goes in above the sentence that was already there; on failure, or on a
+   * row that never lands, the strip stays exactly what it was before this
+   * existed. **The ending must not be able to get worse than it is.**
+   */
+  async function loadReport(): Promise<void> {
+    const origin = import.meta.env.VITE_WORKER_ORIGIN ?? "";
+    const url = `${origin}/replay/${encodeURIComponent(deps.client.sessionId)}`;
+    for (const waitMs of [0, 600, 1500]) {
+      if (waitMs > 0) await new Promise((done) => globalThis.setTimeout(done, waitMs));
+      try {
+        const response = await fetch(url);
+        if (!response.ok) continue;
+        const report = gradeShift((await response.json()) as Replay);
+        const card = reportCard(report);
+        card.actions.append(copyResultButton(report, replayHref), replayLink);
+        // The sentence explained what the link was for. The card says it
+        // better and in more detail, so the sentence goes rather than sitting
+        // above a table repeating itself.
+        endingNote.remove();
+        ending.prepend(card.section);
+        return;
+      } catch {
+        // A network fault on the way to a nicety. Try again, then stop.
+      }
+    }
+  }
 
   const audible = el("p", { class: "audible", "aria-live": "polite" });
 
@@ -879,6 +925,10 @@ export function renderStation(root: HTMLElement, deps: ShellDeps): ShellHandle {
       if (nowPhase === "ESCAPED" && !told.has("ending")) {
         told.add("ending");
         story = playStory(deck, ENDING);
+        // Started with the three closing beats rather than after them: the
+        // fetch and the story take about the same few seconds, so the card is
+        // ready as the last line clears instead of arriving after a pause.
+        void loadReport();
       }
       // The tour waits for the opening to have had its say, so the two are
       // never on screen together telling the player two different things.

@@ -4079,3 +4079,215 @@ button[hidden] {
 .replay-legend .concord .marker {
   color: var(--pearl-dim);
 }
+
+/**
+ * The shift report (doc 08 phase 3.2, "and only then offer the stats").
+ *
+ * One card, two homes: the strip along the top of the room at ESCAPED, and
+ * the header of a shared replay. The base rules below are the replay's - a
+ * stacked card with room to read - and the `.ending` overrides that follow
+ * them compress it into a band. **The overrides sit below what they override,
+ * not beside it**: source order breaks specificity ties between two selectors
+ * of equal weight, and this project has lost two rounds to a narrow-window
+ * block written next to the rule it was about rather than under the rule it
+ * changed.
+ */
+.report {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  width: 100%;
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 1rem 1.1rem;
+  border: var(--edge);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--slate) 88%, transparent);
+  box-shadow: var(--sheen);
+  text-align: left;
+}
+
+.report-head {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+/*
+ * The grade, set in the display face because it is the one number anybody
+ * reads out loud. Its colour is the pearl both parties share: pace, precision
+ * and resolve are all things the pair did together, so grading it in either
+ * channel hue would claim one of them earned it.
+ */
+.report-grade {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 2.6rem;
+  line-height: 1;
+  font-weight: 600;
+  color: var(--pearl);
+  min-width: 2ch;
+  text-align: center;
+}
+
+.report-grade[data-grade="D"],
+.report-grade[data-grade="C"] {
+  color: var(--pearl-dim);
+}
+
+.report-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.report-line {
+  margin: 0;
+  color: var(--mist);
+}
+
+.report-marks {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.8rem;
+  margin: 0;
+  align-items: center;
+}
+
+.report-marks dt {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.09em;
+  color: var(--pearl-dim);
+}
+
+.report-marks dd {
+  margin: 0;
+}
+
+.report-bar {
+  display: inline-flex;
+  gap: 3px;
+}
+
+/*
+ * Five cells, because the shareable text block is five characters wide. A
+ * player who pastes their result into a chat should see the shape they were
+ * looking at, not a translation of it.
+ */
+.report-bar i {
+  display: block;
+  width: 1.5rem;
+  height: 0.5rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--iron) 40%, transparent);
+}
+
+.report-bar i.on {
+  background: var(--pearl);
+}
+
+.report-splits {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin: 0;
+  padding: 0;
+  font-family: var(--mono);
+  font-size: 0.76rem;
+}
+
+.report-splits li {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  color: var(--mist);
+}
+
+.report-room {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-par {
+  color: var(--pearl-dim);
+}
+
+/* A room nobody got out of is measured to the end of the session, and saying
+   so quietly is more honest than printing a split that looks like a time. */
+.report-splits li.unsolved .report-split,
+.report-splits li.unsolved .report-room {
+  color: var(--alarm);
+}
+
+.report-stats {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--pearl-dim);
+}
+
+.report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.report-actions .spectate {
+  display: inline-block;
+  text-decoration: none;
+}
+
+/*
+ * In the ending strip the card is a band, not a page.
+ *
+ * The frame underneath it is the last shot of the game and doc 08 phase 3.2
+ * asks for it to be held rather than covered, so the splits run across
+ * instead of down and the whole thing keeps to the top edge it already owns.
+ */
+.ending .report {
+  max-width: 54rem;
+  gap: 0.5rem;
+  background: color-mix(in srgb, var(--abyss) 78%, transparent);
+  backdrop-filter: blur(3px);
+}
+
+.ending .report-marks {
+  grid-template-columns: repeat(3, auto 1fr);
+}
+
+.ending .report-splits {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 0.2rem 1.1rem;
+}
+
+.ending .report-splits li {
+  flex: 0 1 auto;
+}
+
+.ending .report-room {
+  flex: 0 1 auto;
+}
+
+/* Below this the three mark columns and the horizontal splits both run out of
+   width, so the band gives up being a band and stacks like the replay's. */
+@media (max-width: 720px) {
+  .ending .report-marks {
+    grid-template-columns: auto 1fr;
+  }
+
+  .ending .report-splits {
+    flex-direction: column;
+  }
+
+  .ending .report-grade {
+    font-size: 2rem;
+  }
+}

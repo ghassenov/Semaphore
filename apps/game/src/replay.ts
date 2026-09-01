@@ -32,48 +32,10 @@
  * asks for anything else, and could not display it if it did.
  */
 
-import { CHAMBER_NAMES, type ChamberId } from "@semaphore/protocol";
+import { CHAMBER_NAMES } from "@semaphore/protocol";
 import { paintMonitor } from "./render/monitor.js";
-import { wordmark } from "./ui/parts.js";
-
-/** The projection the worker's `/replay/:id` route returns. */
-interface Replay {
-  readonly sessionId: string;
-  readonly designation: string;
-  readonly difficulty: string;
-  readonly mode: string;
-  readonly outcome: string;
-  readonly chambersCleared: number;
-  readonly durationMs: number;
-  readonly staminaWindowMs: number;
-  readonly medianLatencyMs: number;
-  readonly calls: readonly {
-    readonly t: number;
-    readonly tool: string;
-    readonly result: "ok" | "error";
-    readonly latencyMs: number;
-    readonly wasted: boolean;
-    readonly concordBits: number;
-  }[];
-  readonly beats: readonly {
-    readonly t: number;
-    readonly kind: "action" | "audible";
-    readonly what: string;
-    readonly count?: number;
-  }[];
-  readonly chambers: readonly {
-    readonly t: number;
-    readonly kind: string;
-    readonly chamber: ChamberId;
-  }[];
-  /** What the pair wrote to each other. The one track that is neither party alone. */
-  readonly notes: readonly {
-    readonly t: number;
-    readonly author: "PILOT" | "KEEPER";
-    readonly text: string;
-  }[];
-  readonly track: Parameters<typeof paintMonitor>[1];
-}
+import { gradeShift, type Replay } from "./report.js";
+import { copyResultButton, reportCard, wordmark } from "./ui/parts.js";
 
 /**
  * The session a replay URL names, or null if this is not a replay URL.
@@ -193,6 +155,18 @@ export async function renderReplay(root: HTMLElement, sessionId: string): Promis
     ),
   );
   main.append(head);
+
+  // ---- How it went, on the same card the ending draws.
+  //
+  // Above the tracks rather than below them: a shared link is usually read by
+  // somebody who was not in the session, and "grade B, four rooms, eleven
+  // minutes" is the sentence that makes the two tracks underneath worth
+  // looking at. The same element, from the same function, as the strip the
+  // pair saw when they got out.
+  const report = gradeShift(replay);
+  const card = reportCard(report);
+  card.actions.append(copyResultButton(report, replayUrl(replay.sessionId)));
+  main.append(card.section);
 
   // ---- The room, on the station's own monitor.
   const screen = el("canvas", { class: "ghost-screen replay-screen", role: "img" });
