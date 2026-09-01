@@ -93,6 +93,11 @@ async function start(root: HTMLElement): Promise<void> {
   // that can happen on the very first response.
   const director = new ToolDirector(client, {
     onState: (state) => station?.setState(state),
+    // The substitute for a host that never fires `toolchange` (D-085,
+    // D-086): the registry has just finished settling into a new tier, on
+    // every host, so this is where a non-EventTarget host's manifest and
+    // KEEPER's body actually catch up.
+    onRegistryMoved: () => station?.refreshTools(),
     onCallStart: (tool) => {
       station?.callStarted(tool);
       // The `AUDIBLE` channel's other half (doc 06 section 11): PILOT cannot
@@ -149,4 +154,11 @@ async function start(root: HTMLElement): Promise<void> {
   socket.watch((view) => station?.setView(view));
 
   await director.mountEntry();
+  // This call, unlike every other tier change, does not go through
+  // `applyState`, so `onRegistryMoved` never fires for it. On a host with no
+  // `toolchange` the manifest's own boot-time read can land before this
+  // registers the front door (the engine fetch above races the socket's
+  // first frame), which would otherwise leave `begin_shift` invisible to the
+  // one screen whose whole job is to prove it is there.
+  station?.refreshTools();
 }
