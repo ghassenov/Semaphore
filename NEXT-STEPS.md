@@ -12,8 +12,12 @@ It answers three questions and only three: where the repo is right now, what to 
 |---|---|
 | **Last updated** | 2026-09-01, Ahmed Saad |
 | **Branch** | `feat/game-feel`, off `main` at `10097f0` |
-| **Pipeline** | Green: **788 tests**, typecheck, lint, format, both builds plus the bundle budget and the palette check. Entry bundle 43.9KB of 400KB. |
+| **Pipeline** | Green: **859 tests**, typecheck, lint, format, both builds plus the bundle budget and the palette check. Entry bundle 45.8KB of 400KB. |
 | **Deployed** | **Live on Cloudflare and fully verified (D-074, D-075).** Game: `https://semaphore.ahmedxsaad.me`. Archive: `https://semaphore-archive.ahmedxsaad.me`. Worker: `https://semaphore.ahmedxsaad.workers.dev`. Both custom domains active; the DNS records landed and the full cross-origin delegation proof passes 27/27 against the real domains, ending replay link included. Production D1 migrated to `0002_deep_linked.sql`. Nothing left open on this. |
+| **The kit** | **The proof is a package** (D-080). `packages/asymmetry` is the channel model, the projector and the possible-worlds proof with nothing in them that knows what a lever is: zero dependencies, a CLI that prints the bits table and sets an exit code, and one worked example that is a **support console rather than a game** - an agent that routes on a city and must not be able to reconstruct the address. `LEAK=1` adds the convenience field a refactor always adds and the audit turns red. `packages/protocol` and `apps/worker` are the game's *binding* of it; one implementation still, one directory further down. This is doc 01 section 4's tier-1 Impact claim stopping being a sentence. |
+| **The Blackout** | **The roles invert for one window, and the proof holds inverted** (D-081). In the Blind Panel the lamps fail: KEEPER can see the gauges and cannot find the dials, PILOT is at the panel in the dark. `rotate_dial` leaves KEEPER's registry for the duration - **a `toolchange` firing inside a room rather than at its boundary**, which nothing else in the game does - and PILOT gets the panel through a plain route, never a tool. **Where it lives was measured**: the proof runs a third pass under the inverted map and three of the four chambers collapse (their secrets are `VISUAL`); the Blind Panel measures 384/384 in both directions because its wiring is `HIDDEN`. The inverted pass asserts the other three collapse too, so nobody later discovers the beat had quietly become portable. Off in the benchmark, for doc 07 section 2.3's reason. |
+| **Sound, again** | **The station is a place you can hear** (D-082). Panned voices from the room's own mechanism, KEEPER's thump from the east wall where the body is drawn, a listener that follows PILOT every frame, an impulse response built per room, a low-pass on KEEPER's thump that opens as you walk toward the alcove, authored tool notes in A natural minor held apart by a test, and **a theme that resolves on the CONCORD reading rather than on the clock**. Still no asset file of any kind. |
+| **The gate** | **It shows the asymmetry now, not just the game** (D-083). One recording drawn twice on one clock: the room as PILOT saw it beside the same second as KEEPER perceived it, with a dashed hole reading NO VISUAL CHANNEL. `/ghost` carries both halves and is the one place in the repository that does; the in-game Archive is untouched and `archive.test.ts` asserts it in both directions. Still a 2D context, so the gate never fetches Three.js. |
 | **Game feel** | **Three things the game did not have, built and played** (D-076 to D-079). **The ending grades the shift**: `apps/game/src/report.ts` is a pure function over the worker's existing replay projection, and `reportCard` in `ui/parts.ts` draws it in two homes - the strip at `ESCAPED` and the header of a shared replay. Three marks rather than one score, because a single number would silently grade whichever half of the pair the formula measured; notes written are reported and deliberately **not** graded. **Every room says what it is asking for**: `apps/worker/src/objective.ts`, one authored `SHARED` line per chamber plus a `progressIn` that reads whatever projection it is handed, so PILOT counts needles and KEEPER counts rotations from one function that cannot reach across. **A stalled pair has the station intercom**: `request_assistance`, a fifteenth tool, three escalating notes per room, `ASSIST_COST_MS` off the clock, and **both parties hear it** - a hint that reached only KEEPER would hand one party the other's half. Playing it found five defects that 788 passing tests could not (D-079). |
 | **Sound** | **Built and heard** (D-050, D-051). Listened to on a real machine on 2026-08-30 and signed off. Plan phase 5.2 in full: eight mechanism cues, the ambience bed, four timer-keyed tension layers, a behind-the-wall thump per KEEPER tool call, and a mix with a mute. Plus **a warm unresolved theme** on top, always on, which is a deliberate departure from doc 06's chiptune direction (D-051). All synthesised in `apps/game/src/audio/`; still no asset file of any kind. `PilotView` gained `seq`, without which the detents cannot repeat. |
 | **Doors and the way back** | **Every door stands in an opening you can actually walk through, and PILOT can go back through one** (D-053 to D-055). `doorways.ts` holds each room's openings room-local and its test derives the real ones from `stationCells`; two openings could not carry a door (a south face, and eleven metres of gauge bank) so the **corridors were rerouted**, not the doors. `Q` at an open door walks PILOT back into a room the pair has already cleared, drawn from the last frame the server sent for it with its doors opened by `asCleared`. Nothing crosses the wire: the clock keeps running, KEEPER's 14 tools are untouched, and KEEPER's body is not drawn in a room the session has left. Every room also got a decoration and ambient-motion pass, including the two that had never had a composition pass. |
@@ -21,7 +25,7 @@ It answers three questions and only three: where the repo is right now, what to 
 | **Console** | **Rebuilt around the room** (D-052). The room fills the deck and is centred; panels live behind labelled tabs on the two edges, open on demand, one per edge, resizable by drag or arrow keys, closed with Escape. Deeper ground, a grain layer, a beacon sweep on the start card and the gate, and PILOT has four poses and a flickering lamp. Channel colours untouched. |
 | **Interface** | **Rebuilt in real-time 3D** (D-042 to D-045). Phaser and the tile renderer are gone. The station is a lit cutaway model: rooms open at the top and on their south face, camera always to the south, four lights and no post-processing. New colour language (D-043), procedural assets and **no asset files at all** (D-044), and a console laid out as two surfaces with the room between them (D-045). |
 | **Licence** | **MIT throughout again.** The vendored art pack went with the tile renderer, so `LICENSE` has no carve-out (D-044). |
-| **Toured** | **34 of 34 browser checks and thirteen frames, on Chrome 151, 2026-09-01.** Three checks are new (D-076 to D-079): the objective on screen and in `get_status`, the intercom answering both parties, and the report card whole at `ESCAPED` with the run's own intercom call counted. That last one exists only because the first run of it reported `0 intercom` on a session that had just used the intercom. Earlier: **25 of 25 on Chrome 151, 2026-08-30.** The tour now waits on the camera's own `data-settled` flag instead of a copied `WALK_MS + SHOT_MS` (D-056), which had already gone wrong: the Archive's frame was taken at 2000ms against a 2400ms arrival, so every tour since the doors landed photographed that beat as the station from four hundred metres up, with all twenty-one assertions green. It also checks the ending's replay link, and runs a third faster. Earlier: **21 of 21 on Chrome 151.** The tour now walks back through a door and forward again, and checks the key, the cached room, the console header and that the session never notices. It found four defects, all of them in the frames and none in 700 passing tests: `E` held at a door hijacking the lean-in (it is `Q` now, edge-triggered), arriving in a chamber standing PILOT in the doorway and dragging the camera onto the outside of a wall, `BACK TO AIRLOCK` printed across `PAGE MARKED`, and the console growing a horizontal scrollbar when a room name got eight characters longer. All fixed, and captions are now checked by projection as well as by anchor. |
+| **Toured** | **42 of 42 browser checks and fifteen frames, on Chrome 151, 2026-09-01.** Eight are new (D-081 to D-084): the split replay laid out at one size, and the Blackout played the way a pair plays it - the tour asks KEEPER what it reads out of `describe_chamber` and posts `pilot_rotate_dial` itself, because its old `rotate_dial` script stops working at rotation five. That found the last defect: the lamps failing was announced only inside a drawer that is closed by default. Earlier: **34 of 34 browser checks and thirteen frames, on Chrome 151, 2026-09-01.** Three checks are new (D-076 to D-079): the objective on screen and in `get_status`, the intercom answering both parties, and the report card whole at `ESCAPED` with the run's own intercom call counted. That last one exists only because the first run of it reported `0 intercom` on a session that had just used the intercom. Earlier: **25 of 25 on Chrome 151, 2026-08-30.** The tour now waits on the camera's own `data-settled` flag instead of a copied `WALK_MS + SHOT_MS` (D-056), which had already gone wrong: the Archive's frame was taken at 2000ms against a 2400ms arrival, so every tour since the doors landed photographed that beat as the station from four hundred metres up, with all twenty-one assertions green. It also checks the ending's replay link, and runs a third faster. Earlier: **21 of 21 on Chrome 151.** The tour now walks back through a door and forward again, and checks the key, the cached room, the console header and that the session never notices. It found four defects, all of them in the frames and none in 700 passing tests: `E` held at a door hijacking the lean-in (it is `Q` now, edge-triggered), arriving in a chamber standing PILOT in the doorway and dragging the camera onto the outside of a wall, `BACK TO AIRLOCK` printed across `PAGE MARKED`, and the console growing a horizontal scrollbar when a room name got eight characters longer. All fixed, and captions are now checked by projection as well as by anchor. |
 | **Played** | A full session end to end in Chrome 152 against a live `wrangler dev`: all four chambers, the Archive, the finale, the ending. 17/17 browser checks green on the single-origin path. **A second pass on a real machine found five more defects, all of them things a frame shows and no test does** (D-046, D-047): neighbouring rooms crowding a room shot, hidden masonry left as lit plates, the Archive's beams across its own monitor, KEEPER's body sharing a wall with a shelf rack, and every fixture carrying two stacked captions. All fixed. **A third pass then found six more in the two beats nobody had inspected** (D-048): the finale drew an empty room for its last two phases, an open door showed a crack instead of its opening, the bolt ring floated over the lintel, its count printed on top of the door sign, the room lit itself flat with the door open, and a pendant hung between the camera and the Archive monitor. All fixed. The tour now also presses `E`. **A fourth pass was *played* rather than looked at** - one person as PILOT in the browser, one driving KEEPER over the worker's HTTP tool surface - and found a twelfth that no frame could show (D-049): the Blind Panel drew `DIAL n` directly beneath `GAUGE n`, asserting the one thing that chamber exists to withhold. Fixed. |
 | **Judge path** | **Built, and phase 4 is now complete** (D-058, D-059, D-062). SPECTATE on the gate screen, attract mode after twenty seconds on the landing screen, the ablation folded into the start card, and `?chamber=N` deep links that walk the real transitions rather than assigning a state. All three recorded-session surfaces share one painter, `render/monitor.ts`, which uses a 2D context so the gate never fetches Three.js. The starter prompt card is a **station requisition slip** now, doc 04's own art direction: one builder for both homes, open on the landing screen, and it hands the room over when the shift starts. |
 | **Replay viewer** | **Built** (D-060). `/replay?id=<session>` reads the gzipped D1 row and draws two tracks over one axis - amber PILOT, cyan KEEPER - with the CONCORD trace underneath and the station's own monitor beside it, scrubbable. The ending links to it. It is a **projection**: `state_delta` never leaves the server, because a seed is reproducible and a replay URL is meant to be shared. |
@@ -73,6 +77,35 @@ It answers three questions and only three: where the repo is right now, what to 
 | `bench/` | Ablation and Cooperative Benchmark, both **re-run this session and byte-identical**, which is the determinism check passing. `benchmark.md` was a version behind on disk and is regenerated. Both entrypoints now resolve their paths from `import.meta.dirname`, so `pnpm ablation` and `pnpm benchmark` work from any directory - they used to write into `bench/bench/results` or crash. |
 
 ---
+
+## What landed on 2026-09-01 (third session)
+
+**Four things aimed at the four judging axes**, each shippable on its own, each
+verified in a browser before it was called done (D-080 to D-084).
+
+**The proof is a package.** `packages/asymmetry` - the channel model, the
+projector, the possible-worlds proof, a CLI and one non-game example. Tier-1
+Impact stops being a sentence and becomes something a team can run.
+
+**The Blackout.** The roles trade places for one window in the Blind Panel, and
+the proof runs a third pass under the inverted model. **Where it lives was
+measured rather than chosen**: three of the four chambers collapse under
+inversion, and the proof now asserts that they do, so the placement is guarded
+rather than remembered. It inverts **agency** as well as perception, which a
+per-state proof cannot tell you to do: an agent that could see the gauges and
+still had the dials would need nobody, with every clause green.
+
+**The station became a place you can hear.** Panning, per-room impulse
+responses, distance-driven occlusion on KEEPER's thump, authored tool notes
+held apart by a test, and a theme that resolves on the CONCORD reading.
+
+**The gate shows the asymmetry.** One recording drawn twice on one clock, with
+a dashed hole where KEEPER's room would be.
+
+**And the tour had to learn to play the Blackout**, because its KEEPER-only
+script stops working at rotation five - which is the honest signal the beat is
+real. Doing that found the last defect: the lamps failing was announced only
+inside a drawer that is closed by default.
 
 ## What landed on 2026-09-01 (second session)
 
@@ -158,7 +191,31 @@ behind the old check and eleven of them silently kept the previous palette.
 
 ## Do this next
 
-### 1. Play the three new things with two people [start here]
+### 1. Play the Blackout with two people [start here]
+
+**Built, toured, and never played by anybody who did not write it** (D-081,
+D-084). It is the biggest swing in the project and every question about it is
+one a script cannot answer:
+
+- **Does trading places read as the station, or as the game changing its own
+  rules on you?** The band says THE LAMPS HAVE FAILED / KEEPER CAN SEE THE
+  GAUGES. YOU HAVE THE DIALS. Is that enough, arriving mid-room with no warning?
+- **Four rotations in, and three rotations long.** Both are guesses.
+  `BLACKOUT_AFTER_ROTATIONS` and `BLACKOUT_ROTATIONS` in
+  `apps/worker/src/blackout.ts`. Too early and the pair has not understood the
+  room well enough for the inversion to mean anything; too long and it stops
+  being a beat.
+- **Does an agent notice its hand is gone?** `rotate_dial` leaves the registry
+  and `describe_chamber` explains why, which is the correct WebMCP answer. What
+  a real model *does* with that is the open question, and it is also the single
+  most interesting thing this project could report about `toolchange`.
+- **Can PILOT actually work the panel?** The control is in the YOUR HANDS
+  drawer, which is closed by default. Watch whether anybody finds it without
+  being told.
+- **And the one the whole beat rests on:** does KEEPER reading gauge values out
+  loud feel like the same game from the other side, or like a different game?
+
+### 1a. Play the three game-feel things with two people
 
 **Built, toured, and never played by anybody who did not write them**
 (D-076 to D-079). Each has a question a script cannot answer:
@@ -461,11 +518,45 @@ seconds with zero tokens. Budget the tokens before running, not after.
 - **Never import Three.js from a module the entry chunk reaches.** `render/station.ts`'s dynamic `import("./stage.js")` is the boundary. `scripts/check-bundle.mjs` fails the build when it is crossed, which is the only thing that will tell you.
 - **A sentinel guard is only as good as the number of ways a value can arrive.** The camera's "do not hold the building on the first room" guard tested `wasOn !== undefined`, and the lobby frame set it to `null` first, so every room shot in the first tour was the wide shot.
 
+### The projections
+
+- **A default parameter that swallows a missing argument needs a check that
+  reads the result back** (D-081). `projectFacts(facts, party, model =
+  PERCEIVED_BY)` is the right signature for forty untouched call sites, and it
+  is also how the Blackout shipped its first build silently doing nothing:
+  `INVERTED_PERCEPTION` was missing from the protocol's barrel export, so every
+  inverted projection fell back to the design law and every measurement came
+  back identical. Nothing failed. `blackout.test.ts` asserts the two models
+  actually differ, which is the same lesson as the silent D1 write.
+- **The possible-worlds proof measures one instant; a chamber is played over a
+  trajectory** (D-081). Chamber II is solved by system identification -
+  rotate, observe, revise - so an agent handed `VISUAL` while it still held the
+  dials would need nobody, and every clause of the proof would stay green
+  through it. A proof passing is necessary and it is not sufficient. Ask what
+  the party can *do* with what it can now perceive, over the whole room.
+- **Inverting perception is safe only where the secret is on neither channel.**
+  Three of the four chambers collapse under inversion because their secrets are
+  `VISUAL`. The Blind Panel does not because its wiring is `HIDDEN`, and
+  `invert()` exchanges two lists and cannot invent a channel neither names. The
+  proof asserts the other three collapse, so the placement is guarded rather
+  than remembered.
+
 ### The instruments that watch the game
 
 - **A write whose failure is deliberately silent stays broken until something reads it back** (D-079). The D1 flush swallows its own error on purpose, correctly, so the game keeps working when the instrument recording it does not. The local database in this checkout was two migrations behind and had been for as long as anybody had played locally, and nothing anywhere reported it: the ending offered its replay link, the link 404'd, and no check had ever followed it. If you add a route or a card that *reads* a row back, expect it to be the first thing that finds the write broken. `npx wrangler d1 execute semaphore-sessions --local --file migrations/000N_*.sql`, from `apps/worker/`, for each migration.
 - **`bench/ablation.test.ts` and `bench/benchmark.test.ts` carry a fixed 30-second budget and are the first two things to fail on a loaded machine.** They run twenty seeds through the real reducer and are by far the slowest tests in the repo. At load 22 on eight cores they time out inside the full suite and pass in isolation, which reads exactly like a real regression and is not one. Check `uptime` before believing a bench failure, and run the two files alone to confirm.
 
+
+- **A beat that only sometimes has an "after" has to be observed while it is
+  running** (D-084). The tour's "the lamps came back" check read the state at
+  the end of the room and reported the lamps still out, when what had actually
+  happened is that the pair finished the Blind Panel during the window. It sets
+  a flag at the moment of the transition now.
+- **The tour is the closest thing this repo has to playing it, and a mechanic
+  that breaks the tour is a mechanic that changes the game.** The Blackout
+  stopped the old Chamber II script dead at rotation five. The fix was to teach
+  the tour the pair's half of the conversation - ask KEEPER what it reads, turn
+  the dial yourself - not to switch the beat off for it.
 
 - **A stale dev server is the most expensive bug in this repo and it does not look like a bug.** A `vite` from a previous session on 5173 and a Chrome on 9222 made a fresh tour report seven failures that existed in nobody's checkout. Check the ports and use `--strictPort`; Vite silently walking to 5175 is what makes this survivable-looking.
 - **A number copied out of another module cannot hear it change** (D-056). The tour's screenshot wait was a hand-typed `WALK_MS + SHOT_MS` living in a different package from the constants, and it was already 400ms short. It now polls `data-settled`, which the stage sets from the easing itself.
@@ -490,13 +581,15 @@ seconds with zero tokens. Budget the tokens before running, not after.
 - **The palette was not what made the page feel flat** (D-052). Depth, layering and motion were. Check that what is being fixed is actually a colour before touching a set that carries the design law and the colourblind guarantee.
 - **A body at rest must not be a body at zero.** Every walk term multiplies by speed, so a standing figure was perfectly still, which reads as a broken renderer rather than as a person waiting.
 
-### The audio
+### The audio, and its new half
 
 - **A cue fires on `PilotView.seq`, never on a diff of the facts.** Two rotations that each register three clicks produce frames identical in every field, and PILOT has to hear six detents. In Chamber II the count *is* the puzzle, so hearing the second rotation as silence is a wrong answer, not a missed flourish.
 - **The worker picks the cue, from the same branch that writes the subtitle.** Each chamber's `lastSound` returns both. Splitting them is how a cue ends up with no text equivalent, which deaf players depend on and doc 06 requires.
 - **Nothing in `voices.ts` may decide anything.** Web Audio does not exist in the test environment, so a decision left in a node graph is a decision no test can reach. It goes in `plan.ts`.
 - **`new AudioContext()` throws on a machine with no audio device, and a headless browser is one.** The screenshot tour clicks the same launch card the player does. `start()` catches and leaves the handle inert, and it must keep doing so.
-- **The whole layer has been verified not to throw and never actually listened to.** Nothing in the pipeline can hear.
+- **The whole layer has been verified not to throw and never actually listened to.** Nothing in the pipeline can hear. **That now covers panning, five per-room impulse responses, an occlusion filter and a resolving theme, none of which any human has heard** (D-082). Every *decision* behind them is in `plan.ts` and tested; whether the result sounds like a room is not something a test can reach.
+- **A frequency compared to a frequency is not a semitone compared to a semitone.** The tool-note spacing check round-tripped through hertz and landed a written 3 on 2.9999999999999996. A test that fails by a rounding error gets a constant nudged rather than believed, so it compares whole semitones off the table.
+- **Spatialising a detent may make it easier to count and may never make it harder.** Chamber II's count is the answer (doc 02 section 3.3). Every click of a rotation comes from the same point, and the panner is `equalpower` rather than HRTF specifically because HRTF colours the transient it places.
 
 ### The game
 
@@ -542,6 +635,8 @@ seconds with zero tokens. Budget the tokens before running, not after.
 | Per-model benchmark numbers | Human | Harness done and free to run. Needs a backend behind the tool surface. |
 | A real screen reader | Human | The accessibility mirror is built and checked against the accessibility tree, never against NVDA or VoiceOver. Doc 08 phase 6's last line. |
 | Repo made public | Human | Deliberately deferred to just before the deadline. |
+| The Blackout's two constants | Whoever holds the design | `BLACKOUT_AFTER_ROTATIONS` and `BLACKOUT_ROTATIONS` are guesses. Only a pair can say whether four rotations is long enough to understand a room and three is long enough to feel inverted. |
+| The kit published | Whoever writes submission copy | `packages/asymmetry` is in the repo and is not mentioned in doc 01 section 4, doc 07 or the README, all of which still argue tier-1 Impact as a principle rather than as a thing that runs. That is now the cheapest remaining Impact work in the project. |
 | Doc 03 section 10 wording fix | Whoever writes submission copy | It claims "server-generated ID"; the real guarantee is zero PII (D-023). |
 | Submission copy refresh | Whoever writes it | Doc 10 section 3.4 and doc 09's shot list both describe the pixel renderer and its files. The claims are unchanged; the file paths and the pictures are not. |
 
