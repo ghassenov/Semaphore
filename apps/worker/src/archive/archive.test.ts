@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { SessionEvent } from "@semaphore/protocol";
-import { GHOST_LOG, describeEntry, keeperEntries, pilotTrack } from "./index.js";
+import { GHOST_LOG, describeEntry, ghostForGate, keeperEntries, pilotTrack } from "./index.js";
 
 describe("pilotTrack", () => {
   it("carries nothing a tool call put in the log", () => {
@@ -83,5 +83,47 @@ describe("keeperEntries", () => {
     const total = keeperEntries(GHOST_LOG).length;
     expect(describeEntry(GHOST_LOG, total + 1)).toContain(String(total));
     expect(describeEntry(GHOST_LOG, 0)).toContain(String(total));
+  });
+});
+
+describe("ghostForGate", () => {
+  it("carries both halves, which nothing else in the repository does", () => {
+    const gate = ghostForGate();
+    expect(gate.track?.beats.length).toBeGreaterThan(0);
+    expect(gate.keeper.length).toBeGreaterThan(0);
+  });
+
+  it("is the same two projections, not a third one", () => {
+    // If either half were rebuilt here rather than projected, the gate screen
+    // could show a session that never happened - and it is the one surface a
+    // judge may see instead of the game.
+    const gate = ghostForGate();
+    expect(gate.track).toEqual(pilotTrack(GHOST_LOG));
+    expect(gate.keeper.map((c) => c.tool)).toEqual(keeperEntries(GHOST_LOG).map((c) => c.tool));
+  });
+
+  it("carries nothing a monitor cannot draw", () => {
+    // The route is fetched by every visitor before anything else loads, and a
+    // tool_call event carries a view hash and a bits reading that mean nothing
+    // on a screen.
+    for (const call of ghostForGate().keeper) {
+      expect(Object.keys(call).sort()).toEqual(["t", "tool", "wasted"]);
+    }
+  });
+
+  it("leaves the two halves themselves untouched, so a live session is unchanged", () => {
+    // The rule this could break: `pilotTrack` and `keeperEntries` are a matched
+    // pair and widening either hands one party the other's half. The gate is
+    // allowed both because nobody is playing behind it; the Archive's CRT still
+    // gets its track on the `PilotView` and its entries through the tool, and
+    // neither of those functions learned anything new.
+    const track = pilotTrack(GHOST_LOG);
+    expect(track).not.toBeNull();
+    expect(JSON.stringify(track)).not.toContain("tool_call");
+    for (const beat of track?.beats ?? []) {
+      expect(["enter", "solved", "action"]).toContain(beat.kind);
+    }
+    const entries = keeperEntries(GHOST_LOG);
+    for (const entry of entries) expect(entry.type).toBe("tool_call");
   });
 });

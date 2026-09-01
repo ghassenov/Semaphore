@@ -2331,8 +2331,13 @@ body::after {
   display: none;
 }
 
+.attract .ghost-split {
+  width: min(92vw, 72rem);
+}
+
 .attract .ghost-screen {
-  width: min(86vw, 60rem);
+  width: 100%;
+  max-width: none;
   height: auto;
   border-radius: var(--radius);
   box-shadow: var(--lift-3);
@@ -3040,6 +3045,31 @@ button[hidden] {
  * backing-store resolution, so the picture is the same on every screen and the
  * browser does the scaling.
  */
+/*
+ * One recording, drawn twice: the room as PILOT saw it, and the same second as
+ * KEEPER perceived it. Side by side on a desktop and stacked on a phone, and
+ * the two have to stay the *same size* in both - the whole argument of the
+ * picture is that these are two views of one moment, and a bigger panel would
+ * quietly say one of them is the real one.
+ */
+.ghost-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--gap);
+  align-items: start;
+  width: 100%;
+}
+
+@media (max-width: 46rem) {
+  .ghost-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ghost-split[hidden] {
+  display: none;
+}
+
 .ghost-screen {
   display: block;
   width: 100%;
