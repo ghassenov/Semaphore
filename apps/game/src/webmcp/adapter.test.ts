@@ -106,4 +106,42 @@ describe("degradation", () => {
     expect(() => onToolChange(() => {})()).not.toThrow();
     restore();
   });
+
+  it("does not subscribe on a host that can add a listener but never remove one", () => {
+    // The pair is independently optional in the type. A host with
+    // `addEventListener` and no `removeEventListener` would otherwise
+    // subscribe successfully and hand back an unsubscribe with nothing to
+    // call, leaking the listener for the life of the page.
+    let added = 0;
+    const restore = withHost({
+      modelContext: {
+        registerTool: () => Promise.resolve(),
+        getTools: () => Promise.resolve([]),
+        addEventListener: () => {
+          added += 1;
+        },
+      },
+    });
+    const unsubscribe = onToolChange(() => {});
+    expect(added).toBe(0);
+    expect(() => unsubscribe()).not.toThrow();
+    restore();
+  });
+
+  it("survives a host whose addEventListener throws on an event it does not recognise", () => {
+    // A host can expose the full pair and still not be a real EventTarget
+    // underneath, the same shape of surprise D-085 met one method short of.
+    const restore = withHost({
+      modelContext: {
+        registerTool: () => Promise.resolve(),
+        getTools: () => Promise.resolve([]),
+        addEventListener: () => {
+          throw new TypeError("unrecognised event type");
+        },
+        removeEventListener: () => {},
+      },
+    });
+    expect(() => onToolChange(() => {})()).not.toThrow();
+    restore();
+  });
 });
