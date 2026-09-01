@@ -1146,10 +1146,15 @@ function writeNote(
     seq: session.seq,
     type: "pilot_action",
     action: "write_note",
-    // The author, not the text. The text is in `notes` on the session and
-    // reaches the log's replay through the state it produced; putting it here
-    // too would give the same sentence two homes that could disagree.
     target: author,
+    // The text too, not only the author. `session.notes` is the pad's
+    // current state, capped at NOTE_CAPACITY, so an early note that scrolls
+    // off the pad has no other home once the session ends - the log is the
+    // only place it survives, and the log is what the replay viewer reads
+    // (`replay.ts`'s doc comment on why it is a projection of the log and
+    // nothing else). Both fields come from this one call, so there is no
+    // second write that could let them disagree.
+    text: trimmed,
   };
   return {
     session: { ...session, notes, seq: session.seq + 1 },

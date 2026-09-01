@@ -84,6 +84,16 @@ export interface PilotActionEvent extends EventBase {
   readonly type: "pilot_action";
   readonly action: "move" | "inspect" | "grip" | "release" | "write_note";
   readonly target: string;
+  /**
+   * Present only when `action` is `"write_note"`: the line itself.
+   *
+   * A note is `SHARED` channel by construction (`game.ts`'s `Note`, written by
+   * either party and read by both), so it carries none of `state_delta`'s risk
+   * of leaking a `HIDDEN` field into a shareable replay URL. Without it the
+   * replay viewer's transcript could say a note was written and never what it
+   * said, which was the whole reason the pad exists.
+   */
+  readonly text?: string;
 }
 
 /** An authoritative state change, as a path and a before and after. */

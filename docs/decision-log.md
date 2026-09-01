@@ -2592,3 +2592,68 @@ software WebGL, not a defect a player would see.
 
 748 tests (45 in `chamber.test.ts`), typecheck and lint clean across every
 workspace, palette lock holds at 20 colours, 27 of 27 browser checks.
+
+---
+
+### D-073 A replay with no notes was a replay with no conversation
+
+**2026-09-01.** Reported plainly: the replay viewer "doesn't give any useful
+info." Traced it to one specific, well-documented gap rather than a vague
+redesign. The shared notepad's own worker code already said why: `replay.ts`'s
+`case "pilot_action"` carried a comment explaining that a `write_note` event's
+`target` field holds the author, not the line, so "the beat says a note was
+written and not what it said." The reducer's internal `write_note` action
+already carries the note's `text` at the exact point the event is built
+(`reducer.ts`); it was simply never assigned to the event. The client's
+`Replay` interface did not even declare a `notes` field to receive one.
+
+**The pair's own writing to each other is described in this project's own
+design docs as the most valuable thing in the log**, and it was the one thing
+missing from a viewer built to show what happened. Threaded the note's text
+the whole way: an optional `text` field on `PilotActionEvent` (`log.ts`,
+present only when `action` is `"write_note"`, documented as `SHARED`-channel
+by construction and therefore carrying none of `state_delta`'s risk to a
+shareable replay URL), populated at the one call site that already has the
+line (`reducer.ts`), routed into the worker's `notes` array instead of the
+generic beats track (`replay.ts` - a beat reading bare "PILOT" with no text
+told a viewer nothing, so a written note now gets its own line rather than an
+unlabelled action), and rendered as the actual quoted line, coloured by
+whichever party wrote it, in the client transcript (`replay.ts`).
+
+**A test asserted the old, wrong behaviour on purpose** ("logs the author
+without duplicating the text", reasoning that `session.notes` was already the
+text's one home) and had to be corrected rather than only the code: that
+reasoning missed that `session.notes` is capped at `NOTE_CAPACITY` and evicts
+its oldest lines, so an early note in a long session had no other home once
+the session ended and the log is what the replay viewer reads. Renamed and
+rewritten to assert the field is now present, plus a new worker-side test
+that a written note lands on its own track rather than the amber one.
+
+**Added a legend, not only the notes.** Nothing on the page taught a
+first-time viewer which colour was which party without reading source - the
+explanation lived only in a code comment and a screen-reader `aria-label`.
+A compact key sits under the transcript now, in the same "teach it in a key,
+not a panel" idiom `legendRow()` already uses elsewhere. Fitting it in cost a
+layout fix of its own: the tracks' own grid cell already carries three
+same-area children told apart by `align-self` alone, and a fourth item sized
+to its own content collided with the two pinned to that cell's bottom edge.
+Moved the key to sit with the transcript instead, in one flex column
+(`.replay-column`) rather than a fifth same-cell alignment rule - settled by
+normal document flow rather than by a coordinate two unrelated rules both had
+to agree on, the same class of fix `apps/game/CLAUDE.md` already names for
+this exact failure mode on the console's own bands.
+
+**Verified without touching the live worker.** Rather than play a session
+through four chambers to reach a real replay row in D1, intercepted the
+client's own `fetch` to `/replay/:id` over CDP (`Fetch.enable` /
+`Fetch.fulfillRequest`) and fed it a synthetic `Replay` payload with notes
+from both parties, one of them near the 240-character cap. Measured every
+element's real bounding box before trusting a screenshot, since the first
+layout attempt looked identical in two consecutive screenshots for a reason
+the coordinates explained and the picture did not. Confirmed the intercepting
+tab was the only one closed and the worker was never touched: no live session
+was ever created, so nothing here could have put the load a leftover test tab
+already has twice (D-070, D-071).
+
+748 tests, typecheck and lint clean across every workspace, palette lock holds
+at 20 colours.
