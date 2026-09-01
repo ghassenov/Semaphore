@@ -150,6 +150,15 @@ export function createStage(
   parent: HTMLElement,
   model: StationModel,
   onStanding: () => void = () => {},
+  /**
+   * Where PILOT's ears are, in normalised room coordinates, every frame.
+   *
+   * The audio layer's listener. A callback rather than a handle on the audio
+   * object because this file already owns a renderer and a scene graph and has
+   * no business owning a second subsystem: it reports a position, and whoever
+   * asked decides what to do with it.
+   */
+  onEar: (x: number, z: number) => void = () => {},
 ): StageHandle {
   /**
    * Whether the station holds still: the camera's drift, and PILOT's stride.
@@ -1162,6 +1171,21 @@ export function createStage(
     if (standing !== null) {
       const localX = pilotAt.x - standing.x;
       const localZ = pilotAt.z - standing.z;
+      /*
+       * PILOT's ears, normalised to the room they are standing in.
+       *
+       * The audio layer works in -1 to 1 on each axis so that it never has to
+       * import this file's geometry (`audio/plan.ts` says why), and this is
+       * the one place that holds both the position and the room's size, so the
+       * division belongs here. Per frame rather than per view: the frame
+       * arrives a few times a minute and a person walks continuously, so an
+       * ear updated on the socket would lag the body it belongs to.
+       */
+      if (plan) {
+        const unit = (value: number, half: number) =>
+          Math.max(-1, Math.min(1, value / Math.max(0.001, half)));
+        onEar(unit(localX, plan.size.width / 2), unit(localZ, plan.size.depth / 2));
+      }
       for (const fixtureView of fixtures.values()) {
         const at = fixtureView.at;
         fixtureView.reveal(lampReveal(localX, localZ, { x: at.x, y: 0, z: at.z }));

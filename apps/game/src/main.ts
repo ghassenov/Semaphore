@@ -139,6 +139,12 @@ async function start(root: HTMLElement): Promise<void> {
     // The console paints from the same model the scenes read, so the readouts
     // beside the canvas and the room on it can never disagree about the frame.
     (model) => shell.update(model),
+    // PILOT's ears follow PILOT's body. This is the whole of the wiring for it:
+    // the stage reports a normalised position every frame and the audio layer
+    // moves the listener, and neither of them imports the other.
+    (x, z) => {
+      audio.listen(x, z);
+    },
   );
   socket.watch((view) => station?.setView(view));
 

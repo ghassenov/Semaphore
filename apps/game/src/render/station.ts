@@ -149,6 +149,15 @@ export async function startStation(
    * it is drawing, where that is what drawing is.
    */
   onChange: (model: StationModel) => void = () => {},
+  /**
+   * Where PILOT's ears are, in normalised room coordinates, on every frame.
+   *
+   * Passed straight through to the stage, which is the only thing that holds
+   * both PILOT's position and the room's size. `main.ts` hands the station
+   * audio's `listen`; nothing on this path knows that, which is what keeps the
+   * renderer from owning a second subsystem.
+   */
+  onEar: (x: number, z: number) => void = () => {},
 ): Promise<StationHandle> {
   const model: StationModel = {
     view: null,
@@ -167,9 +176,14 @@ export async function startStation(
   const { createStage } = await import("./stage.js");
   // The stage owns where PILOT's body is, so it is the only thing that knows
   // when the room on screen changes without the session changing.
-  const stage = createStage(parent, model, () => {
-    onChange(model);
-  });
+  const stage = createStage(
+    parent,
+    model,
+    () => {
+      onChange(model);
+    },
+    onEar,
+  );
 
   // The viewport is a flexible box in a responsive console, so its size is not
   // a constant anybody can be told once. A `ResizeObserver` is the only thing
