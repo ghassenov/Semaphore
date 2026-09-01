@@ -29,7 +29,7 @@ import { LEGEND, formatTimer } from "../render/hud.js";
 import { cellsOf, shareText, type ShiftReport } from "../report.js";
 import { CHANNEL, hex } from "../render/palette.js";
 import { GLYPHS, glyphCanvas } from "../render/glyphs.js";
-import { paintMonitor } from "../render/monitor.js";
+import { paintKeeperMonitor, paintMonitor, type GhostCall } from "../render/monitor.js";
 import { TAIL_MS } from "../render/ghost.js";
 
 /**
@@ -548,40 +548,71 @@ export function ablationChart(bare = false): HTMLElement {
  * straight back to the start reads as a loop rather than as an ending.
  */
 export function ghostScreen(): { element: HTMLElement; play: () => void; stop: () => void } {
-  const canvas = el("canvas", { class: "ghost-screen" });
-  canvas.width = 384;
-  canvas.height = 252;
-  // A recording is not the page's content, and a screen reader reading a
-  // scrub bar frame by frame is noise. The caption below it carries the fact.
-  canvas.setAttribute("role", "img");
-  canvas.setAttribute("aria-label", "A recording of a previous shift, playing.");
+  /*
+   * One recording, drawn twice, on one clock.
+   *
+   * The left panel is the room as PILOT saw it, at its true proportion with a
+   * person walking in it. The right is the same second as KEEPER perceived it:
+   * the calls it was making, and a dashed hole where the room would be. **The
+   * gaps are the pitch.** This screen used to show the game working without
+   * once showing the thing the game is about, and doc 07 section 6 says that
+   * for some judges it is the entire submission.
+   *
+   * Two canvases rather than one wide one, because the two halves have to stay
+   * side by side on a desktop and stack on a phone, and that is a CSS problem
+   * with a CSS answer rather than a layout to re-derive in a paint routine.
+   */
+  const element = el("div", { class: "ghost-split" });
+  const pilotCanvas = el("canvas", { class: "ghost-screen" });
+  const keeperCanvas = el("canvas", { class: "ghost-screen" });
+  for (const canvas of [pilotCanvas, keeperCanvas]) {
+    canvas.width = 384;
+    canvas.height = 252;
+    // A recording is not the page's content, and a screen reader reading a
+    // scrub bar frame by frame is noise. The caption below it carries the fact.
+    canvas.setAttribute("role", "img");
+  }
+  pilotCanvas.setAttribute(
+    "aria-label",
+    "A recording of a previous shift as the human saw it: a room, and a person walking in it.",
+  );
+  keeperCanvas.setAttribute(
+    "aria-label",
+    "The same recording as the agent perceived it: the tool calls it made, and no room at all.",
+  );
+  element.append(pilotCanvas, keeperCanvas);
 
   let track: GhostTrack | null = null;
+  let calls: readonly GhostCall[] = [];
   let raf = 0;
   let startedAt = 0;
 
-  // One fetch per page. The track is a projection of a constant fixture, and
-  // both callers here are on the same page.
+  // One fetch per page. Both halves are projections of one constant fixture,
+  // and both callers here are on the same page.
   loadGhost()
     .then((loaded) => {
-      track = loaded;
+      track = loaded.track;
+      calls = loaded.keeper;
     })
     .catch(() => {
       // A gate screen that cannot reach the worker still has a gate screen.
-      // NO TAPE is what `paintMonitor` draws for a null track, and it is a
+      // NO TAPE is what both painters draw for a null recording, and it is a
       // prop rather than an error, which is the right thing to show here.
       track = null;
+      calls = [];
     });
 
   function tick(now: number): void {
     startedAt ||= now;
     const span = (track?.durationMs ?? 0) + TAIL_MS;
-    paintMonitor(canvas, track, span > 0 ? (now - startedAt) % span : 0);
+    const at = span > 0 ? (now - startedAt) % span : 0;
+    paintMonitor(pilotCanvas, track, at);
+    paintKeeperMonitor(keeperCanvas, track?.designation ?? null, calls, at, track?.durationMs ?? 0);
     raf = globalThis.requestAnimationFrame(tick);
   }
 
   return {
-    element: canvas,
+    element,
     play: () => {
       if (raf !== 0) return;
       startedAt = 0;
@@ -603,11 +634,14 @@ export function ghostScreen(): { element: HTMLElement; play: () => void; stop: (
  * environment like every other origin in this client (repo CLAUDE.md section
  * 3); empty means same-origin, which in development is the Vite proxy.
  */
-async function loadGhost(): Promise<GhostTrack | null> {
+async function loadGhost(): Promise<{
+  track: GhostTrack | null;
+  keeper: readonly GhostCall[];
+}> {
   const origin = import.meta.env.VITE_WORKER_ORIGIN ?? "";
   const response = await fetch(`${origin}/ghost`);
-  if (!response.ok) return null;
-  return (await response.json()) as GhostTrack | null;
+  if (!response.ok) return { track: null, keeper: [] };
+  return (await response.json()) as { track: GhostTrack | null; keeper: readonly GhostCall[] };
 }
 
 /**
