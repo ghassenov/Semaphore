@@ -46,7 +46,7 @@ import {
   Vector3,
 } from "three";
 import type { Fixture } from "./chamber.js";
-import { GAUGE_MAX, GRATE_WIDTH, MONITOR_DEPTH } from "./chamber.js";
+import { DOOR_HEIGHT, DOOR_WIDTH, GAUGE_MAX, GRATE_WIDTH, MONITOR_DEPTH } from "./chamber.js";
 import type { Dressing } from "./chamber.js";
 import { GLYPHS, glyphCanvas } from "./glyphs.js";
 import { CHANNEL, PALETTE } from "./palette.js";
@@ -557,8 +557,12 @@ function buildBolt(kit: Kit, fixture: Fixture, root: Group): Animator {
 
 /** The way out: a frame and two leaves that part. */
 function buildDoor(kit: Kit, fixture: Fixture, root: Group): Animator {
-  const width = 3.2;
-  const height = 2.9;
+  // Shared with `chamber.ts`, which has to know the same two numbers to keep
+  // its ceiling beams clear of whichever wall a door stands in - two local
+  // copies of a door's own size is exactly the shape of bug that put a beam
+  // through a lintel in the first place.
+  const width = DOOR_WIDTH;
+  const height = DOOR_HEIGHT;
   solid(root, new Mesh(new BoxGeometry(width + 0.6, 0.28, 0.5), kit.iron)).position.y =
     height + 0.14;
   for (const side of [-1, 1]) {

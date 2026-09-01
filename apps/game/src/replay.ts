@@ -34,6 +34,7 @@
 
 import { CHAMBER_NAMES, type ChamberId } from "@semaphore/protocol";
 import { paintMonitor } from "./render/monitor.js";
+import { wordmark } from "./ui/parts.js";
 
 /** The projection the worker's `/replay/:id` route returns. */
 interface Replay {
@@ -64,6 +65,12 @@ interface Replay {
     readonly t: number;
     readonly kind: string;
     readonly chamber: ChamberId;
+  }[];
+  /** What the pair wrote to each other. The one track that is neither party alone. */
+  readonly notes: readonly {
+    readonly t: number;
+    readonly author: "PILOT" | "KEEPER";
+    readonly text: string;
   }[];
   readonly track: Parameters<typeof paintMonitor>[1];
 }
@@ -122,6 +129,33 @@ function clock(ms: number): string {
   return `${String(Math.floor(total / 60))}:${String(total % 60).padStart(2, "0")}`;
 }
 
+/**
+ * What a replay URL shows when there is nothing behind it.
+ *
+ * This is the state a *shared* link most often lands in - a session that was
+ * abandoned, or one whose row has gone - so it is the version of this page
+ * most likely to be somebody's first sight of the project. It used to be a
+ * headline in the top-left corner and a sentence in the top-right with ninety
+ * percent of the page empty and no way onward at all.
+ *
+ * It says what happened, and then it offers the thing the visitor actually
+ * came for.
+ */
+function deadEnd(why: string): HTMLElement {
+  const dead = el("section", { class: "replay-dead" });
+  dead.append(
+    wordmark("large"),
+    el("h1", {}, "There is no shift on this tape"),
+    // The worker's own message, which already explains that a session is
+    // written only when it escapes. Restating it underneath was the same
+    // sentence twice.
+    el("p", { class: "lede" }, why),
+  );
+  const back = el("a", { class: "spectate", href: "./" }, "PLAY A SHIFT INSTEAD");
+  dead.append(back);
+  return dead;
+}
+
 /** Mount the viewer for one session id. */
 export async function renderReplay(root: HTMLElement, sessionId: string): Promise<void> {
   root.replaceChildren();
@@ -134,25 +168,22 @@ export async function renderReplay(root: HTMLElement, sessionId: string): Promis
     const response = await fetch(`${origin}/replay/${encodeURIComponent(sessionId)}`);
     if (!response.ok) {
       const body = (await response.json()) as { message?: string };
-      main.append(
-        el("h1", {}, "Nothing to replay"),
-        el("p", { class: "lede" }, body.message ?? "That session could not be read."),
-      );
+      main.append(deadEnd(body.message ?? "That session could not be read."));
       return;
     }
     replay = (await response.json()) as Replay;
   } catch {
-    main.append(
-      el("h1", {}, "Nothing to replay"),
-      el("p", { class: "lede" }, "The station could not be reached."),
-    );
+    main.append(deadEnd("The station could not be reached from this page."));
     return;
   }
 
   // ---- Who, and how it went.
   const head = el("header", { class: "replay-head" });
+  // The mark, because a shared replay link is often somebody's first sight of
+  // the project and an unlabelled chart says nothing about what it is from.
   head.append(
-    el("p", { class: "eyebrow" }, "SEMAPHORE - SESSION REPLAY"),
+    wordmark("large"),
+    el("p", { class: "eyebrow" }, "SESSION REPLAY"),
     el("h1", {}, replay.designation || "UNNAMED"),
     el(
       "p",
@@ -186,7 +217,8 @@ export async function renderReplay(root: HTMLElement, sessionId: string): Promis
   svg.setAttribute(
     "aria-label",
     `Two tracks over ${clock(replay.durationMs)}: ${String(replay.beats.length)} things PILOT ` +
-      `did or heard, ${String(replay.calls.length)} calls by KEEPER, and the ambiguity between them.`,
+      `did or heard, ${String(replay.calls.length)} calls by KEEPER, ${String(replay.notes.length)} ` +
+      `lines on the shared notepad, and the ambiguity between them.`,
   );
 
   function line(cls: string, d: string): void {
@@ -272,6 +304,32 @@ export async function renderReplay(root: HTMLElement, sessionId: string): Promis
       .join(" ");
     line("replay-concord", points);
   }
+  /*
+   * The colour key. Nothing above teaches a first-time viewer which row is
+   * which party without reading this page's source, and a chart that only
+   * the person who built it can read is not the "useful info" a replay link
+   * exists to hand someone. Compact for the same reason `legendRow` in
+   * `ui/parts.ts` is: a key that costs as much room as the chart is a key
+   * nobody reads.
+   */
+  const legend = el("ul", { class: "replay-legend" });
+  const pilotItem = el("li", { class: "pilot" });
+  pilotItem.append(
+    el("span", { class: "marker" }, "■"),
+    el("span", {}, "PILOT - what they did or heard"),
+  );
+  const keeperItem = el("li", { class: "keeper" });
+  keeperItem.append(
+    el("span", { class: "marker" }, "■"),
+    el("span", {}, "KEEPER - what it called (hollow: wasted, red: refused)"),
+  );
+  const concordItem = el("li", { class: "concord" });
+  concordItem.append(
+    el("span", { class: "marker" }, "—"),
+    el("span", {}, "CONCORD - ambiguity remaining"),
+  );
+  legend.append(pilotItem, keeperItem, concordItem);
+
   main.append(svg);
 
   /*
@@ -357,6 +415,21 @@ export async function renderReplay(root: HTMLElement, sessionId: string): Promis
       note: beat.count === undefined ? beat.kind : `${String(beat.count)} detents`,
       bad: false,
     })),
+    // The pad, on whichever side wrote to it. This is the only row in the
+    // transcript that is not a tool call or a sensor reading - it is the two
+    // of them actually talking - and a replay that dropped it kept the chart
+    // and lost the conversation the chart was a chart of.
+    ...replay.notes.map((note) => ({
+      t: note.t,
+      side: note.author === "PILOT" ? ("pilot" as const) : ("keeper" as const),
+      // The quote itself goes in the wide column, not the narrow one: a note
+      // runs up to 240 characters (`NOTE_MAX_LENGTH`), and every other kind of
+      // entry's wide column holds its one load-bearing fact already - this is
+      // this row's.
+      what: `"${note.text}"`,
+      note: "note",
+      bad: false,
+    })),
   ].sort((a, b) => a.t - b.t);
 
   for (const event of events) {
@@ -373,7 +446,17 @@ export async function renderReplay(root: HTMLElement, sessionId: string): Promis
     transcript.append(row);
     entries.push({ t: event.t, row });
   }
-  main.append(transcript);
+  // The key sits with the transcript it explains, not with the chart: the
+  // "track" grid cell already carries three same-area children told apart by
+  // `align-self` alone (the tracks, the scrubber, the readout), and a fourth
+  // sized by its own content there collided with the two pinned to the
+  // cell's bottom edge instead of sitting clear of them. `.replay-column`
+  // gives the key and the list one flex column of their own, so "below the
+  // key" is a fact of normal document flow rather than a coordinate two
+  // unrelated alignment rules both had to agree on.
+  const column = el("div", { class: "replay-column" });
+  column.append(legend, transcript);
+  main.append(column);
 
   /** The entry the playhead is on, so it is only scrolled to when it changes. */
   let showing: HTMLElement | null = null;
