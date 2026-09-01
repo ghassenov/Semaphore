@@ -36,6 +36,42 @@ export function keeperEntries(log: readonly SessionEvent[]): readonly ToolCallEv
   return log.filter((event): event is ToolCallEvent => event.type === "tool_call");
 }
 
+/**
+ * The ghost as the gate screen draws it: both halves of one log, side by side.
+ *
+ * **The one place in the repository that hands out both projections at once**,
+ * and it is safe for a reason that has to be stated rather than assumed:
+ * nobody is playing. There is no session behind `/ghost`, no pair for either
+ * half to be leaked to, and the fixture's own seed was spent when it was
+ * authored. In a live session this would be the single worst change anybody
+ * could make - `pilotTrack` and `keeperEntries` are a matched pair, and
+ * widening either hands one party the other's half.
+ *
+ * What it buys is the thesis as one picture. A judge who never types anything
+ * sees a room with a person walking in it beside a list of tool calls with a
+ * hole where the room would be, on one clock, and does not need the paragraph
+ * underneath. Doc 07 section 6: for some judges the gate screen *is* the
+ * submission.
+ *
+ * The KEEPER half is trimmed to the fields the picture uses. A tool's whole
+ * event carries `keeperViewHash` and `concordBits`, which mean nothing on a
+ * monitor and would triple the payload of a route that is fetched by every
+ * visitor before anything else loads.
+ */
+export function ghostForGate(): {
+  track: GhostTrack | null;
+  keeper: readonly { t: number; tool: string; wasted: boolean }[];
+} {
+  return {
+    track: pilotTrack(GHOST_LOG),
+    keeper: keeperEntries(GHOST_LOG).map((call) => ({
+      t: call.t,
+      tool: call.tool,
+      wasted: call.wasted,
+    })),
+  };
+}
+
 /** One entry, formatted as text a tool response can return, or a range hint if out of bounds. */
 export function describeEntry(log: readonly SessionEvent[], entry: number): string {
   const entries = keeperEntries(log);

@@ -1,0 +1,17 @@
+{
+  "name": "@semaphore/asymmetry",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Prove that an agent's tool surface does not determine what only the screen was meant to show.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "asymmetry": "./src/cli.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "example": "node --experimental-strip-types src/cli.ts examples/support-console.ts"
+  }
+}

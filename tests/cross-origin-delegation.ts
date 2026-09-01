@@ -123,6 +123,8 @@ interface View {
   facts: Record<string, unknown>;
   /** Null in an untimed session. The intercom check reads it either side of a call. */
   remainingMs: number | null;
+  /** Whether the station's lamps are out and the two roles have traded places. */
+  blackout?: boolean;
 }
 let view: View = { phase: "ENTRY", chamber: null, facts: {}, remainingMs: null };
 const socket = new WebSocket(`${base.replace("http", "ws")}/socket`);
@@ -450,6 +452,49 @@ check(
   );
 }
 
+/*
+ * The split replay: one recording drawn twice, on one clock.
+ *
+ * The landing screen and the gate both play it, and doc 07 section 6 says the
+ * gate *is* the submission for a judge who never types anything. What is
+ * asserted is that both panels are on screen and the same size - the argument
+ * of the picture is that these are two views of one moment, and a panel bigger
+ * than its twin quietly says one of them is the real one. Measured rather than
+ * counted, because two canvases with that class existing tells us nothing about
+ * whether either was laid out.
+ */
+{
+  /*
+   * Both panels are correctly hidden until attract mode or SPECTATE reveals
+   * them, and attract mode's own trigger is a twenty-second idle this tour
+   * cannot afford to spend before the shift has even started. So the reveal is
+   * forced and put back: what is being checked here is the **layout**, which is
+   * where this broke, and not the trigger, which has its own path.
+   *
+   * Measured rather than counted, because two canvases with the right class
+   * existing says nothing about whether either was laid out - the first run of
+   * this check reported `0/0` and was right to.
+   */
+  const split = await evaluate<string>(
+    `(()=>{const s=document.querySelector(".ghost-split");
+      if(!s) return "no split";
+      const host=s.closest("[hidden]")||(s.hidden?s:null);
+      const was=host?host.hidden:false;
+      if(host) host.hidden=false;
+      const c=[...s.querySelectorAll("canvas")].map(e=>e.getBoundingClientRect());
+      if(host) host.hidden=was;
+      if(c.length!==2) return "panels:"+c.length;
+      if(c.some(r=>r.width<80)) return "unlaid:"+c.map(r=>Math.round(r.width)).join("/");
+      return Math.abs(c[0].width-c[1].width)<2 ? "ok" : "uneven:"+c.map(r=>Math.round(r.width)).join("/");
+    })()`,
+  );
+  check(
+    "the ghost is drawn twice at one size, PILOT's view beside KEEPER's",
+    split === "ok",
+    split,
+  );
+}
+
 // The shift begins. PILOT drives it from here; the page's director follows.
 await post("begin_shift", { designation: "KEEPER" });
 await post("start", { difficulty: "practice", mode: "full" });
@@ -704,11 +749,77 @@ const gauges = (): Gauges => ({ ...((view.facts.gaugeValues ?? {}) as Gauges) })
 // than off whichever frame happens to be latest.
 const TARGETS = { ...(view.facts.targets as Gauges) };
 
-async function probe(dial: string, direction: "clockwise" | "counterclockwise") {
-  const before = gauges();
-  await post("rotate_dial", { dial_id: Number(dial), direction, clicks: 1 });
+/*
+ * The Blackout (`apps/worker/src/blackout.ts`), played rather than skipped.
+ *
+ * Four rotations into this room the lamps fail and the two roles trade places:
+ * KEEPER can see the gauges and cannot find the dials, PILOT is at the panel in
+ * the dark. So from here the tour has to do what a real pair does - ask KEEPER
+ * what it reads, and turn the dial itself - and the fact that the old script
+ * simply stopped working at rotation five is the honest signal that the beat is
+ * real rather than cosmetic.
+ *
+ * These two helpers are the pair's conversation, scripted. Everything below
+ * calls them instead of posting `rotate_dial` directly.
+ */
+
+/** Whether the lamps are out, from the frame both parties are told it on. */
+const dark = (): boolean => view.blackout === true;
+
+/**
+ * The gauges, from whichever party can currently see them.
+ *
+ * In the light PILOT reads them off the frame. In the dark that field is gone -
+ * `projectForPilot` under the inverted model does not carry it - and the only
+ * way to know is to ask KEEPER, which is the entire point of the beat. The
+ * prose is parsed rather than a field being read, because prose is what an
+ * agent actually gets.
+ */
+async function readGauges(): Promise<Gauges> {
+  if (!dark()) return gauges();
+  const said = await get("describe");
+  const out: Gauges = {};
+  for (const [, id, value] of said.matchAll(/gauge (\d) reads (\d+)/g)) {
+    out[id as string] = Number(value);
+  }
+  return out;
+}
+
+/** Turn a dial with whichever pair of hands is currently on the panel. */
+async function turnDial(dial: number, direction: string, clicks: number): Promise<string> {
+  const route = dark() ? "pilot_rotate_dial" : "rotate_dial";
+  const text = await post(route, { dial_id: dial, direction, clicks });
   await sleep(120);
-  const after = gauges();
+  await noteLamps();
+  return text;
+}
+
+/*
+ * Watch for the lamps coming back, at the moment it happens.
+ *
+ * Asserted from a flag rather than from the state at the end of the room,
+ * because a pair can perfectly well finish the Blind Panel during the blackout
+ * or on the rotation right after it - and the first version of this check did
+ * exactly that, then reported the lamps as still out when what had actually
+ * happened is that the room was over. A beat that only sometimes has an
+ * "after" has to be observed while it is running.
+ */
+let sawDark = false;
+let lampsReturnedWith: string | null = null;
+async function noteLamps(): Promise<void> {
+  if (dark()) {
+    sawDark = true;
+    return;
+  }
+  if (!sawDark || lampsReturnedWith !== null) return;
+  if (view.chamber !== "blind_panel" || view.phase !== "IN_CHAMBER") return;
+  lampsReturnedWith = (await all()).join(",");
+}
+
+async function probe(dial: string, direction: "clockwise" | "counterclockwise") {
+  const before = await readGauges();
+  await turnDial(Number(dial), direction, 1);
+  const after = await readGauges();
   const moved: Record<string, number> = {};
   for (const gauge of Object.keys(after)) {
     const delta = (after[gauge] as number) - (before[gauge] as number);
@@ -753,13 +864,12 @@ async function driveGauge(gauge: string): Promise<void> {
   const dial = Object.keys(linkage).find((d) => linkage[d]?.gauge === gauge);
   if (!dial) return;
   const { step } = linkage[dial] as Linkage;
-  const current = gauges()[gauge];
+  const current = (await readGauges())[gauge];
   if (current === undefined) return;
   const delta = (TARGETS[gauge] as number) - current;
   if (delta === 0) return;
   const direction = Math.sign(delta) === Math.sign(step) ? "clockwise" : "counterclockwise";
-  await post("rotate_dial", { dial_id: Number(dial), direction, clicks: Math.abs(delta) });
-  await sleep(120);
+  await turnDial(Number(dial), direction, Math.abs(delta));
 }
 
 // The cross-linked dial disturbs a gauge it does not drive, so it goes first
@@ -767,6 +877,56 @@ async function driveGauge(gauge: string): Promise<void> {
 const crossGauge = crossDial
   ? Object.keys(probes[crossDial] ?? {}).find((g) => g !== linkage[crossDial]?.gauge)
   : null;
+/*
+ * The one beat in the game where the registry changes inside a room.
+ *
+ * Asserted at the moment it happens rather than after, because what makes the
+ * Blackout a `toolchange` and not a refusal is that the tool is *gone*: an
+ * agent that keeps a hand it will always be refused with learns to keep trying,
+ * and an agent whose hand disappears is told the room changed by the one
+ * mechanism WebMCP has for saying so.
+ */
+if (dark()) {
+  check(
+    "the lamps failed and rotate_dial left KEEPER's registry",
+    !(await all()).includes("rotate_dial"),
+    (await all()).join(","),
+  );
+  check(
+    "but KEEPER keeps everything it perceives with",
+    (await all()).includes("describe_chamber") && (await all()).includes("get_status"),
+  );
+  const said = await get("describe");
+  check(
+    "and for the first time in the shift it can read the gauges out",
+    said.includes("IN THE DARK") && /gauge 1 reads \d/.test(said),
+    said.slice(0, 80),
+  );
+  check(
+    "while the wiring is still nobody's, which is why this room is the one that can invert",
+    said.includes("recorded nowhere"),
+  );
+  check(
+    "and PILOT can no longer see the needles they were reading a moment ago",
+    view.facts.gaugeValues === undefined,
+    JSON.stringify(view.facts.gaugeValues ?? null),
+  );
+  // The beat has to announce itself on the room, not only in a drawer that is
+  // closed by default. Without this line a player watches the lights go out,
+  // watches the gauge bank stop being drawn, and has to guess whether that was
+  // a beat or a bug.
+  const band = await evaluate<string>(
+    `(()=>{const c=document.querySelector(".viewport-caption");
+      return c&&c.dataset.shown==="true"?(c.textContent??""):"";})()`,
+  );
+  check(
+    "and the room says so, where a player is actually looking",
+    band.includes("THE LAMPS HAVE FAILED") && band.includes("YOU HAVE THE DIALS"),
+    band.slice(0, 70) || "(band not shown)",
+  );
+  await shot("blind-panel-blackout");
+}
+
 for (let round = 0; round < 10 && view.facts.solved !== true; round++) {
   if (crossDial) await driveGauge((linkage[crossDial] as Linkage).gauge);
   for (const gauge of ["1", "2", "3", "4"]) {
@@ -775,11 +935,19 @@ for (let round = 0; round < 10 && view.facts.solved !== true; round++) {
   if (crossGauge) await driveGauge(crossGauge);
 }
 
+check(
+  "the lamps came back mid-room and handed KEEPER the panel",
+  // Null when the pair finished the room before the window closed, which is a
+  // real way to play it and not a failure of the beat.
+  lampsReturnedWith === null || lampsReturnedWith.includes("rotate_dial"),
+  lampsReturnedWith ?? "(the room was finished in the dark)",
+);
+
 console.log(
   "linkage",
   JSON.stringify(linkage),
   "gauges",
-  JSON.stringify(gauges()),
+  JSON.stringify(await readGauges()),
   "targets",
   JSON.stringify(view.facts.targets),
   "solved",

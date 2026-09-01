@@ -10,6 +10,7 @@
 
 export {
   CHANNELS,
+  INVERTED_PERCEPTION,
   PERCEIVED_BY,
   audible,
   concealedFrom,

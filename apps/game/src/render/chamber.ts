@@ -1888,6 +1888,23 @@ export function roomTitle(view: PilotView): string {
  * floor the pair is here to look at.
  */
 export function interlude(view: PilotView): readonly [string, string] {
+  /*
+   * The Blackout (`apps/worker/src/blackout.ts`), which is the one thing the
+   * band says from inside a room rather than between two.
+   *
+   * It has to. The lamps go out, the gauge bank stops being drawn because
+   * PILOT has no reading to draw, and the agent starts describing needles it
+   * has never once been able to see - and until this line existed the only
+   * statement of what had happened was inside a console drawer that is closed
+   * by default. A player would have watched the most dramatic beat in the game
+   * and had to guess whether it was a beat or a bug.
+   *
+   * Ahead of the phase switch because the phase is `IN_CHAMBER` throughout,
+   * which is exactly the case the switch answers with two empty strings.
+   */
+  if (view.blackout) {
+    return ["THE LAMPS HAVE FAILED", "KEEPER CAN SEE THE GAUGES. YOU HAVE THE DIALS."];
+  }
   switch (view.phase) {
     case "ENTRY":
       return ["THE STATION IS DARK", "YOUR AGENT OPENS THE DOOR"];

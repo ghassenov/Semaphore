@@ -29,6 +29,7 @@ import * as blindPanel from "./chambers/blind_panel.js";
 import * as concordLock from "./chambers/concord_lock.js";
 import { objectiveLine, progressIn } from "./objective.js";
 import { inTheRoom } from "./pilot.js";
+import { blackoutOpen, perceptionFor } from "./blackout.js";
 import { projectForKeeper } from "./projection.js";
 import type { PersistedSession } from "./reducer.js";
 
@@ -62,25 +63,34 @@ export function keeperObjective(session: PersistedSession, nowMs: number): strin
   if (chamber === "airlock" && session.airlock) {
     return objectiveLine(
       chamber,
-      progressIn(chamber, projectForKeeper(airlock.facts(session.airlock))),
+      progressIn(chamber, projectForKeeper(airlock.facts(session.airlock), perceptionFor(session))),
     );
   }
   if (chamber === "signal_room" && session.signalRoom) {
     return objectiveLine(
       chamber,
-      progressIn(chamber, projectForKeeper(signalRoom.facts(session.signalRoom))),
+      progressIn(
+        chamber,
+        projectForKeeper(signalRoom.facts(session.signalRoom), perceptionFor(session)),
+      ),
     );
   }
   if (chamber === "blind_panel" && session.blindPanel) {
     return objectiveLine(
       chamber,
-      progressIn(chamber, projectForKeeper(blindPanel.facts(session.blindPanel))),
+      progressIn(
+        chamber,
+        projectForKeeper(blindPanel.facts(session.blindPanel), perceptionFor(session)),
+      ),
     );
   }
   if (chamber === "concord_lock" && session.concordLock) {
     return objectiveLine(
       chamber,
-      progressIn(chamber, projectForKeeper(concordLock.facts(session.concordLock, nowMs))),
+      progressIn(
+        chamber,
+        projectForKeeper(concordLock.facts(session.concordLock, nowMs), perceptionFor(session)),
+      ),
     );
   }
   return objectiveLine(chamber, null);
@@ -121,7 +131,7 @@ export function describeChamber(session: PersistedSession): string {
   }
 
   if (session.machine.chamber === "airlock" && session.airlock) {
-    const view = projectForKeeper(airlock.facts(session.airlock));
+    const view = projectForKeeper(airlock.facts(session.airlock), perceptionFor(session));
     return [
       "THE AIRLOCK. A cramped chamber, ankle-deep in cold water.",
       `Three levers on the far wall: ${describePositions(view.leverPositions)}.`,
@@ -131,7 +141,7 @@ export function describeChamber(session: PersistedSession): string {
   }
 
   if (session.machine.chamber === "signal_room" && session.signalRoom) {
-    const view = projectForKeeper(signalRoom.facts(session.signalRoom));
+    const view = projectForKeeper(signalRoom.facts(session.signalRoom), perceptionFor(session));
     return [
       "THE SIGNAL ROOM. A tall circular chamber, a beacon turning at its centre.",
       "A ring of six positions, numbered 1 to 6 clockwise from the top, and a bank of",
@@ -142,7 +152,31 @@ export function describeChamber(session: PersistedSession): string {
   }
 
   if (session.machine.chamber === "blind_panel" && session.blindPanel) {
-    const view = projectForKeeper(blindPanel.facts(session.blindPanel));
+    const view = projectForKeeper(blindPanel.facts(session.blindPanel), perceptionFor(session));
+    // The Blackout (`blackout.ts`) is the one place in the game where this
+    // function describes a room by sight. The prose forks rather than the
+    // projection bending: the fields are simply different ones, because the
+    // perception model behind `view` is the design law with its two lists
+    // exchanged. What does not change is that the wiring is `HIDDEN` and
+    // therefore still in neither branch - which is the entire reason this is
+    // the only chamber the beat can happen in.
+    if (blackoutOpen(session)) {
+      const gauges = view.gaugeValues;
+      const targets = view.targets;
+      const reading = blindPanel.GAUGES.map(
+        (g) =>
+          `gauge ${String(g)} reads ${String(gauges?.[g] ?? "?")} against a mark at ${String(targets?.[g] ?? "?")}`,
+      ).join(", ");
+      return [
+        "THE BLIND PANEL, IN THE DARK. The lamps have failed and the emergency board has",
+        "lit on your side of the grate: for the first time in this shift you can see the",
+        `gauges. ${reading}.`,
+        "You cannot find the dials in the dark and PILOT is standing at the panel with",
+        "their hands on them. Read the gauges out and say which dial to turn and how far.",
+        "Which dial drives which gauge is still recorded nowhere, and you still cannot feel it.",
+        `Rotations so far: ${String(view.rotationCount)}.`,
+      ].join(" ");
+    }
     return [
       "THE BLIND PANEL. Four dials, ids 1 to 4, behind a rusted grate at floor level.",
       "Above the grate, out of your reach, four pressure gauges and an engraved target",
@@ -188,7 +222,7 @@ export function inspectObject(session: PersistedSession, objectId: string): stri
   const id = objectId.trim().toLowerCase();
 
   if (session.machine.chamber === "airlock" && session.airlock) {
-    const view = projectForKeeper(airlock.facts(session.airlock));
+    const view = projectForKeeper(airlock.facts(session.airlock), perceptionFor(session));
     const feel = view.leverFeel?.[id as airlock.LeverId];
     const position = view.leverPositions?.[id as airlock.LeverId];
     if (!feel || !position) throw unknownObject(id, airlock.LEVERS);
@@ -199,7 +233,7 @@ export function inspectObject(session: PersistedSession, objectId: string): stri
   }
 
   if (session.machine.chamber === "signal_room" && session.signalRoom) {
-    const view = projectForKeeper(signalRoom.facts(session.signalRoom));
+    const view = projectForKeeper(signalRoom.facts(session.signalRoom), perceptionFor(session));
     const key = keyIdFrom(id);
     if (key === null)
       throw unknownObject(
@@ -211,13 +245,22 @@ export function inspectObject(session: PersistedSession, objectId: string): stri
   }
 
   if (session.machine.chamber === "blind_panel" && session.blindPanel) {
-    const view = projectForKeeper(blindPanel.facts(session.blindPanel));
+    const view = projectForKeeper(blindPanel.facts(session.blindPanel), perceptionFor(session));
     const dial = dialIdFrom(id);
     if (dial === null)
       throw unknownObject(
         id,
         blindPanel.DIALS.map((d) => `dial_${String(d)}`),
       );
+    if (blackoutOpen(session)) {
+      // In the dark there is nothing under KEEPER's hand to inspect. The one
+      // useful thing it can do with a dial id is tell PILOT to turn it, and
+      // saying so is worth more than a refusal (doc 03 section 9).
+      return (
+        `dial_${String(dial)}: out of reach. The lamps are out and PILOT is at the panel. ` +
+        `You can see the gauges from here; ask PILOT to turn dial ${String(dial)} and say how far.`
+      );
+    }
     const feel = view.dialFeel?.[dial];
     return `dial_${String(dial)}: ${feel}. Which gauge it drives is not something you can feel, and it is written down nowhere.`;
   }
@@ -268,7 +311,10 @@ export function readCiphertext(session: PersistedSession): string {
  */
 export function lockState(session: PersistedSession, nowMs: number): string {
   if (session.machine.chamber !== "concord_lock" || !session.concordLock) throw errors.staleTool();
-  const view = projectForKeeper(concordLock.facts(session.concordLock, nowMs));
+  const view = projectForKeeper(
+    concordLock.facts(session.concordLock, nowMs),
+    perceptionFor(session),
+  );
   const stamina = view.staminaRemainingMs;
   const sealedUntil = view.lockedOutUntilMs ?? null;
   const sealedFor = sealedUntil === null ? 0 : Math.max(0, sealedUntil - nowMs);

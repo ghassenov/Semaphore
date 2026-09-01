@@ -20,6 +20,7 @@ const VIEW: PilotView = {
   facts: { glyphByLever: { lever_a: "spiral" }, doorOpen: false },
   ghost: null,
   assist: null,
+  blackout: false,
   objective: null,
   progress: null,
   seq: 0,

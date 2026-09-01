@@ -255,14 +255,25 @@ export function finaleTools(client: SessionClient): readonly GameTool[] {
 }
 
 /** The tool set for one chamber. Keyed so the director never spells a name twice. */
-export function chamberTools(client: SessionClient, chamber: ChamberId): readonly GameTool[] {
+export function chamberTools(
+  client: SessionClient,
+  chamber: ChamberId,
+  dark = false,
+): readonly GameTool[] {
   switch (chamber) {
     case "airlock":
       return airlockTools(client);
     case "signal_room":
       return signalRoomTools(client);
     case "blind_panel":
-      return blindPanelTools(client);
+      // The Blackout (`apps/worker/src/blackout.ts`). In the dark PILOT has the
+      // panel, so KEEPER's hand on it genuinely does not exist: the tool leaves
+      // the registry rather than staying and refusing. The two are not the same
+      // thing to an agent. A tool that is present and always fails teaches it
+      // to keep trying; a tool that is gone, on a `toolchange` it can see, tells
+      // it the room changed - and `describe_chamber`, which it still has, says
+      // what it changed into. The limb comes off KEEPER's body with it.
+      return dark ? [] : blindPanelTools(client);
     case "concord_lock":
       return concordLockTools(client);
   }

@@ -109,3 +109,131 @@ export function paintMonitor(
   context.fillStyle = "rgba(5,7,10,0.28)";
   for (let y = 0; y < height; y += 3) context.fillRect(0, y, width, 1);
 }
+
+/**
+ * One thing the ghost's agent did, as the gate's KEEPER panel draws it.
+ *
+ * A trimmed `tool_call`: the whole event carries a view hash and a bits
+ * reading, which mean nothing on a monitor. `ghostForGate` on the worker does
+ * the trimming, so this shape and that one are the same three fields.
+ */
+export interface GhostCall {
+  readonly t: number;
+  readonly tool: string;
+  readonly wasted: boolean;
+}
+
+/**
+ * The same recording, as KEEPER perceived it. **The gaps are the point.**
+ *
+ * Beside `paintMonitor` on one clock this is the whole thesis in one picture,
+ * for a reader who has not typed anything and may never: on the left a room at
+ * its true proportion with a person walking in it, on the right the calls that
+ * person's partner was making at that second and a hole where the room would
+ * be. Doc 07 section 6 is explicit that for some judges the gate screen *is*
+ * the submission, and until now that screen showed the game working without
+ * once showing the thing the game is about.
+ *
+ * It draws only what a session log records on KEEPER's side. There is no
+ * position here because no tool has ever returned one, and no room outline
+ * because KEEPER has never seen a room - the dashed void is not a stylisation,
+ * it is the shape of the projection.
+ *
+ * `paintMonitor`'s twin in every other respect: a 2D context and nothing else,
+ * so the gate screen still never fetches the 143KB engine, and the same
+ * scanlines over the top so the two panels read as one monitor.
+ */
+export function paintKeeperMonitor(
+  canvas: HTMLCanvasElement,
+  designation: string | null,
+  calls: readonly GhostCall[],
+  elapsedMs: number,
+  /**
+   * The recording's own length, so both scrub bars measure against the same
+   * thing.
+   *
+   * Not optional and not derived from the last call. The first version divided
+   * by the timestamp of the final tool call, which is a *different* denominator
+   * from `ghostFrame`'s `track.durationMs`, and the two bars sat visibly apart
+   * on screen - the picture quietly saying these are not the same moment,
+   * which is the one thing it exists to say they are.
+   */
+  durationMs: number,
+): void {
+  const context = canvas.getContext("2d");
+  if (!context) return;
+  const { width, height } = canvas;
+
+  context.fillStyle = hex(PALETTE.abyss);
+  context.fillRect(0, 0, width, height);
+
+  if (designation === null) {
+    context.fillStyle = hex(PALETTE.tideDeep);
+    context.font = "600 22px ui-monospace, Menlo, monospace";
+    context.textAlign = "center";
+    context.fillText("NO TAPE", width / 2, height / 2);
+    return;
+  }
+
+  // The designation, in KEEPER's own colour. It is `SHARED` - the agent named
+  // itself out loud on its first call - so it is the one thing on both panels.
+  context.fillStyle = hex(PALETTE.tideDeep);
+  context.font = "600 17px ui-monospace, Menlo, monospace";
+  context.textAlign = "left";
+  context.fillText(designation, 14, 26);
+
+  // The hole where the room is on the other panel, at the same place and the
+  // same size, because the alignment is the argument.
+  const bandTop = 40;
+  const bandHeight = height - 96;
+  const voidWidth = width - 60;
+  const voidX = 30;
+  const voidY = bandTop + bandHeight * 0.08;
+  const voidHeight = bandHeight * 0.5;
+  context.strokeStyle = hex(PALETTE.tideDeep);
+  context.lineWidth = 2;
+  context.setLineDash([6, 6]);
+  context.strokeRect(voidX, voidY, voidWidth, voidHeight);
+  context.setLineDash([]);
+  context.fillStyle = hex(PALETTE.tideDeep);
+  context.font = "600 13px ui-monospace, Menlo, monospace";
+  context.textAlign = "center";
+  context.fillText("NO VISUAL CHANNEL", width / 2, voidY + voidHeight / 2 + 5);
+
+  // The calls that have landed by now, newest last, oldest fading out of the
+  // top. Three lines: enough to see a rhythm, few enough that the panel is a
+  // readout rather than a transcript.
+  const landed = calls.filter((call) => call.t <= elapsedMs);
+  const recent = landed.slice(-3);
+  context.textAlign = "left";
+  context.font = "600 14px ui-monospace, Menlo, monospace";
+  recent.forEach((call, index) => {
+    const age = recent.length - 1 - index;
+    context.fillStyle = hex(age === 0 ? PALETTE.tide : PALETTE.tideDeep);
+    // A wasted call is one that could not have taught KEEPER anything given
+    // what it held at the time. Marked rather than hidden: watching an agent
+    // guess is a large part of what this recording is worth looking at.
+    const mark = call.wasted ? " -" : " +";
+    context.fillText(`${call.tool}${mark}`, voidX, voidY + voidHeight + 26 + index * 20);
+  });
+  if (landed.length === 0) {
+    context.fillStyle = hex(PALETTE.tideDeep);
+    context.fillText("waiting for the shift to start", voidX, voidY + voidHeight + 26);
+  }
+
+  // The count, where the other panel puts its caption, so the two lines sit on
+  // one baseline and the pair reads as one picture rather than two.
+  context.fillStyle = hex(PALETTE.tide);
+  context.font = "600 16px ui-monospace, Menlo, monospace";
+  context.textAlign = "center";
+  context.fillText(`${String(landed.length)} tool calls`, width / 2, height - 34);
+
+  context.fillStyle = hex(PALETTE.tideDeep);
+  context.fillRect(14, height - 18, width - 28, 3);
+  context.fillStyle = hex(PALETTE.tide);
+  const progress = Math.min(1, elapsedMs / Math.max(durationMs, 1));
+  context.fillRect(14, height - 18, (width - 28) * progress, 3);
+
+  context.fillStyle = "rgba(5,7,10,0.28)";
+  for (let y = 0; y < height; y += 3) context.fillRect(0, y, width, 1);
+}

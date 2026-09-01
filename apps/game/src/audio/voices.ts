@@ -12,6 +12,7 @@
 
 import type { Cue } from "@semaphore/protocol";
 import type { Engine } from "./engine.js";
+import { KEEPER_AT, occlusionHz, toolPitch } from "./plan.js";
 
 /** A running continuous voice. */
 export interface Voice {
@@ -318,22 +319,52 @@ export function playCue(engine: Engine, cue: Cue, at: number): number {
 }
 
 /**
- * The muffled thump of a KEEPER tool call, heard through the deck.
+ * The same cue, arriving from somewhere in the room.
+ *
+ * The cue table is untouched: every voice still connects to `engine.sfx` and
+ * knows nothing about position. Placing one is a matter of handing it an engine
+ * whose `sfx` *is* a panner, which is why spatialisation costs this one
+ * function rather than a coordinate threaded through eighteen voices.
+ *
+ * `Object.create` rather than a spread, deliberately. `Engine` carries a live
+ * `mix` getter, and spreading would freeze it at whatever the mix happened to
+ * be when the cue fired - a voice that ignored the mute for the length of its
+ * own tail. Prototype delegation overrides one property and leaves every other
+ * one live.
+ */
+export function playCueAt(engine: Engine, cue: Cue, at: number, x: number, z: number): number {
+  const placed: Engine = Object.create(engine, {
+    sfx: { value: engine.placed(x, z), enumerable: true },
+  }) as Engine;
+  return CUE_VOICES[cue](placed, at);
+}
+
+/**
+ * The muffled thump of a KEEPER tool call, heard through the deck from the
+ * alcove KEEPER is standing in.
  *
  * Doc 06 section 11: PILOT cannot see what KEEPER is doing but can always hear
- * that it is doing something. Distinct per tool, because "KEEPER did *a*
- * thing" is much less useful than "KEEPER did the thing it does in this room",
- * and the pitch is derived from the name so a new tool gets its own note
- * without anybody maintaining a table.
+ * that it is doing something. With a note per tool PILOT can hear **which**
+ * something and say so out loud, which is a fact arriving on the `AUDIBLE`
+ * channel in the medium's own terms.
  *
- * Heavily low-passed. It is behind a wall, and a crisp one would compete with
- * the detents it is often heard beside.
+ * Two things about it are decided in `plan.ts` and neither is decided here.
+ * `toolPitch` is an authored note in the theme's key, held apart from its
+ * neighbours by a test - the previous version hashed the tool's name, which is
+ * uniform over the name and not over the ear, so two tools alive in the same
+ * room could land indistinguishably close. And `occlusionHz` is how far the
+ * low-pass opens: KEEPER is inside the wall, so walking toward the alcove
+ * brings its hands into focus rather than merely making them louder.
+ *
+ * `distance` is how far PILOT is standing from that alcove, in the same
+ * normalised room units everything else here uses.
  */
-export function playToolCall(engine: Engine, tool: string, at: number): number {
-  let hash = 0;
-  for (const char of tool) hash = (hash * 31 + char.charCodeAt(0)) % 2039;
-  const pitch = 58 + (hash % 11) * 7;
-  tone(engine, {
+export function playToolCall(engine: Engine, tool: string, at: number, distance = 2): number {
+  const pitch = toolPitch(tool);
+  const bus: Engine = Object.create(engine, {
+    sfx: { value: engine.placed(KEEPER_AT.x, KEEPER_AT.z), enumerable: true },
+  }) as Engine;
+  tone(bus, {
     at,
     type: "sine",
     from: pitch,
@@ -343,12 +374,12 @@ export function playToolCall(engine: Engine, tool: string, at: number): number {
     peak: 0.3,
     wet: 0.5,
   });
-  noise(engine, {
+  noise(bus, {
     at,
     attack: 0.004,
     decay: 0.16,
     type: "lowpass",
-    from: 420,
+    from: occlusionHz(distance),
     q: 0.5,
     peak: 0.16,
     wet: 0.3,
@@ -555,6 +586,27 @@ export const THEME_CHORDS: readonly (readonly number[])[] = [
   [146.83, 174.61, 220, 329.63], // D minor ninth
 ];
 
+/**
+ * The open fifth that arrives underneath as the pair converges: A and E, two
+ * octaves down.
+ *
+ * **The score, scored in bits.** The theme is written not to arrive - no
+ * dominant, no leading note, a mode with its second taken out - and this is the
+ * one thing that lets it settle. It is faded in by `resolutionFor(concordBits)`
+ * in `plan.ts`, so what it tracks is the CONCORD reading: the decision-relevant
+ * ambiguity left in the room, which is what the pair is actually working
+ * through.
+ *
+ * A perfect fifth on the tonic, and that choice is constrained rather than
+ * chosen. It introduces **no new pitch class** - both notes are already in
+ * every A minor chord in the cycle - so it cannot smuggle in the leading note
+ * `theme.test.ts` forbids, or the second the melody deliberately lacks. It
+ * resolves by *grounding* the harmony rather than by moving it, which is the
+ * only kind of arrival available to music that has been written not to have a
+ * dominant.
+ */
+export const THEME_GROUND: readonly number[] = [55, 82.41];
+
 /** How many grid steps one chord is held. Sixteen is five seconds. */
 const CHORD_STEPS = 16;
 
@@ -602,10 +654,35 @@ export const THEME_PHRASES: readonly (readonly (readonly [number, number])[])[] 
  * On `engine.bed` rather than the music bus, so it ducks with the ambience
  * under the heartbeat. See `Score.bed`.
  */
-export function playTheme(engine: Engine, at: number, step: number, level: number): void {
+export function playTheme(
+  engine: Engine,
+  at: number,
+  step: number,
+  level: number,
+  resolution = 0,
+): void {
   if (level <= 0.01) return;
 
   if (step % CHORD_STEPS === 0) {
+    // The ground, under the chord and only as far as the pair has converged.
+    // On the chord boundary rather than continuously, so it swells with the
+    // harmony instead of sitting under it as a drone - there is already a
+    // drone, and a second one would be a hum rather than an arrival.
+    if (resolution > 0.01) {
+      THEME_GROUND.forEach((hz, voice) => {
+        tone(engine, {
+          at: at + voice * 0.12,
+          type: "triangle",
+          from: hz,
+          attack: 2.2,
+          decay: 4.2,
+          peak: 0.07 * level * resolution,
+          wet: 0.5,
+          bus: engine.bed,
+        });
+      });
+    }
+
     const chord = THEME_CHORDS[Math.floor(step / CHORD_STEPS) % THEME_CHORDS.length] ?? [];
     chord.forEach((hz, voice) => {
       // Staggered by a breath, so the chord arrives as four things rather than

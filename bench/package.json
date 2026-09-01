@@ -9,6 +9,7 @@
     "benchmark": "npx tsx harness.ts"
   },
   "devDependencies": {
+    "@semaphore/asymmetry": "workspace:*",
     "@semaphore/protocol": "workspace:*",
     "@semaphore/seed": "workspace:*",
     "@semaphore/worker": "workspace:*"

@@ -33,8 +33,12 @@ function body(phase: Phase, chamber: StateSummary["chamber"] = null, text = "ok"
   } as unknown as Response;
 }
 
-function state(phase: Phase, chamber: StateSummary["chamber"] = null): StateSummary {
-  return { phase, chamber, designation: "KEEPER", remainingMs: null };
+function state(
+  phase: Phase,
+  chamber: StateSummary["chamber"] = null,
+  blackout = false,
+): StateSummary {
+  return { phase, chamber, designation: "KEEPER", remainingMs: null, blackout };
 }
 
 beforeEach(() => {
@@ -151,6 +155,43 @@ describe("the chamber tier", () => {
     await d.applyState(state("IN_CHAMBER", "blind_panel"));
     expect(registry.names()).toContain("rotate_dial");
     expect(registry.names()).not.toContain("press_key");
+  });
+
+  /*
+   * The Blackout (`apps/worker/src/blackout.ts`), from the registry's side.
+   *
+   * This is the only `toolchange` in the game that fires *inside* a room
+   * rather than at its boundary, and it is the reason `sameTier` compares the
+   * lamps as well as the chamber. The tool leaves rather than staying and
+   * refusing: a tool that is present and always fails teaches an agent to keep
+   * trying, and a tool that is gone tells it the room changed.
+   */
+  it("takes rotate_dial off KEEPER when the lamps fail, and gives it back", async () => {
+    const { director: d } = director();
+    await d.mountEntry();
+    await d.applyState(state("IN_CHAMBER", "blind_panel"));
+    expect(registry.names()).toContain("rotate_dial");
+
+    await d.applyState(state("IN_CHAMBER", "blind_panel", true));
+    expect(registry.names()).not.toContain("rotate_dial");
+    // KEEPER keeps everything it perceives with. It has lost a hand, not a
+    // sense, and `describe_chamber` is what tells it why.
+    expect(registry.names()).toContain("describe_chamber");
+    expect(registry.names()).toContain("get_status");
+
+    await d.applyState(state("IN_CHAMBER", "blind_panel", false));
+    expect(registry.names()).toContain("rotate_dial");
+  });
+
+  it("does not tear the room down when nothing but the lamps stayed the same", async () => {
+    // The mirror of the test above: a repeated state must still register
+    // nothing, or the registry churns on every frame.
+    const { director: d } = director();
+    await d.mountEntry();
+    await d.applyState(state("IN_CHAMBER", "blind_panel", true));
+    const before = registry.names();
+    await d.applyState(state("IN_CHAMBER", "blind_panel", true));
+    expect(registry.names()).toEqual(before);
   });
 
   it("gives the Archive its one read tool and no chamber mechanism", async () => {
@@ -301,6 +342,7 @@ describe("instrumentation", () => {
       retries: 0,
       ghost: null,
       assist: null,
+      blackout: false,
       objective: null,
       progress: null,
       seq: 0,

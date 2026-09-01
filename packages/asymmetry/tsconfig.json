@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // `cli.ts` is a Node command-line program: it prints a report and sets an
+    // exit code. `console`/`process` and `node:` builtins are declared where
+    // they are used, following the pattern `tests/` and `bench/` established.
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["src", "examples"]
+}

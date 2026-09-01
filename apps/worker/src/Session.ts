@@ -93,6 +93,8 @@ function labelFor(action: Action): string {
       return "resetting the sequence";
     case "rotate_dial":
       return "turning a dial";
+    case "pilot_rotate_dial":
+      return "turning a dial in the dark";
     case "grip_bar":
       return "gripping the release bar";
     case "release_bar":
@@ -226,6 +228,17 @@ export class Session {
       });
     }
 
+    // PILOT's half of the Blackout (`blackout.ts`). Not a WebMCP tool and never
+    // will be: it is the human's hands on the panel, so it is a plain route the
+    // console posts to, exactly as `grip_bar` below is.
+    if (pathname.endsWith("/pilot_rotate_dial")) {
+      return this.#act({
+        type: "pilot_rotate_dial",
+        dialId: Number(body.dial_id ?? 0) as DialId,
+        direction: (body.direction as Direction | undefined) ?? "clockwise",
+        clicks: Number(body.clicks ?? 0),
+      });
+    }
     if (pathname.endsWith("/grip_bar")) return this.#act({ type: "grip_bar" });
     if (pathname.endsWith("/release_bar")) return this.#act({ type: "release_bar" });
     if (pathname.endsWith("/align_bolt")) {
