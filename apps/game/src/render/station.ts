@@ -227,6 +227,11 @@ export async function startStation(
     setState(state: StateSummary) {
       model.state = state;
       onChange(model);
+      // A tier change is the other thing that moves the registry, and on a
+      // host that is not an EventTarget it is the only signal there is: no
+      // `toolchange` ever arrives, so without this the manifest plate and
+      // KEEPER's body would freeze on the tools of the first room (D-085).
+      refreshTools();
     },
     setView(view: PilotView) {
       // A new room resets the derived clock, so a long chamber following a

@@ -91,4 +91,19 @@ describe("degradation", () => {
     expect(() => onToolChange(() => {})()).not.toThrow();
     restore();
   });
+
+  it("survives a registry that is not an EventTarget", () => {
+    // The live site met exactly this host: both methods present, no listener
+    // pair, and `onToolChange` threw during startup and took the station with
+    // it (D-085). The page must still count as supported and still come up.
+    const restore = withHost({
+      modelContext: {
+        registerTool: () => Promise.resolve(),
+        getTools: () => Promise.resolve([]),
+      },
+    });
+    expect(isSupported()).toBe(true);
+    expect(() => onToolChange(() => {})()).not.toThrow();
+    restore();
+  });
 });
