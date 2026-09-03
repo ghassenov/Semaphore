@@ -34,7 +34,7 @@ If your agent doesn't respond, ask it directly: *what tools does this page give 
 | III - The Concord Lock | Split across both | Sustained, simultaneous | A stamina window sized at runtime from the agent's own measured latency, so the finale is fair to a fast model and a slow one alike. |
 
 Full detail — the fiction, the five perception channels, the art direction, the accessibility
-layer — is in [DESIGN.md](DESIGN.md). How the server enforces all of this — the channel-tagged
+layer — is in [DESIGN.md](docs/DESIGN.md). How the server enforces all of this — the channel-tagged
 state, the possible-worlds proof, the WebMCP tool lifecycle, cross-origin delegation — is in
 [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -94,7 +94,7 @@ finale and the ending, rendered in real-time 3D, on the account's own custom dom
 
 | Component | State |
 |---|---|
-| [ARCHITECTURE.md](ARCHITECTURE.md), [DESIGN.md](DESIGN.md) | Complete, consolidated from the original twelve-document planning set |
+| [ARCHITECTURE.md](ARCHITECTURE.md), [DESIGN.md](docs/DESIGN.md) | Complete, consolidated from the original twelve-document planning set |
 | `packages/asymmetry`, `packages/seed`, `packages/protocol` | Built and tested |
 | `apps/worker` — Durable Object, reducer, four chambers, tool surface | Built and deployed |
 | `apps/game` — Three.js client, WebMCP tool director, the console | Built and deployed |
@@ -106,7 +106,7 @@ finale and the ending, rendered in real-time 3D, on the account's own custom dom
 | The replay viewer, `/replay?id=` | Built and deployed |
 | Accessibility — the mirror, contrast, motion, colourblind verification | Built; not yet tested with a real screen reader |
 
-[NEXT-STEPS.md](NEXT-STEPS.md) is the live handoff and says what's next and what will bite you.
+[NEXT-STEPS.md](docs/NEXT-STEPS.md) is the live handoff and says what's next and what will bite you.
 
 ---
 
@@ -181,7 +181,7 @@ perform *together* under partial information. See the ablation above and
   script can replace a person.
 - **The ghost sessions in the Archive are authored**, recorded during our own playtesting rather
   than drawn from real players. Doing that safely (the game collects no personal data at all) is
-  the first item in [DESIGN.md's what's next](DESIGN.md#15-whats-next).
+  the first item in [DESIGN.md's what's next](docs/DESIGN.md#15-whats-next).
 - **We built against a moving draft.** WebMCP's spec has changed repeatedly during this project's
   build; what was verified, where, and when is folded into [ARCHITECTURE.md](ARCHITECTURE.md#webmcp-tool-architecture).
 
@@ -200,18 +200,18 @@ TypeScript · Three.js · Vite · WebMCP (`document.modelContext`, imperative + 
 | Read this | For |
 |---|---|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How it's built, and why each stack decision beat its real alternative |
-| [DESIGN.md](DESIGN.md) | What the game is, the thesis, the four chambers, the art direction |
+| [DESIGN.md](docs/DESIGN.md) | What the game is, the thesis, the four chambers, the art direction |
 | [architecture/](architecture/) | Two hand-authored SVG diagrams: the system, and the asymmetry model |
 | [screenshots/](screenshots/) | Seven screenshots of the live deployment |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Setup, code and git conventions, how a change gets tested and submitted |
 | [docs/decision-log.md](docs/decision-log.md) | Every decision, day by day, with the options considered and the reasoning kept |
 | [docs/lessons-learned.md](docs/lessons-learned.md) | The running journal of what building it actually found |
 | [docs/hackathonspecs/](docs/hackathonspecs/) | Captured Devpost and WebMCP reference material, read-only |
-| [NEXT-STEPS.md](NEXT-STEPS.md) | The live handoff: what to pick up next and what will bite you |
+| [NEXT-STEPS.md](docs/NEXT-STEPS.md) | The live handoff: what to pick up next and what will bite you |
 | [SECURITY.md](SECURITY.md) | What's in scope, and how to report privately |
 | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community standards |
-| [CHANGELOG.md](CHANGELOG.md) | A readable, milestone-level history |
-| [NOTICE.md](NOTICE.md) | The one licence carve-out, explained |
+| [CHANGELOG.md](docs/CHANGELOG.md) | A readable, milestone-level history |
+| [NOTICE.md](docs/NOTICE.md) | The one licence carve-out, explained |
 
 ---
 
@@ -243,4 +243,4 @@ and paste the starter prompt above into whichever agent is playing KEEPER. See
 ## License
 
 MIT for the whole repository, with one deliberate typeface exception explained in
-[NOTICE.md](NOTICE.md). See [LICENSE](LICENSE).
+[NOTICE.md](docs/NOTICE.md). See [LICENSE](LICENSE).

@@ -2,7 +2,7 @@
 
 ## Everything here is ours, except one typeface
 
-The [LICENSE](LICENSE) at the repository root is the plain, unmodified MIT license text, so that
+The [LICENSE](../LICENSE) at the repository root is the plain, unmodified MIT license text, so that
 GitHub's own license detector reads it correctly — it did not, when this file's content used to
 live appended below the license text itself, because the detector matches against the canonical
 template and anything appended after it drops the match below its threshold. This file carries

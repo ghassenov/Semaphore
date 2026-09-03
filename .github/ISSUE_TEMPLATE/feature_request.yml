@@ -6,11 +6,12 @@ body:
     attributes:
       value: |
         Semaphore is a hackathon submission and is frozen from the Devpost deadline
-        (2026-09-03) until judging ends (2026-09-21) — see [CLAUDE.md](../../CLAUDE.md). An idea
-        filed here won't be acted on until the freeze lifts, but it's worth recording either way.
-        [DESIGN.md](../../DESIGN.md#whats-next) already lists the known next steps (ARCHIVE mode,
-        a role-inversion chamber, wider benchmark coverage, applying the design principle
-        elsewhere) — check there first.
+        (2026-09-03) until judging ends (2026-09-21) — see
+        [CONTRIBUTING.md](../../CONTRIBUTING.md). An idea filed here won't be acted on until the
+        freeze lifts, but it's worth recording either way.
+        [DESIGN.md](../../docs/DESIGN.md#15-whats-next) already lists the known next steps
+        (ARCHIVE mode, a role-inversion chamber, wider benchmark coverage, applying the design
+        principle elsewhere) — check there first.
   - type: textarea
     id: idea
     attributes:

@@ -2,7 +2,7 @@
 
 What Semaphore is, why it is shaped this way, and what it is trying to prove. This document
 replaces the twelve-document `docs/design/` set that carried the reasoning through the build;
-their content lives here and in [ARCHITECTURE.md](ARCHITECTURE.md) now, condensed and brought up
+their content lives here and in [ARCHITECTURE.md](../ARCHITECTURE.md) now, condensed and brought up
 to date with what actually shipped. The full original set is still readable in git history at any
 commit before this consolidation.
 
@@ -20,8 +20,8 @@ different things to two parties who need each other to finish anything at all.
 
 That is not a metaphor bolted onto a puzzle game. It is enforced by the type system and the
 server, never by convention: every fact in the world state carries a channel, and two pure
-projection functions decide who may perceive what. See [ARCHITECTURE.md](ARCHITECTURE.md#the-asymmetry-law)
-for how, and the [Possible-Worlds Proof](ARCHITECTURE.md#the-possible-worlds-proof) for the
+projection functions decide who may perceive what. See [ARCHITECTURE.md](../ARCHITECTURE.md#the-asymmetry-law)
+for how, and the [Possible-Worlds Proof](../ARCHITECTURE.md#the-possible-worlds-proof) for the
 executable statement that the asymmetry is not decorative: for every reachable state, the set of
 worlds consistent with the agent's entire perceptual surface has more than one member, and those
 members disagree about the correct action. That is the checkable version of "you cannot win
@@ -352,10 +352,10 @@ recording, chamber deep links) designed as carefully as the fifteen-minute path.
 still lands on one that holds. First, a design principle that generalises beyond this game:
 tool surfaces that expose less, or differently, than the rendered UI is a legitimate pattern for
 progressive disclosure, capability scoping and privacy — and it now ships as
-[`@semaphore/asymmetry`](packages/asymmetry/), a standalone, zero-dependency package any
+[`@semaphore/asymmetry`](../packages/asymmetry/), a standalone, zero-dependency package any
 WebMCP-shaped project can run against its own tool surface (D-080). Second, an empirical
-demonstration: see the [ablation](README.md#the-ablation) — two conditions at the floor, one far
-above it. Third, the [Semaphore Cooperative Benchmark](README.md#the-ablation), offered honestly
+demonstration: see the [ablation](../README.md#the-ablation) — two conditions at the floor, one far
+above it. Third, the [Semaphore Cooperative Benchmark](../README.md#the-ablation), offered honestly
 as a proposal for an instrument rather than an established one, measuring partner-sensitivity
 rather than raw completion.
 
@@ -376,6 +376,6 @@ ones. **The design principle, applied elsewhere**: tool surfaces that deliberate
 irreversible actions, or expose aggregates through tools while raw data stays on screen for
 privacy, or expand as authorisation does.
 
-See [README.md](README.md) for the live URL, [ARCHITECTURE.md](ARCHITECTURE.md) for how it's
-built, [docs/decision-log.md](docs/decision-log.md) for the day-by-day record of why, and
+See [README.md](../README.md) for the live URL, [ARCHITECTURE.md](../ARCHITECTURE.md) for how it's
+built, [decision-log.md](decision-log.md) for the day-by-day record of why, and
 [NEXT-STEPS.md](NEXT-STEPS.md) for what's actually left to do.
