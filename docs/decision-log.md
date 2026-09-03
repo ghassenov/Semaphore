@@ -3325,3 +3325,40 @@ them automatically.
 
 863 tests, clean typecheck across all eight workspaces, clean lint, clean build - none of this
 touches shipped code.
+
+---
+
+### D-089 Two diagrams and seven screenshots, against the live deployment
+
+**2026-09-03.** Two SVG diagrams added under `architecture/`, and a curated set of seven
+screenshots added under `screenshots/`, both linked from the README and the two consolidated
+design documents.
+
+**The first pass at the diagrams was rejected, correctly.** Six per-channel arrows curving into
+two projection boxes read as spaghetti the moment it was rendered rather than only reasoned about,
+and box interiors carried three and four lines of description each - dense in the way a real
+architecture diagram never is. Told directly: too much text, not beautiful, not professional.
+Rebuilt from scratch on a different premise: one bold label per box, at most one short caption,
+one clean arrow per relationship rather than one per fact it carries, generous whitespace, the
+game's own twenty-colour palette rather than a generic diagram theme. Every version was rendered
+and looked at before being called finished - the same rule this repository already has for its own
+renderer, applied to a diagram instead of a room.
+
+**Every screenshot in `screenshots/` is from the live deployment, not local development**, and
+five of the seven came from `tests/cross-origin-delegation.ts`'s own screenshot tour run with
+`SHOTS=<dir>` against `semaphore.ahmedxsaad.me`, rather than hand-driven capture - the same
+instrument the project already trusts to verify a rendering change gets the credit for illustrating
+one. That run also re-confirmed 42/42 checks against production before a single frame was chosen.
+The landing screen and the shift-report card were captured separately, since the tour's own run
+starts mid-session and does not pass through either.
+
+**Curation dropped near-duplicates rather than keeping every captured frame.** Fourteen frames
+came out of the tour; seven were kept. Two ending frames differed only in which line of ending
+narration was on screen at the moment of capture, and the original `01-airlock.png` was replaced
+by `02-intercom.png` in the final set, the same room a few seconds later, once the station
+intercom panel was open on screen - a more informative frame of the same chamber rather than a
+second one.
+
+Nothing in either addition touches shipped code. 863 tests, clean typecheck across all eight
+workspaces, clean lint, clean build, and every markdown link and image reference checked to
+resolve to a real file or a real heading.

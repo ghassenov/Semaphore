@@ -8,6 +8,8 @@ A cooperative asymmetric-information escape game for the human-agent era, built 
 
 You and your AI agent are locked in a derelict signal station. You each control an avatar in the same room, but you perceive different worlds. **You** see glyphs on a panel, needles on gauges, a symbol carved into a door. **Your agent** cannot see any of it. It has the station's maintenance manual, the ability to reach mechanisms behind the walls, and the hands you do not have. Neither of you escapes alone. Each chamber you clear rewrites the agent's tool surface in real time.
 
+<img src="screenshots/01-landing.png" alt="The landing screen: the same lever drawn two ways, a mark burned into a plate for the human, and the plain sentence describing it that the agent actually gets." width="100%">
+
 **Play it: [semaphore.ahmedxsaad.me](https://semaphore.ahmedxsaad.me)**. Chrome 149+ with `chrome://flags/#enable-webmcp-testing`, or ChatGPT's in-app browser. No WebMCP support? The same URL degrades to a gate screen carrying the pitch, the ablation below, and a recording of a real session.
 
 ---
@@ -35,6 +37,19 @@ Full detail — the fiction, the five perception channels, the art direction, th
 layer — is in [DESIGN.md](DESIGN.md). How the server enforces all of this — the channel-tagged
 state, the possible-worlds proof, the WebMCP tool lifecycle, cross-origin delegation — is in
 [ARCHITECTURE.md](ARCHITECTURE.md).
+
+---
+
+## Screenshots
+
+All seven captured against the live deployment, most by the project's own screenshot tour rather
+than by hand. Full list in [screenshots/](screenshots/).
+
+<img src="screenshots/02-airlock.png" alt="The Airlock, with the station intercom answering a stalled KEEPER" width="49%"> <img src="screenshots/03-signal-room.png" alt="The Signal Room, its glyph ring lit by a turning beacon" width="49%">
+
+<img src="screenshots/04-blind-panel-blackout.png" alt="The Blind Panel mid-Blackout: the lamps have failed, KEEPER can read the gauges, PILOT has the dials" width="49%"> <img src="screenshots/05-archive.png" alt="The Archive, a previous pair's session playing on the station's own monitor" width="49%">
+
+<img src="screenshots/06-concord-lock.png" alt="The Concord Lock, the finale door and its twelve bolts" width="49%"> <img src="screenshots/07-shift-report.png" alt="The ending: pace, precision and resolve, and the door open behind it" width="49%">
 
 ---
 
@@ -186,6 +201,8 @@ TypeScript · Three.js · Vite · WebMCP (`document.modelContext`, imperative + 
 |---|---|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How it's built, and why each stack decision beat its real alternative |
 | [DESIGN.md](DESIGN.md) | What the game is, the thesis, the four chambers, the art direction |
+| [architecture/](architecture/) | Two hand-authored SVG diagrams: the system, and the asymmetry model |
+| [screenshots/](screenshots/) | Seven screenshots of the live deployment |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Setup, code and git conventions, how a change gets tested and submitted |
 | [docs/decision-log.md](docs/decision-log.md) | Every decision, day by day, with the options considered and the reasoning kept |
 | [docs/lessons-learned.md](docs/lessons-learned.md) | The running journal of what building it actually found |

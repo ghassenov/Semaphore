@@ -56,60 +56,7 @@ single-origin fallback and the cross-origin path ship green, gated by one build-
 
 ## System diagram
 
-```
-┌───────────────────────────── BROWSER ──────────────────────────────┐
-│                                                                     │
-│   ┌─────────────────┐         ┌──────────────────────────────┐     │
-│   │  Three.js scene  │◀────────│  PilotView store (readonly)  │     │
-│   │  (WebGL, on demand) │      └──────────────▲───────────────┘     │
-│   └────────┬─────────┘                        │ WS deltas           │
-│            │ input                            │                     │
-│            ▼                                  │                     │
-│   ┌─────────────────┐         ┌──────────────┴───────────────┐     │
-│   │  PILOT actions   │────────▶│      Session client          │     │
-│   └─────────────────┘         └──────────────┬───────────────┘     │
-│                                               │ fetch               │
-│   ┌──────────────────────────────┐            │                     │
-│   │  WebMCP ToolDirector          │───────────┤                     │
-│   │  document.modelContext        │           │                     │
-│   │  · entry   AbortController    │           │                     │
-│   │  · session AbortController    │           │                     │
-│   │  · chamber AbortController    │           │                     │
-│   │  · toolchange → manifest      │           │                     │
-│   │  · toolchange → KEEPER body   │           │                     │
-│   └──────────────▲───────────────┘            │                     │
-│                  │                            │                     │
-│   ┌──────────────┴───────────────┐            │                     │
-│   │  <iframe allow="tools">       │           │                     │
-│   │  apps/archive, second origin  │           │                     │
-│   │  read_manual, read_station_log            │                     │
-│   │  exposedTo: [game origin]     │           │                     │
-│   └──────────────────────────────┘            │                     │
-└──────────────────┬────────────────────────────┼─────────────────────┘
-                    │ execute()                  │
-             ┌──────┴──────┐                     ▼
-             │  AI AGENT   │      ┌─────────────────────────────┐
-             │ (ChatGPT /  │      │  Cloudflare Worker (router)  │
-             │  Chrome)    │      └──────────────┬──────────────┘
-             └─────────────┘                     │
-                                  ┌──────────────▼──────────────┐
-                                  │  Durable Object: Session     │
-                                  │  · authoritative WorldState  │
-                                  │  · channel tags               │
-                                  │  · action semaphore (n=1)     │
-                                  │  · server timer                │
-                                  │  · projectForPilot/Keeper      │
-                                  │  · consistentWorlds → CONCORD  │
-                                  │  · latency observer → Ch.III   │
-                                  │  · append-only event log       │
-                                  └──────────────┬──────────────┘
-                                                 │
-                                  ┌──────────────▼──────────────┐
-                                  │  D1: finished sessions        │
-                                  │  (replay · benchmark ·        │
-                                  │   the Archive's ghosts)       │
-                                  └───────────────────────────────┘
-```
+<img src="architecture/system-diagram.svg" alt="System diagram: an AI agent calls execute() into the browser, which renders PILOT's view and hosts KEEPER's WebMCP registry; the browser talks to a Cloudflare Worker, which routes to a Durable Object holding channel-tagged state, the action semaphore, the server timer, consistentWorlds and the event log; the Durable Object pushes state back to the browser over one socket and flushes finished sessions to D1." width="100%">
 
 The single most important property in this whole diagram: **`projectForKeeper` runs on the
 server.** The agent's perceptual surface is computed somewhere the browser cannot reach around.
@@ -117,6 +64,8 @@ The second: one D1 row is simultaneously the replay corpus, the benchmark corpus
 ghosts.
 
 ## The asymmetry law
+
+<img src="architecture/asymmetry-model.svg" alt="Five channels, VISUAL through HIDDEN, feed two server-side projections: PILOT sees the rendered room, KEEPER calls tools and reads their answers, and HIDDEN reaches neither. The possible-worlds proof checks that every world KEEPER's view allows disagrees on the right action, reported as log2 of the world count in bits, the CONCORD reading." width="100%">
 
 Every field in the authoritative world state carries an explicit channel:
 
@@ -451,8 +400,8 @@ fallback has to stay provably green for as long as it might be what ships.
 
 | Metric | Budget | Observed |
 |---|---|---|
-| Entry JS bundle, gzipped | < 400 KB | ~46 KB |
-| Three.js chunk, gzipped, fetched only on shift start | - | ~147 KB |
+| Entry JS bundle, gzipped | < 400 KB | 46.3 KB |
+| Three.js chunk, gzipped, fetched only on shift start | - | 147.5 KB |
 | Palette | Locked at 20 colours in two sets | Enforced by `scripts/check-palette.mjs`, both directions, every build |
 
 ## Deployment
