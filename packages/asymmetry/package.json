@@ -1,6 +1,6 @@
 {
   "name": "@semaphore/asymmetry",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Prove that an agent's tool surface does not determine what only the screen was meant to show.",
