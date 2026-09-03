@@ -4,8 +4,8 @@ A readable, milestone-level history. [docs/decision-log.md](decision-log.md) is 
 day-by-day record with every option considered and the reasoning kept; this file is the shorter
 version for a reader who wants to know what happened and when, not why.
 
-The project does not tag releases — it is a single continuous build toward one submission — so
-entries are grouped by date and theme rather than by version number.
+Entries are grouped by date and theme rather than by version number, since the build was a single
+continuous effort toward one submission. `v1.0.0` tags the exact state submitted for judging.
 
 ## 2026-09-01 to 2026-09-03 — Deployment, game-feel, and the documentation pass
 
