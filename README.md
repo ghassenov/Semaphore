@@ -186,13 +186,15 @@ TypeScript · Three.js · Vite · WebMCP (`document.modelContext`, imperative + 
 |---|---|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How it's built, and why each stack decision beat its real alternative |
 | [DESIGN.md](DESIGN.md) | What the game is, the thesis, the four chambers, the art direction |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Setup, code and git conventions, how a change gets tested and submitted |
 | [docs/decision-log.md](docs/decision-log.md) | Every decision, day by day, with the options considered and the reasoning kept |
+| [docs/lessons-learned.md](docs/lessons-learned.md) | The running journal of what building it actually found |
+| [docs/hackathonspecs/](docs/hackathonspecs/) | Captured Devpost and WebMCP reference material, read-only |
 | [NEXT-STEPS.md](NEXT-STEPS.md) | The live handoff: what to pick up next and what will bite you |
-| [CLAUDE.md](CLAUDE.md) | The repository's own working rules — code style, git conventions, the design law |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | How to set up, test, and submit a change |
 | [SECURITY.md](SECURITY.md) | What's in scope, and how to report privately |
 | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community standards |
 | [CHANGELOG.md](CHANGELOG.md) | A readable, milestone-level history |
+| [NOTICE.md](NOTICE.md) | The one licence carve-out, explained |
 
 ---
 
