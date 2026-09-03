@@ -50,7 +50,7 @@ an honest explanation of why it is out of scope after that. There is no bug boun
 
 ## The freeze
 
-Per [CLAUDE.md](CLAUDE.md), the repository, the live site, and the submission are frozen from the
-Devpost submission deadline (2026-09-03) until winners are announced (judging ends 2026-09-21).
+The repository, the live site, and the submission are frozen from the Devpost submission deadline
+(2026-09-03) until winners are announced (judging ends 2026-09-21).
 A report of an active, exploitable issue during that window will still be looked at; anything
 that is not urgent will wait until the freeze lifts.

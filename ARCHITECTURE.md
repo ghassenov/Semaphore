@@ -56,60 +56,7 @@ single-origin fallback and the cross-origin path ship green, gated by one build-
 
 ## System diagram
 
-```
-┌───────────────────────────── BROWSER ──────────────────────────────┐
-│                                                                     │
-│   ┌─────────────────┐         ┌──────────────────────────────┐     │
-│   │  Three.js scene  │◀────────│  PilotView store (readonly)  │     │
-│   │  (WebGL, on demand) │      └──────────────▲───────────────┘     │
-│   └────────┬─────────┘                        │ WS deltas           │
-│            │ input                            │                     │
-│            ▼                                  │                     │
-│   ┌─────────────────┐         ┌──────────────┴───────────────┐     │
-│   │  PILOT actions   │────────▶│      Session client          │     │
-│   └─────────────────┘         └──────────────┬───────────────┘     │
-│                                               │ fetch               │
-│   ┌──────────────────────────────┐            │                     │
-│   │  WebMCP ToolDirector          │───────────┤                     │
-│   │  document.modelContext        │           │                     │
-│   │  · entry   AbortController    │           │                     │
-│   │  · session AbortController    │           │                     │
-│   │  · chamber AbortController    │           │                     │
-│   │  · toolchange → manifest      │           │                     │
-│   │  · toolchange → KEEPER body   │           │                     │
-│   └──────────────▲───────────────┘            │                     │
-│                  │                            │                     │
-│   ┌──────────────┴───────────────┐            │                     │
-│   │  <iframe allow="tools">       │           │                     │
-│   │  apps/archive, second origin  │           │                     │
-│   │  read_manual, read_station_log            │                     │
-│   │  exposedTo: [game origin]     │           │                     │
-│   └──────────────────────────────┘            │                     │
-└──────────────────┬────────────────────────────┼─────────────────────┘
-                    │ execute()                  │
-             ┌──────┴──────┐                     ▼
-             │  AI AGENT   │      ┌─────────────────────────────┐
-             │ (ChatGPT /  │      │  Cloudflare Worker (router)  │
-             │  Chrome)    │      └──────────────┬──────────────┘
-             └─────────────┘                     │
-                                  ┌──────────────▼──────────────┐
-                                  │  Durable Object: Session     │
-                                  │  · authoritative WorldState  │
-                                  │  · channel tags               │
-                                  │  · action semaphore (n=1)     │
-                                  │  · server timer                │
-                                  │  · projectForPilot/Keeper      │
-                                  │  · consistentWorlds → CONCORD  │
-                                  │  · latency observer → Ch.III   │
-                                  │  · append-only event log       │
-                                  └──────────────┬──────────────┘
-                                                 │
-                                  ┌──────────────▼──────────────┐
-                                  │  D1: finished sessions        │
-                                  │  (replay · benchmark ·        │
-                                  │   the Archive's ghosts)       │
-                                  └───────────────────────────────┘
-```
+<img src="architecture/system-diagram.svg" alt="System diagram: an AI agent calls execute() into the browser, which renders PILOT's view and hosts KEEPER's WebMCP registry; the browser talks to a Cloudflare Worker, which routes to a Durable Object holding channel-tagged state, the action semaphore, the server timer, consistentWorlds and the event log; the Durable Object pushes state back to the browser over one socket and flushes finished sessions to D1." width="100%">
 
 The single most important property in this whole diagram: **`projectForKeeper` runs on the
 server.** The agent's perceptual surface is computed somewhere the browser cannot reach around.
@@ -117,6 +64,8 @@ The second: one D1 row is simultaneously the replay corpus, the benchmark corpus
 ghosts.
 
 ## The asymmetry law
+
+<img src="architecture/asymmetry-model.svg" alt="Five channels, VISUAL through HIDDEN, feed two server-side projections: PILOT sees the rendered room, KEEPER calls tools and reads their answers, and HIDDEN reaches neither. The possible-worlds proof checks that every world KEEPER's view allows disagrees on the right action, reported as log2 of the world count in bits, the CONCORD reading." width="100%">
 
 Every field in the authoritative world state carries an explicit channel:
 
@@ -179,7 +128,18 @@ a puzzle) that ships correct and turns red under a deliberately reintroduced lea
 game's own worker is a *binding* of that package — its five channels, its four chambers — rather
 than a second implementation, so the invariant that `consistentWorlds` has one implementation and
 every consumer reads from it now holds one layer further down, for anyone else's tool surface
-too.
+too. Nothing in `packages/asymmetry` may know what Semaphore is — no `Channel` union, no `PILOT`,
+no chamber id — which is checked informally by whether its own worked example still reads as a
+generic support console rather than a puzzle.
+
+**Every package under `packages/` is pure and environment-free**: no DOM, no Workers globals, no
+`fetch`, no filesystem, no ambient randomness, so the same code runs identically in the browser,
+the Durable Object, Vitest and the benchmark harness. Channel tags, error codes and wire types
+have exactly one definition, in `protocol`, because a duplicated type is how the client and the
+server quietly stop agreeing with each other. The seeded PRNG's determinism is a load-bearing
+property rather than a nicety: `?seed=` replay, fair model-versus-model comparison, and a
+playtester's bug all depend on the same seed always producing the same puzzle, so a change to the
+generator's output sequence is a decision-log entry, never a tidy-up.
 
 ## WebMCP tool architecture
 
@@ -221,6 +181,18 @@ Signal Room's door opens; `begin_shift` is gone the instant a shift begins. One 
 `toolchange` listener, reading actual `getTools()` output, drives both the manifest panel and
 KEEPER's rendered body — never a parallel guess about what was just registered. The mapping from
 tool to limb is authored, like a sprite; which tools exist is not.
+
+The tier a tool belongs to is decided in one table per chamber; `ToolDirector.applyState` is the
+only thing that mounts or tears one down, and it reads the machine state the server's own response
+carries rather than inferring a chamber from whatever was just called. Every tool is authored as
+plain data plus a function that returns a string; the spec's result envelope, the timing, and the
+never-throw-at-an-agent rule (below) are applied once, by the director's own wrapper, so a tool
+module never builds a response envelope by hand. When delegation moves a tool onto the archive's
+cross-origin frame rather than the game's own registry, *where* it's registered changes and *when*
+it exists does not — the tier tables stay the one place that decides a tool's lifetime regardless
+of which origin fulfils it, and the manifest panel has to ask for the archive's tools by name
+(`getTools({ fromOrigins })`) since a default read never includes a frame's tools even once both
+delegation gates are satisfied.
 
 ### Both APIs, with a rule
 
@@ -407,12 +379,29 @@ is therefore genuinely unobtainable by any observer, human, agent or screenshot 
 **863 tests** pass as of the last verification pass. Typecheck, lint, palette lock and bundle
 budget all run in CI on every pull request.
 
+**A proof gate is never skipped, never marked as an expected failure, and never weakened to make
+it pass.** The possible-worlds proof and its asymmetry-package equivalent are blocking: a session
+that leaks is not a build with a bug in it, it is a build that is not the game, and the one change
+this project never accepts is loosening a check until a real defect stops tripping it. Where full
+enumeration of a chamber's state space would be infeasible, the proof enumerates over the
+puzzle-defining parameters instead and says so in the test file — silent scoping is how a proof
+quietly becomes a decoration.
+
+**A browser proof exists specifically to cover what a unit test structurally cannot observe**:
+that aborting a controller actually removes tools from a live `getTools()`, that `toolchange`
+fires on register *and* on abort, that cross-origin tools are visible to the game origin and only
+to it, and that the very last registry of a session is empty — which is both an assertion and the
+game's own ending. `tests/cross-origin-delegation.ts` runs this over the Chrome DevTools Protocol
+rather than through a framework, so the proof has no dependency beyond the browser it's driving,
+and it runs twice: once with the archive origin embedded, once without, because the single-origin
+fallback has to stay provably green for as long as it might be what ships.
+
 ## Performance budgets
 
 | Metric | Budget | Observed |
 |---|---|---|
-| Entry JS bundle, gzipped | < 400 KB | ~46 KB |
-| Three.js chunk, gzipped, fetched only on shift start | - | ~147 KB |
+| Entry JS bundle, gzipped | < 400 KB | 46.3 KB |
+| Three.js chunk, gzipped, fetched only on shift start | - | 147.5 KB |
 | Palette | Locked at 20 colours in two sets | Enforced by `scripts/check-palette.mjs`, both directions, every build |
 
 ## Deployment
@@ -428,7 +417,78 @@ budget all run in CI on every pull request.
 Nothing environment-specific is hardcoded anywhere in source: origins and the archive delegation
 flag arrive as build-time configuration (`VITE_WORKER_ORIGIN`, `VITE_ARCHIVE_ORIGIN`), and the
 worker's CORS allowlist (`ALLOWED_ORIGINS`) is a `wrangler.toml` variable rather than a value
-written into a source file.
+written into a source file. A few further rules that follow from the stack decision above:
+
+- **Preview deploys on every pull request, including the archive origin.** Playtesters need a URL,
+  not a checkout, and the cross-origin delegation path cannot be tested on one origin.
+- **Secrets live in Wrangler secrets and `.dev.vars`, never in a tracked file.** `.dev.vars` and
+  `.env` are git-ignored.
+- **No Cloudflare product that requires a linked payment method**, checked by its activation path
+  rather than its pricing page. This is why R2 was replaced by D1 (above) rather than adopted.
+- The production URL is expected to stay live and testable through the end of the judging period
+  on a stable custom domain.
+
+## Rendering and audio: pure decisions, impure execution
+
+The same split recurs across every subsystem that has to be tested without a browser or an
+`AudioContext`: **what happens is decided in a pure module with no environment to fail in, and a
+separate impure module only builds, plays or draws it.** `apps/game/src/render/chamber.ts`
+decides what a room contains in metres; `stage.ts` only builds and lights it. `audio/plan.ts`
+decides what should be playing as arithmetic over a `PilotView`; `voices.ts` only knows how to
+synthesise it, and chooses nothing, because Web Audio does not exist in the test environment and a
+decision left inside a node graph is a decision nothing can check. The tutorial overlay
+(`tutorial/plan.ts` versus `tutorial/tour.ts`) follows the same rule for what a guided first shift
+says and in what order.
+
+**The station is a cutaway model.** Every room is open at the top and on its south face, and the
+camera never leaves the south side — a station you look *into*, which is most of what makes a
+room read as an actual place rather than a floor plan. Four lights only (a hemisphere, a
+shadow-casting directional, one practical per occupied room, PILOT's own lamp) under ACES filmic
+tone mapping, and no post-processing pass: a full-screen bloom at an uncontrolled resolution is
+the first thing that would cost frame rate in a phone's browser. Every material and every
+generated texture is built by one module (`render/kit.ts`) and nowhere else, which is what keeps
+the twenty-colour palette locked and every session's GPU resources disposable. Devices never play
+an animation; a fixture eases toward whatever state the server most recently reported, every
+frame, so a state change mid-transition just changes what it's converging toward rather than
+requiring a cancel.
+
+**Sound has one `AudioContext`, spatialised in normalised room coordinates rather than metres**,
+so the audio layer never has to import the renderer's eighteen-hundred-line room geometry to place
+four sounds. Every cue keeps a text equivalent, sourced from the same branch of code that picks
+the sound, so a cue with no subtitle cannot be added without deleting the other half on purpose —
+deaf and hard-of-hearing players depend on that pairing staying structurally impossible to break
+by accident.
+
+## Measurement: the ablation and the Cooperative Benchmark
+
+Both harnesses live in `bench/` and share the same design discipline as the possible-worlds proof:
+a number is trustworthy only if it's generated by code that can't drift from what it claims to
+measure.
+
+- **The ablation's solo conditions are a ceiling, not a sample.** The agent-alone run draws
+  uniformly from `consistentWorlds` at every step rather than simulating a language model, so it
+  beats any real model and the gap it reports against the paired condition is a lower bound, not
+  an estimate. Per-model numbers belong in the Cooperative Benchmark instead.
+- **A scripted PILOT partner is modelled as what its description left behind, not as a sentence.**
+  `oracle`, `vague`, `slow` and `wrong` are the subset of the consistent-world set the agent still
+  holds after the partner's answer, plus whatever delay the answer cost — authoring description
+  strings and parsing them back would measure the parser rather than the partner.
+- **The interesting number is the ratio to `oracle`, never a comparison between two non-oracle
+  partners.** How often `vague` or `wrong` mislead an agent is set by their own parameters, so
+  their relative ordering measures those parameters, not partner-sensitivity.
+- **`wasted` calls are computed from `keeperViewHash`**, the agent's exact epistemic state at call
+  time, which is what separates a model that reasoned to an answer from one that pressed keys
+  until something worked — the two produce identical completion rates and very different
+  wasted-call counts.
+- **A metric that doesn't vary across the axis it's meant to measure is deleted, not published
+  anyway.** Grounding latency read 1.0 for every scripted partner and was removed rather than kept
+  for completeness; a column of constants reads as a measurement and isn't one.
+- **Results are regenerated from one run, never hand-edited.** `bench/results/` is committed, but
+  a corrected number in a markdown table that no longer matches the run's own raw JSONL is the
+  exact failure publishing raw logs alongside every claim exists to prevent.
+
+See the ablation numbers and the Cooperative Benchmark's framing in
+[README.md](README.md#the-ablation) and [DESIGN.md](DESIGN.md#14-judging-criteria-plainly-stated).
 
 ## Project structure
 
