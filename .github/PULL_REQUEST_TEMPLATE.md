@@ -10,7 +10,7 @@
 - [ ] If this changes a decision worth recording, it's in `docs/decision-log.md`
 - [ ] If this changes what a teammate should pick up next, `NEXT-STEPS.md` is updated
 - [ ] Commit messages follow Conventional Commits (`type(scope): summary`) and carry no AI
-      attribution, per `CLAUDE.md`
+      attribution, per [CONTRIBUTING.md](../CONTRIBUTING.md#git-conventions)
 - [ ] One logical change per commit
 
 ## Screenshots or a recording
