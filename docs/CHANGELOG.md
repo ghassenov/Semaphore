@@ -1,6 +1,6 @@
 # Changelog
 
-A readable, milestone-level history. [docs/decision-log.md](docs/decision-log.md) is the
+A readable, milestone-level history. [docs/decision-log.md](decision-log.md) is the
 day-by-day record with every option considered and the reasoning kept; this file is the shorter
 version for a reader who wants to know what happened and when, not why.
 
