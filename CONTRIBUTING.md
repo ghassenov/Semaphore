@@ -18,7 +18,7 @@ Pull requests are welcome. A few things make one land faster.
 
 ### Read the law first
 
-[ARCHITECTURE.md](ARCHITECTURE.md) and [DESIGN.md](DESIGN.md) explain what the game is and why the
+[ARCHITECTURE.md](ARCHITECTURE.md) and [DESIGN.md](docs/DESIGN.md) explain what the game is and why the
 codebase is shaped the way it is; [docs/decision-log.md](docs/decision-log.md) is the day-by-day
 record of every decision behind that shape, with the options considered and the reasoning kept
 rather than only the conclusion. The single rule that matters most, from
@@ -70,7 +70,7 @@ and paste the starter prompt from the console's own panel into whichever agent i
 - **A report of what someone sees is an observation, not a hypothesis.** Reproduce it literally
   before reinterpreting it. Two real reports in this project's history read like exaggeration and
   were both exactly true once measured.
-- **Update [NEXT-STEPS.md](NEXT-STEPS.md)** after any change that affects what the next person
+- **Update [NEXT-STEPS.md](docs/NEXT-STEPS.md)** after any change that affects what the next person
   should pick up. A stale handoff is worse than none, because it's trusted.
 - **Never commit personal or machine-specific values** — absolute paths, tokens, usernames, editor
   config. Those belong in `.env` or a `.local` settings file, both git-ignored.

@@ -3362,3 +3362,30 @@ second one.
 Nothing in either addition touches shipped code. 863 tests, clean typecheck across all eight
 workspaces, clean lint, clean build, and every markdown link and image reference checked to
 resolve to a real file or a real heading.
+
+---
+
+### D-090 The repository root, cleared to what a judge needs first
+
+**2026-09-03.** `NEXT-STEPS.md`, `CHANGELOG.md`, `NOTICE.md` and `DESIGN.md` moved from the
+repository root into `docs/`, at explicit request, so the root listing a judge sees first is:
+`README.md`, `ARCHITECTURE.md`, `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`,
+`CODE_OF_CONDUCT.md`, plus the actual directories. `ARCHITECTURE.md` stays at the root
+deliberately - it was not named in the request, and it is one of the two documents
+`README.md`'s own first screen points a reader at.
+
+Every cross-reference fixed by hand rather than by regex, since there were few enough to check
+each one: the moved files' own internal links (a link from `docs/DESIGN.md` to a root file now
+needs `../`, a link to another `docs/` file no longer needs the `docs/` prefix it had from the
+root), and every inbound link from `README.md`, `ARCHITECTURE.md` and `CONTRIBUTING.md` gained the
+`docs/` prefix it now needs. One genuine bug surfaced in the sweep and is worth recording
+separately from the mechanical relinking: `.github/ISSUE_TEMPLATE/feature_request.yml` still
+linked to `CLAUDE.md`, missed by D-088's own sweep because that pass searched `.md` and `.ts`
+files only and never checked `.yml`. Retargeted to `CONTRIBUTING.md`, and its `DESIGN.md` link
+gained both the new path and the numbered-heading anchor fix D-087 had already applied everywhere
+else. `docs/DESIGN.md`'s own link to `packages/asymmetry/` was the other real breakage, a
+root-relative path that needed `../` once the file it lived in was no longer at the root itself.
+
+Every link and image reference in every tracked markdown and YAML file checked programmatically
+against the files and headings that actually exist, not spot-checked. 863 tests, clean typecheck
+across all eight workspaces, clean lint, clean format. No shipped code touched.

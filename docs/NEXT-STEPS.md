@@ -2,7 +2,7 @@
 
 **The handoff file.** Whoever stops working updates this before they stop. Whoever starts working reads this first and nothing else.
 
-It answers three questions and only three: where the repo is right now, what to pick up next, and what will bite you if nobody warns you. It is not a changelog ([docs/decision-log.md](docs/decision-log.md) is), not a journal ([docs/lessons-learned.md](docs/lessons-learned.md) is), and not a design document ([ARCHITECTURE.md](ARCHITECTURE.md) and [DESIGN.md](DESIGN.md) are).
+It answers three questions and only three: where the repo is right now, what to pick up next, and what will bite you if nobody warns you. It is not a changelog ([docs/decision-log.md](decision-log.md) is), not a journal ([docs/lessons-learned.md](lessons-learned.md) is), and not a design document ([ARCHITECTURE.md](../ARCHITECTURE.md) and [DESIGN.md](DESIGN.md) are).
 
 ---
 

@@ -2,7 +2,7 @@
 
 How Semaphore is built, and why each decision was made over its real alternative. This document
 replaces the technical sections of the twelve-document `docs/design/` set, brought up to date with
-what actually shipped rather than what was planned before the build. See [DESIGN.md](DESIGN.md)
+what actually shipped rather than what was planned before the build. See [DESIGN.md](docs/DESIGN.md)
 for the game and the thesis; this is the machinery underneath it.
 
 ---
@@ -17,7 +17,7 @@ chunk — so a browser without WebMCP, or a judge who never presses start, never
 engine at all; it lands on a plain 2D gate screen instead. No asset files anywhere: every texture
 is generated into a canvas at boot and every geometry is built in code, which is also what keeps
 the whole repository MIT-licensed with a single, deliberate exception noted in [LICENSE](LICENSE)
-and [NOTICE.md](NOTICE.md).
+and [NOTICE.md](docs/NOTICE.md).
 
 **Authority: Cloudflare Workers + Durable Objects + D1.** The most consequential decision in the
 project, driven by requirements only server authority satisfies:
@@ -87,7 +87,7 @@ check is the one class of change this project never accepts.
 in the Blind Panel, the perception model a session projects under inverts: `INVERTED_PERCEPTION`
 swaps which channels belong to which party, and every projection in the worker takes the model it
 projects under as a parameter rather than assuming the default. See
-[DESIGN.md](DESIGN.md#4-the-four-chambers) for why that chamber specifically is the only one of the four
+[DESIGN.md](docs/DESIGN.md#4-the-four-chambers) for why that chamber specifically is the only one of the four
 that survives the swap.
 
 ## The possible-worlds proof
@@ -251,12 +251,12 @@ passes. Nothing in the product needed to change; only the origins the proof was 
 
 **One tool before a shift begins.** `begin_shift` is the only thing registered on the landing
 page, so an agent arriving at the page has no discovery problem — see
-[DESIGN.md](DESIGN.md#11-the-agent-as-a-user) for why that matters more than it sounds.
+[DESIGN.md](docs/DESIGN.md#11-the-agent-as-a-user) for why that matters more than it sounds.
 
 **Persistent tools**, mounted once a shift starts and torn down only at session end:
 `get_status`, `read_manual`, `read_station_log`, `describe_chamber`, `inspect`, `read_note`,
 `write_note` (declarative), and `request_assistance` (the intercom, capped and escalating; see
-[DESIGN.md](DESIGN.md#8-when-a-pair-stalls-the-intercom)).
+[DESIGN.md](docs/DESIGN.md#8-when-a-pair-stalls-the-intercom)).
 
 **Chamber tools**, registered on entry and aborted on solve: `pull_lever` (Airlock); `press_key`,
 `reset_sequence` (Signal Room); `rotate_dial` (Blind Panel, and only KEEPER's for as long as the
@@ -488,7 +488,7 @@ measure.
   exact failure publishing raw logs alongside every claim exists to prevent.
 
 See the ablation numbers and the Cooperative Benchmark's framing in
-[README.md](README.md#the-ablation) and [DESIGN.md](DESIGN.md#14-judging-criteria-plainly-stated).
+[README.md](README.md#the-ablation) and [DESIGN.md](docs/DESIGN.md#14-judging-criteria-plainly-stated).
 
 ## Project structure
 
@@ -534,6 +534,6 @@ Six pointers, each one file or a short directory, so the Leverage claim is verif
 5. `apps/worker/src/projection.ts` and `apps/worker/src/blackout.ts` - channel-tagged state, the pure projections, and where the perception model itself lives.
 6. `packages/asymmetry/src/worlds.ts` and `tests/possible-worlds.test.ts` - the executable proof, and the bits table it generates.
 
-See [DESIGN.md](DESIGN.md) for what the game is and why it's shaped this way, and
+See [DESIGN.md](docs/DESIGN.md) for what the game is and why it's shaped this way, and
 [docs/decision-log.md](docs/decision-log.md) for the day-by-day record of every decision recorded
 here, with the options considered and the reasoning kept rather than only the conclusion.
