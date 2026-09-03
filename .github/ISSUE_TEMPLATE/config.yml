@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security-sensitive report
+    url: https://github.com/ghassenov/Semaphore/security/advisories/new
+    about: A way to read HIDDEN state, affect another session, or a real vulnerability. See SECURITY.md.
+  - name: General question
+    url: https://github.com/ghassenov/Semaphore/issues/new
+    about: Open a blank issue. There is no other support channel for this project.

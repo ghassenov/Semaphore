@@ -23,7 +23,7 @@ The thesis every decision is checked against:
 
 Judging is four equally weighted criteria: **WebMCP Leverage**, **Execution**, **Potential Impact**, **Creativity and Ambition**. A change that moves none of them is not on the critical path.
 
-**Never cut, in any scope reduction:** the possible-worlds proof, the `toolchange` sequence including KEEPER's body, the ablation chart, the starter prompt card, ChatGPT in-app browser verification, the MIT license, the demo video. Cut order for everything else is in [docs/design/08-implementation-plan.md](docs/design/08-implementation-plan.md).
+**Never cut, in any scope reduction:** the possible-worlds proof, the `toolchange` sequence including KEEPER's body, the ablation chart, the starter prompt card, ChatGPT in-app browser verification, the MIT license, the demo video. The phased build plan this list was checked against lived in `docs/design/08-implementation-plan.md`; the build is complete and deployed now, so what remains open is tracked in [NEXT-STEPS.md](NEXT-STEPS.md) instead.
 
 ---
 
@@ -32,8 +32,9 @@ Judging is four equally weighted criteria: **WebMCP Leverage**, **Execution**, *
 | Path | Holds | Status |
 |---|---|---|
 | [NEXT-STEPS.md](NEXT-STEPS.md) | The handoff. Read first, update last. | Live |
-| [docs/design/](docs/design/) | The numbered document set 00-12. Source of truth for every design decision. | Complete |
-| [docs/](docs/) | The decision log and the lessons journal, beside the set rather than in it. | Live |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | How it's built, and why each stack decision beat its real alternative. | Live |
+| [DESIGN.md](DESIGN.md) | What the game is, the thesis, the four chambers, the art direction. | Live |
+| [docs/](docs/) | The decision log and the lessons journal. The numbered `design/` set these two documents replaced is gone from the working tree; every commit before D-087 still has it in full. | Live |
 | [docs/hackathonspecs/](docs/hackathonspecs/) | Captured hackathon rules and WebMCP reference. Read-only source material. | Complete |
 | [packages/](packages/) | Code shared by client, worker, archive and bench. Pure, no I/O. | `seed`, `protocol` built |
 | `packages/asymmetry/` | **The extracted kit** (D-080): the channel model, the projector and the possible-worlds proof, with nothing in them that knows what a lever is. Zero dependencies, a CLI that prints the bits table and sets an exit code, and one worked example that is a support console rather than a game. `protocol` and `worker` are the game's *binding* of it. | Built |
@@ -43,18 +44,18 @@ Judging is four equally weighted criteria: **WebMCP Leverage**, **Execution**, *
 | [apps/worker/](apps/worker/) | Cloudflare Worker plus the Session Durable Object. Authoritative state. | Complete: four chambers, the reducer, the Archive beat, the timer, the read-only tool surface, the manual, PILOT's view socket, the CONCORD route and the shared notepad. Plus two session-independent routes: `/ghost` for the recording the gate plays, and `/replay/:id`, which projects a finished session out of D1 and drops every `HIDDEN` path (D-058, D-060). **Then three things the game did not have** (D-076 to D-078): `objective.ts`, which says what each room is asking for and reads progress off whatever projection it is handed; `chambers/hints.ts`, the station intercom's three authored notes a room; and the `request_assistance` action behind them. |
 | [apps/archive/](apps/archive/) | Cross-origin tool provider: `read_manual` and `read_station_log`, registered on a second origin and exposed back to the game. | Built (D-033). Holds no content: both tools fetch the worker. |
 | [fixtures/ghosts/](fixtures/ghosts/) | Authored ghost session logs, generated from real play. | One ghost built |
-| [tests/](tests/) | Cross-cutting proofs: possible-worlds, asymmetry smoke, solvability, and the browser proof of cross-origin delegation. | Possible-worlds proof covers all four chambers; delegation proved on Chrome 151 and re-run on 152. The browser proof doubles as the screenshot tour (`SHOTS`, D-039), which is how a rendering change gets looked at. It presses `E` so the lean-in has a frame, walks back through a door and forward again (D-054), and checks the ending's replay link. **It waits on the camera's own `data-settled` flag rather than copying its constants** (D-056). 34 checks: three of them are new with the game-feel work (D-076 to D-079), and one exists only because the first run of it reported `0 intercom` on a session that had used the intercom. |
+| [tests/](tests/) | Cross-cutting proofs: possible-worlds, asymmetry smoke, solvability, and the browser proof of cross-origin delegation. | Possible-worlds proof covers all four chambers; delegation proved on Chrome 151 and re-run on 152. The browser proof doubles as the screenshot tour (`SHOTS`, D-039), which is how a rendering change gets looked at. It presses `E` so the lean-in has a frame, walks back through a door and forward again (D-054), and checks the ending's replay link. **It waits on the camera's own `data-settled` flag rather than copying its constants** (D-056). 42 checks, run most recently against the live production deployment on its real custom domains (D-074, D-075). |
 | [bench/](bench/) | Ablation harness, scripted partners, the Cooperative Benchmark. | Both built and run. The ablation is three conditions over twenty seeds (D-040); the Cooperative Benchmark is four scripted partners over the same seeds (D-041). Raw logs, chart, tables and CSV in `bench/results/`. No model in either yet. |
 
 Root tooling: pnpm workspaces, strict TypeScript, ESLint, Prettier, Vitest, GitHub Actions.
 
-Target structure in full: [docs/design/05-technical-architecture.md](docs/design/05-technical-architecture.md) section 8.
+Target structure in full: [ARCHITECTURE.md](ARCHITECTURE.md#project-structure).
 
 ---
 
 ## 3. Deployment
 
-**Cloudflare across the whole stack.** Reasoning in [docs/decision-log.md](docs/decision-log.md) D-005; the backend justification is [docs/design/05-technical-architecture.md](docs/design/05-technical-architecture.md) sections 1 and 11.
+**Cloudflare across the whole stack.** Reasoning in [docs/decision-log.md](docs/decision-log.md) D-005; the backend justification and the live URLs are in [ARCHITECTURE.md](ARCHITECTURE.md#deployment).
 
 | Piece | Target | Notes |
 |---|---|---|
@@ -165,3 +166,4 @@ Rules that follow from this:
 | 2026-08-30 | Ahmed Saad | Doc 08 phases 4, 6 and 7.2 built (D-056 to D-061): the judge path, the accessibility layer and the replay viewer. Repository map updated for the worker's two session-independent routes and the tour's camera-settle wait; the tour is at 22 checks. |
 | 2026-09-01 | Ahmed Saad | Repository map updated for the three game-feel features (D-076 to D-078): the shift report, the per-room objective and the station intercom. The tour is at 34 checks. |
 | 2026-09-01 | Ahmed Saad | Four features aimed at the four judging axes (D-080 to D-084). `packages/asymmetry` added to the map: the proof extracted as a runnable kit. The Blackout inverts both roles for one window in the Blind Panel and the proof runs a pass under the inverted model. The audio layer became a place. The gate draws the ghost twice. The tour is at 42 checks. |
+| 2026-09-03 | Ahmed Saad | The numbered `docs/design/` set (D-087) consolidated into two root documents, `ARCHITECTURE.md` and `DESIGN.md`: repository map updated, the cut-order pointer in section 1 redirected to `NEXT-STEPS.md` now the build is complete and deployed. |

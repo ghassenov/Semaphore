@@ -3215,3 +3215,60 @@ a repeat (`director.test.ts`), and in `adapter.test.ts`, a host with
 `addEventListener` and no `removeEventListener` never subscribes, and a host
 whose `addEventListener` throws on an event it does not recognise still does
 not throw.
+
+---
+
+### D-087 The repository, made ready for a judge to actually read
+
+**2026-09-03.** Asked directly, on submission day: make the repository itself as strong a
+document as the game is. Four things, each with a real trade-off decided rather than assumed.
+
+**The twelve-document `docs/design/` set consolidated into two.** `ARCHITECTURE.md` (the
+machinery) and `DESIGN.md` (the game and the thesis) replace it, brought up to date with what
+actually shipped rather than what was planned before the build - Phaser became Three.js, R2
+became D1, `ARCHIVE_ORIGIN` moved from `same` to `cross` in production, and four features built
+after the design set was last touched (the shift report, room objectives, the intercom, the
+Blackout, the extracted `@semaphore/asymmetry` package) needed describing for the first time.
+**What did not happen:** a rewrite of the roughly two hundred `(doc NN section X)` citations
+scattered through this codebase's own comments and `CLAUDE.md` files. At that count, a blind
+regex sweep risked degrading prose this project has spent real care on, for internal citations no
+judge will read; the honest, proportionate fix left in place is that git history resolves every
+one of them precisely, the same way any citation to a superseded document ages in a real
+codebase. What *did* get fixed by hand: every place the old path appeared as a live link rather
+than a historical citation - the README, three `CLAUDE.md` files, and `NEXT-STEPS.md` - plus one
+substantive correction the read surfaced: `apps/archive/CLAUDE.md` still said cross-origin
+delegation was unverified and defaulted to `same`, which had been true in local development and
+had stopped being true the moment D-074/D-075 verified and deployed it.
+
+**The README rewritten as a landing page rather than a container for everything.** Live URL and
+the starter prompt above the fold, the four chambers at a glance, the ablation kept, links out to
+`ARCHITECTURE.md` and `DESIGN.md` for depth rather than absorbing their content - the option this
+project's own house rule ("keep docs short") argued for over a single exhaustive document.
+
+**Four community-health files added**: `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`
+(Contributor Covenant 2.1), `CHANGELOG.md` as the milestone-level reading of the decision log
+rather than a duplicate of it. Plus `.github/ISSUE_TEMPLATE/` and a pull request template.
+
+**`LICENSE` restored to the unmodified MIT template.** It had carried the typeface carve-out
+appended below the licence text since D-068, which is exactly what breaks GitHub's own license
+detector: the About section had been reading **Other** rather than **MIT** ever since, silently
+failing a starred item on this project's own release checklist. The carve-out prose moved to
+`NOTICE.md`, unchanged in content, linked from the README's licence line.
+
+**The `.claude/` folder removed from the tracked repository**, at the user's explicit request.
+The one file it held, `settings.json`, was the mechanism enforcing "no AI attribution in commits"
+for the whole team (repo `CLAUDE.md` section 7) - removing it from the repo does not undo any
+commit already made under it, but the rule is no longer shared automatically with a fresh
+checkout. Worth a line in the log because it is a real trade-off, not a pure cleanup.
+
+**One finding this pass could not fix.** `gh api` against this repository returns
+`"permissions":{"admin":false,"maintain":false,"push":true}` for the authenticated account -
+enough to open and merge a pull request, not enough to `PATCH` the repository's own description,
+topics, homepage or social-preview image, all of which 404 rather than 403 on the attempt. Those
+need the account with admin or maintain access. **More urgently: the repository itself is still
+private** (`"private":true`), which the challenge's own rules require it not to be, and
+`NEXT-STEPS.md`'s own "Waiting on" table already recorded this as deliberately deferred to just
+before the deadline. Today is the deadline. Flagged directly rather than assumed handled.
+
+Unaffected, and reverified after every change in this entry regardless: none of the above touches
+shipped code. 863 tests, clean typecheck across all eight workspaces, clean lint, clean build.

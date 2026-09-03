@@ -1,0 +1,48 @@
+name: Bug report
+description: Something in the live game or the repository is broken.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. If this is a security-sensitive issue (a way to read `HIDDEN`
+        state, affect another session, or a real server-side vulnerability), please use the
+        private [security advisory form](https://github.com/ghassenov/Semaphore/security/advisories/new) instead of a public issue
+        — see [SECURITY.md](../../SECURITY.md).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: seed
+    attributes:
+      label: Session seed or replay link
+      description: >
+        The game is deterministic from its seed (`?seed=...` in the URL), and a finished session
+        has a replay link on its ending screen. Either lets a maintainer reproduce exactly what
+        you saw.
+      placeholder: "?seed=... or https://semaphore.ahmedxsaad.me/replay?id=..."
+    validations:
+      required: false
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Where you saw it
+      options:
+        - Chrome, with the WebMCP flag enabled
+        - Chrome, without the WebMCP flag (the gate screen)
+        - ChatGPT's in-app browser
+        - A local checkout (pnpm dev)
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Console errors, screenshots, or a link to a screen recording all help.
+    validations:
+      required: false
