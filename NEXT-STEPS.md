@@ -2,7 +2,7 @@
 
 **The handoff file.** Whoever stops working updates this before they stop. Whoever starts working reads this first and nothing else.
 
-It answers three questions and only three: where the repo is right now, what to pick up next, and what will bite you if nobody warns you. It is not a changelog ([docs/decision-log.md](docs/decision-log.md) is), not a journal ([docs/lessons-learned.md](docs/lessons-learned.md) is), and not a plan ([docs/design/08-implementation-plan.md](docs/design/08-implementation-plan.md) is).
+It answers three questions and only three: where the repo is right now, what to pick up next, and what will bite you if nobody warns you. It is not a changelog ([docs/decision-log.md](docs/decision-log.md) is), not a journal ([docs/lessons-learned.md](docs/lessons-learned.md) is), and not a design document ([ARCHITECTURE.md](ARCHITECTURE.md) and [DESIGN.md](DESIGN.md) are).
 
 ---
 
@@ -43,8 +43,8 @@ It answers three questions and only three: where the repo is right now, what to 
 
 | Path | State |
 |---|---|
-| `docs/design/` | Numbered set 00-12. **Doc 06 rewritten for 3D**; the rest unchanged. |
-| `docs/` | Decision log at D-052, lessons journal live. |
+| `ARCHITECTURE.md`, `DESIGN.md` | **New.** Replace the numbered `docs/design/` set (D-087), consolidated and brought up to date with what shipped. The original set is still in git history at any commit before D-087. |
+| `docs/` | Decision log at D-087, lessons journal live. |
 | `packages/seed` | Done. Untouched. |
 | `packages/protocol` | Done. Gained the `Cue` vocabulary and `PilotView.seq` for the audio layer (D-050). |
 | `apps/worker/**` | Done. The only change since the 3D rework is that each chamber's `lastSound` now returns a cue beside its prose, from one branch (D-050). Four chambers, the reducer, the Archive beat, the timer, the read-only tool surface, the manual, PILOT's view socket, CONCORD, the notepad. |
